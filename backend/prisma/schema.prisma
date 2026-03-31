@@ -1,0 +1,105 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  member
+}
+
+model Gym {
+  id        String   @id @default(uuid())
+  name      String
+  ownerName String   @map("owner_name")
+  address   String?
+  phone     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users User[]
+
+  @@map("gyms")
+}
+
+model User {
+  id           String      @id @default(uuid())
+  gymId        String      @map("gym_id")
+  email        String      @unique
+  passwordHash String      @map("password_hash")
+  fullName     String      @map("full_name")
+  role         UserRole    @default(member)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  isActive     Boolean     @default(true) @map("is_active")
+
+  gym          Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  profile      UserProfile?
+  measurements Measurement[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  id             String    @id @default(uuid())
+  userId         String    @unique @map("user_id")
+  birthDate      DateTime? @map("birth_date")
+  heightCm       Float?    @map("height_cm")
+  goal           String?
+  medicalConds   String?   @map("medical_conds")
+  injuries       String?
+  experienceLvl  String?   @map("experience_lvl")
+  availability   String?
+  dietPrefs      String?   @map("diet_prefs")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Measurement {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  date       DateTime  @default(now())
+  weightKg   Float?    @map("weight_kg")
+  bodyFatPct Float?    @map("body_fat_pct")
+  muscleMass Float?    @map("muscle_mass")
+  chestCm    Float?    @map("chest_cm")
+  waistCm    Float?    @map("waist_cm")
+  hipCm      Float?    @map("hip_cm")
+  armCm      Float?    @map("arm_cm")
+  photoUrl   String?   @map("photo_url")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("measurements")
+}
+
+enum AIChatLogType {
+  CHAT
+  ROUTINE_GENERATION
+  NUTRITION_GENERATION
+  DAILY_TIP
+}
+
+model AIChatLog {
+  id          String        @id @default(uuid())
+  userId      String        @map("user_id")
+  type        AIChatLogType
+  userMessage String        @map("user_message")
+  aiResponse  String        @map("ai_response")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  @@map("ai_chat_logs")
+}

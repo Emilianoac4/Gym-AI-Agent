@@ -1,0 +1,24 @@
+.DS_Store
+Thumbs.db
+
+# Environment files
+**/.env
+**/.env.local
+
+# Dependencies
+**/node_modules/
+
+# Build outputs
+**/dist/
+**/build/
+**/.expo/
+**/.expo-shared/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Prisma generated artifacts
+backend/generated/prisma/

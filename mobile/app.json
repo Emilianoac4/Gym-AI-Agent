@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "GymAI",
+    "slug": "gymai-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light"
+  }
+}
