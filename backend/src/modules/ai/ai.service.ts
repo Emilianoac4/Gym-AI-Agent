@@ -39,13 +39,6 @@ Keep answers practical, concise, and under 220 words.
     /\b(sexo|sexual|porn|erotico|nudes)\b/i,
   ];
 
-  private static readonly IN_SCOPE_HINTS: RegExp[] = [
-    /\b(gym|gimnasio|entrenamiento|rutina|ejercicio|pesas|fuerza|hipertrofia|cardio|movilidad)\b/i,
-    /\b(nutricion|proteina|calorias|dieta|macros|hidratacion|suplement)\b/i,
-    /\b(descanso|sueno|recuperacion|dolor muscular|estiramiento|calentamiento)\b/i,
-    /\b(salud|habitos|bienestar|fitness|coach)\b/i,
-  ];
-
   private static readonly DEFAULT_CHAT_CONTEXT_TURNS = 12;
   private static readonly MAX_CHAT_CONTEXT_TURNS = 20;
   private static readonly DEFAULT_CHAT_CONTEXT_MAX_CHARS = 500;
@@ -123,11 +116,48 @@ Keep answers practical, concise, and under 220 words.
       return true;
     }
 
-    if (AIService.OUT_OF_SCOPE_PATTERNS.some((pattern) => pattern.test(trimmed))) {
-      return true;
-    }
+    return AIService.OUT_OF_SCOPE_PATTERNS.some((pattern) => pattern.test(trimmed));
+  }
 
-    return !AIService.IN_SCOPE_HINTS.some((pattern) => pattern.test(trimmed));
+  private async getUserChatContext(userId: string): Promise<string> {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          fullName: true,
+          profile: {
+            select: {
+              goal: true,
+              experienceLvl: true,
+              injuries: true,
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        return "";
+      }
+
+      const lines: string[] = [];
+      if (user.fullName?.trim()) {
+        lines.push(`User name: ${user.fullName.trim()}`);
+      }
+      if (user.profile?.goal?.trim()) {
+        lines.push(`Primary goal: ${user.profile.goal.trim()}`);
+      }
+      if (user.profile?.experienceLvl?.trim()) {
+        lines.push(`Experience level: ${user.profile.experienceLvl.trim()}`);
+      }
+      if (user.profile?.injuries?.trim()) {
+        lines.push(`Injuries/limitations: ${user.profile.injuries.trim()}`);
+      }
+
+      return lines.join("\n");
+    } catch (error) {
+      console.warn("Failed to load user chat context", error);
+      return "";
+    }
   }
 
   private isLogTableMissing(error: unknown): boolean {
@@ -332,10 +362,20 @@ Customize the routine to match the user context. Return ONLY valid JSON.
     let response;
     try {
       const recentContext = options.startNewConversation ? [] : await this.getRecentChatContext(userId);
+      const userContext = await this.getUserChatContext(userId);
       response = await this.openai.chat.completions.create({
         model: this.models.chat,
         messages: [
           { role: "system", content: AIService.CHAT_SYSTEM_PROMPT },
+          ...(userContext
+            ? [
+                {
+                  role: "system" as const,
+                  content:
+                    "Known user context (if relevant to the answer):\n" + userContext,
+                },
+              ]
+            : []),
           ...recentContext,
           { role: "user", content: userMessage },
         ],
