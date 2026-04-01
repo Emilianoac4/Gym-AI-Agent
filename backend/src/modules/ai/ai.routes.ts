@@ -4,7 +4,11 @@ import { validate } from "../../middleware/validate.middleware";
 import { authenticate } from "../../middleware/auth.middleware";
 import {
   chatMessageSchema,
-  routineCheckinSchema,
+  exerciseCheckinSchema,
+  exerciseOptionsSchema,
+  regenerateRoutineDaySchema,
+  removeRoutineExerciseSchema,
+  replaceRoutineExerciseSchema,
   routineCheckinsQuerySchema,
   strengthLogSchema,
   strengthProgressQuerySchema,
@@ -18,11 +22,35 @@ aiRouter.use(authenticate);
 // Generate personalized workout routine
 aiRouter.post("/:userId/routine", AIController.generateRoutine);
 aiRouter.get("/:userId/routine/latest", AIController.getLatestRoutine);
+aiRouter.post(
+  "/:userId/routine/regenerate-day",
+  validate(regenerateRoutineDaySchema),
+  AIController.regenerateRoutineDay
+);
+aiRouter.post(
+  "/:userId/routine/exercises/replace",
+  validate(replaceRoutineExerciseSchema),
+  AIController.replaceRoutineExercise
+);
+aiRouter.post(
+  "/:userId/routine/exercises/options",
+  validate(exerciseOptionsSchema),
+  AIController.getExerciseReplacementOptions
+);
+aiRouter.post(
+  "/:userId/routine/exercises/checkins",
+  validate(exerciseCheckinSchema),
+  AIController.createExerciseCheckin
+);
+aiRouter.post(
+  "/:userId/routine/exercises/remove",
+  validate(removeRoutineExerciseSchema),
+  AIController.removeRoutineExercise
+);
 
 // Persist and read weekly routine check-ins
 aiRouter.post(
   "/:userId/routine/checkins",
-  validate(routineCheckinSchema),
   AIController.createRoutineCheckin
 );
 aiRouter.get(

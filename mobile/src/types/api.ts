@@ -96,12 +96,20 @@ export interface RoutineCheckin {
   completedAt: string;
 }
 
+export interface RoutineExerciseCheckin {
+  id: string;
+  weekStart: string;
+  sessionDay: string;
+  exerciseName: string;
+  completedAt: string;
+}
+
 export interface RoutineExercise {
   name: string;
   sets: number;
   reps: string;
   rest_seconds: number;
-  notes: string;
+  notes?: string;
 }
 
 export interface RoutineSession {
@@ -124,6 +132,10 @@ export interface StrengthLog {
   id: string;
   exerciseName: string;
   loadKg: number;
+  originalLoad?: {
+    value: number;
+    unit: "kg" | "lb";
+  };
   reps: number | null;
   sets: number | null;
   performedAt: string;

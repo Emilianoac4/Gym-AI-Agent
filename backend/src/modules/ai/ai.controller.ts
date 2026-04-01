@@ -5,7 +5,34 @@ import { HttpError } from "../../utils/http-error";
 
 const prisma = new PrismaClient();
 const ROUTINE_CHECKIN_PREFIX = "ROUTINE_CHECKIN::";
+const EXERCISE_CHECKIN_PREFIX = "EXERCISE_CHECKIN::";
 const STRENGTH_LOG_PREFIX = "STRENGTH_LOG::";
+
+type RoutineExercise = {
+  name: string;
+  sets: number;
+  reps: string;
+  rest_seconds: number;
+  notes?: string;
+};
+
+type RoutineSession = {
+  day: string;
+  focus: string;
+  duration_minutes: number;
+  exercises: RoutineExercise[];
+};
+
+type GeneratedRoutine = {
+  routine_name: string;
+  duration_weeks: number;
+  weekly_sessions: number;
+  sessions: RoutineSession[];
+  progression_tips?: string[];
+  nutrition_notes?: string;
+};
+
+const LB_TO_KG = 0.45359237;
 
 function getWeekStartIso(date: Date): string {
   const clone = new Date(date);
@@ -17,11 +44,48 @@ function getWeekStartIso(date: Date): string {
 }
 
 function normalizeSessionDay(value: string): string {
-  return value.trim().toLowerCase();
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
 }
 
 function normalizeExerciseName(value: string): string {
-  return value.trim().toLowerCase();
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function toIsoString(value?: string | Date): string {
+  if (!value) {
+    return new Date().toISOString();
+  }
+
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new HttpError(400, "Invalid datetime value");
+  }
+
+  return parsed.toISOString();
+}
+
+function normalizeDayName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function convertToKg(value: number, unit: "kg" | "lb"): number {
+  if (unit === "lb") {
+    return Number((value * LB_TO_KG).toFixed(3));
+  }
+
+  return Number(value.toFixed(3));
 }
 
 function parseStrengthPayload(raw: string): {
@@ -80,6 +144,135 @@ function estimatedOneRM(loadKg: number, reps: number | null): number | null {
 }
 
 export class AIController {
+  private static async getUserProfileContext(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    });
+
+    if (!user) {
+      throw new HttpError(404, "User not found");
+    }
+
+    const userWithProfile = user as any;
+    if (!userWithProfile.profile) {
+      throw new HttpError(
+        400,
+        "User profile not complete. Please fill your profile first."
+      );
+    }
+
+    return {
+      goal: userWithProfile.profile.goal || "General fitness",
+      experienceLevel: userWithProfile.profile.experienceLvl || "Beginner",
+      availability: userWithProfile.profile.availability || "3 days per week",
+      injuries: userWithProfile.profile.injuries,
+      medicalConditions: userWithProfile.profile.medicalConds,
+    };
+  }
+
+  private static async getLatestRoutineSnapshot(userId: string): Promise<{
+    routine: GeneratedRoutine;
+    createdAt: Date;
+  }> {
+    const logs = await prisma.aIChatLog.findMany({
+      where: {
+        userId,
+        type: "ROUTINE_GENERATION",
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 5,
+    });
+
+    const latest = logs
+      .map((entry) => {
+        const routine = parseRoutinePayload(entry.aiResponse) as GeneratedRoutine | null;
+        if (!routine || !Array.isArray(routine.sessions)) {
+          return null;
+        }
+
+        return {
+          routine,
+          createdAt: entry.createdAt,
+        };
+      })
+      .find((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+    if (!latest) {
+      throw new HttpError(404, "No saved routine found. Generate one first.");
+    }
+
+    return latest;
+  }
+
+  private static async saveRoutineSnapshot(
+    userId: string,
+    routine: GeneratedRoutine,
+    userMessage: string
+  ) {
+    await prisma.aIChatLog.create({
+      data: {
+        userId,
+        type: "ROUTINE_GENERATION",
+        userMessage,
+        aiResponse: JSON.stringify(routine),
+      },
+    });
+  }
+
+  private static async getCurrentWeekCompletionState(userId: string) {
+    const weekStart = getWeekStartIso(new Date());
+
+    const [dayLogs, exerciseLogs] = await Promise.all([
+      prisma.aIChatLog.findMany({
+        where: {
+          userId,
+          type: "CHAT",
+          userMessage: {
+            startsWith: `${ROUTINE_CHECKIN_PREFIX}${weekStart}::`,
+          },
+        },
+      }),
+      prisma.aIChatLog.findMany({
+        where: {
+          userId,
+          type: "CHAT",
+          userMessage: {
+            startsWith: `${EXERCISE_CHECKIN_PREFIX}${weekStart}::`,
+          },
+        },
+      }),
+    ]);
+
+    const completedDays = new Set<string>();
+    dayLogs.forEach((item) => {
+      const parts = item.userMessage.split("::");
+      if (parts.length >= 3) {
+        completedDays.add(parts[2]);
+      }
+    });
+
+    const completedExercisesByDay = new Map<string, Set<string>>();
+    exerciseLogs.forEach((item) => {
+      const parts = item.userMessage.split("::");
+      if (parts.length >= 4) {
+        const day = parts[2];
+        const exercise = parts[3];
+        const current = completedExercisesByDay.get(day) || new Set<string>();
+        current.add(exercise);
+        completedExercisesByDay.set(day, current);
+      }
+    });
+
+    return {
+      weekStart,
+      completedDays,
+      completedExercisesByDay,
+    };
+  }
+
   static async getLatestRoutine(
     req: Request,
     res: Response,
@@ -93,34 +286,7 @@ export class AIController {
         throw new HttpError(403, "Forbidden");
       }
 
-      const logs = await prisma.aIChatLog.findMany({
-        where: {
-          userId,
-          type: "ROUTINE_GENERATION",
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 5,
-      });
-
-      const latest = logs
-        .map((entry) => {
-          const routine = parseRoutinePayload(entry.aiResponse);
-          if (!routine) {
-            return null;
-          }
-
-          return {
-            routine,
-            createdAt: entry.createdAt,
-          };
-        })
-        .find((entry): entry is NonNullable<typeof entry> => entry !== null);
-
-      if (!latest) {
-        throw new HttpError(404, "No saved routine found. Generate one first.");
-      }
+      const latest = await AIController.getLatestRoutineSnapshot(userId);
 
       res.json({
         message: "Latest routine retrieved",
@@ -140,25 +306,32 @@ export class AIController {
     try {
       const userId = req.params.userId as string;
       const auth = (req as any).auth;
-      const { exerciseName, loadKg, reps, sets, performedAt } = req.body as {
+      const { exerciseName, loadValue, loadUnit, reps, sets, performedAt } = req.body as {
         exerciseName: string;
-        loadKg: number;
+        loadValue: number;
+        loadUnit?: "kg" | "lb";
         reps?: number;
         sets?: number;
-        performedAt?: string;
+        performedAt?: string | Date;
       };
 
       if (auth.role !== "admin" && auth.userId !== userId) {
         throw new HttpError(403, "Forbidden");
       }
 
-      const performedDate = performedAt ? new Date(performedAt) : new Date();
+      const unit: "kg" | "lb" = loadUnit === "lb" ? "lb" : "kg";
+      const loadKg = convertToKg(loadValue, unit);
+      const performedDate = new Date(toIsoString(performedAt));
       const normalizedExercise = normalizeExerciseName(exerciseName);
       const marker = `${STRENGTH_LOG_PREFIX}${normalizedExercise}`;
 
       const payload = {
         exerciseName: exerciseName.trim(),
         loadKg,
+        originalLoad: {
+          value: Number(loadValue.toFixed(3)),
+          unit,
+        },
         reps: typeof reps === "number" ? reps : null,
         sets: typeof sets === "number" ? sets : null,
         performedAt: performedDate.toISOString(),
@@ -179,6 +352,419 @@ export class AIController {
         log: {
           id: created.id,
           ...payload,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async regenerateRoutineDay(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+      const { sessionDay } = req.body as { sessionDay: string };
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      if (!sessionDay || !sessionDay.trim()) {
+        throw new HttpError(400, "sessionDay is required");
+      }
+
+      const latest = await AIController.getLatestRoutineSnapshot(userId);
+      const userContext = await AIController.getUserProfileContext(userId);
+      const completionState = await AIController.getCurrentWeekCompletionState(userId);
+      const normalizedSession = normalizeSessionDay(sessionDay);
+
+      if (completionState.completedDays.has(normalizedSession)) {
+        throw new HttpError(
+          409,
+          "No puedes regenerar un dia que ya marcaste como completado"
+        );
+      }
+
+      const targetSession = latest.routine.sessions.find(
+        (item) => normalizeSessionDay(item.day) === normalizedSession
+      );
+
+      if (!targetSession) {
+        throw new HttpError(404, "Session day not found in routine");
+      }
+
+      const completedExercises =
+        completionState.completedExercisesByDay.get(normalizedSession) ||
+        new Set<string>();
+
+      if (completedExercises.size >= targetSession.exercises.length) {
+        throw new HttpError(
+          409,
+          "No puedes regenerar este dia porque todos los ejercicios ya estan completados"
+        );
+      }
+
+      const updatedRoutine = await aiService.regenerateRoutineDay(
+        userId,
+        userContext,
+        latest.routine,
+        sessionDay
+      );
+
+      if (completedExercises.size > 0) {
+        const mergedSessions = updatedRoutine.sessions.map((session) => {
+          if (normalizeSessionDay(session.day) !== normalizedSession) {
+            return session;
+          }
+
+          const locked = targetSession.exercises.filter((exercise) =>
+            completedExercises.has(normalizeExerciseName(exercise.name))
+          );
+
+          const candidates = session.exercises.filter(
+            (exercise) => !completedExercises.has(normalizeExerciseName(exercise.name))
+          );
+
+          const desiredNewCount = Math.max(
+            targetSession.exercises.length - locked.length,
+            0
+          );
+
+          const newExercises = candidates.slice(0, desiredNewCount);
+
+          return {
+            ...session,
+            exercises: [...locked, ...newExercises],
+          };
+        });
+
+        const mergedRoutine: GeneratedRoutine = {
+          ...updatedRoutine,
+          sessions: mergedSessions,
+        };
+
+        await AIController.saveRoutineSnapshot(
+          userId,
+          mergedRoutine,
+          `REGENERATE_DAY_PARTIAL::${sessionDay}`
+        );
+
+        res.json({
+          message: "Routine day regenerated",
+          routine: mergedRoutine,
+        });
+        return;
+      }
+
+      res.json({
+        message: "Routine day regenerated",
+        routine: updatedRoutine,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async replaceRoutineExercise(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+      const { sessionDay, exerciseName, reason } = req.body as {
+        sessionDay: string;
+        exerciseName: string;
+        reason?: string;
+        replacementExercise?: RoutineExercise;
+      };
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const latest = await AIController.getLatestRoutineSnapshot(userId);
+      const userContext = await AIController.getUserProfileContext(userId);
+      const completionState = await AIController.getCurrentWeekCompletionState(userId);
+      const normalizedSession = normalizeSessionDay(sessionDay);
+      const normalizedExercise = normalizeExerciseName(exerciseName);
+
+      if (completionState.completedDays.has(normalizedSession)) {
+        throw new HttpError(409, "Este dia ya esta completado y no se puede modificar");
+      }
+
+      const completedInDay =
+        completionState.completedExercisesByDay.get(normalizedSession) ||
+        new Set<string>();
+
+      if (completedInDay.has(normalizedExercise)) {
+        throw new HttpError(
+          409,
+          "Este ejercicio ya fue marcado como realizado y no se puede reemplazar"
+        );
+      }
+
+      const updatedRoutine = await aiService.replaceRoutineExercise(
+        userId,
+        userContext,
+        latest.routine,
+        sessionDay,
+        exerciseName,
+        reason,
+        (req.body as { replacementExercise?: RoutineExercise }).replacementExercise
+      );
+
+      res.json({
+        message: "Exercise replaced",
+        routine: updatedRoutine,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async removeRoutineExercise(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+      const { sessionDay, exerciseName } = req.body as {
+        sessionDay: string;
+        exerciseName: string;
+      };
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const latest = await AIController.getLatestRoutineSnapshot(userId);
+      const normalizedSession = normalizeDayName(sessionDay);
+      const normalizedExercise = normalizeExerciseName(exerciseName);
+      const completionState = await AIController.getCurrentWeekCompletionState(userId);
+
+      if (completionState.completedDays.has(normalizedSession)) {
+        throw new HttpError(409, "Este dia ya esta completado y no se puede modificar");
+      }
+
+      const completedInDay =
+        completionState.completedExercisesByDay.get(normalizedSession) ||
+        new Set<string>();
+
+      if (completedInDay.has(normalizedExercise)) {
+        throw new HttpError(
+          409,
+          "Este ejercicio ya fue marcado como realizado y no se puede eliminar"
+        );
+      }
+
+      let removed = false;
+      const sessions = latest.routine.sessions.map((session) => {
+        if (normalizeDayName(session.day) !== normalizedSession) {
+          return session;
+        }
+
+        const filtered = session.exercises.filter((exercise) => {
+          const keep = normalizeExerciseName(exercise.name) !== normalizedExercise;
+          if (!keep) {
+            removed = true;
+          }
+          return keep;
+        });
+
+        return {
+          ...session,
+          exercises: filtered,
+        };
+      });
+
+      if (!removed) {
+        throw new HttpError(404, "Exercise not found in selected session");
+      }
+
+      const updatedRoutine: GeneratedRoutine = {
+        ...latest.routine,
+        sessions,
+      };
+
+      await AIController.saveRoutineSnapshot(
+        userId,
+        updatedRoutine,
+        `REMOVE_EXERCISE::${sessionDay}::${exerciseName}`
+      );
+
+      res.json({
+        message: "Exercise removed",
+        routine: updatedRoutine,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getExerciseReplacementOptions(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+      const { sessionDay, exerciseName, count } = req.body as {
+        sessionDay: string;
+        exerciseName: string;
+        count?: number;
+      };
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const latest = await AIController.getLatestRoutineSnapshot(userId);
+      const userContext = await AIController.getUserProfileContext(userId);
+
+      const options = await aiService.getRoutineExerciseAlternatives(
+        userContext,
+        latest.routine,
+        sessionDay,
+        exerciseName,
+        count || 5
+      );
+
+      res.json({
+        message: "Exercise options generated",
+        options,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createExerciseCheckin(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+      const { sessionDay, exerciseName, completedAt } = req.body as {
+        sessionDay: string;
+        exerciseName: string;
+        completedAt?: string | Date;
+      };
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const completedIso = toIsoString(completedAt);
+      const completedDate = new Date(completedIso);
+      const weekStart = getWeekStartIso(completedDate);
+      const normalizedDay = normalizeSessionDay(sessionDay);
+      const normalizedExercise = normalizeExerciseName(exerciseName);
+      const marker = `${EXERCISE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}::${normalizedExercise}`;
+
+      const existing = await prisma.aIChatLog.findFirst({
+        where: {
+          userId,
+          type: "CHAT",
+          userMessage: marker,
+        },
+      });
+
+      if (existing) {
+        res.json({
+          message: "Exercise check-in already registered",
+          checkin: {
+            id: existing.id,
+            weekStart,
+            sessionDay,
+            exerciseName,
+            completedAt: existing.createdAt,
+          },
+        });
+        return;
+      }
+
+      const created = await prisma.aIChatLog.create({
+        data: {
+          userId,
+          type: "CHAT",
+          userMessage: marker,
+          aiResponse: `Exercise completed: ${exerciseName}`,
+          createdAt: completedDate,
+        },
+      });
+
+      // Auto complete day when every exercise in the session is marked.
+      const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
+      const session = latestRoutine.routine.sessions.find(
+        (item) => normalizeSessionDay(item.day) === normalizedDay
+      );
+
+      if (session) {
+        const existingExerciseLogs = await prisma.aIChatLog.findMany({
+          where: {
+            userId,
+            type: "CHAT",
+            userMessage: {
+              startsWith: `${EXERCISE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}::`,
+            },
+          },
+        });
+
+        const completedSet = new Set<string>();
+        existingExerciseLogs.forEach((entry) => {
+          const parts = entry.userMessage.split("::");
+          if (parts.length >= 4) {
+            completedSet.add(parts[3]);
+          }
+        });
+
+        const allDone = session.exercises.every((exercise) =>
+          completedSet.has(normalizeExerciseName(exercise.name))
+        );
+
+        if (allDone) {
+          const dayMarker = `${ROUTINE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}`;
+          const existingDay = await prisma.aIChatLog.findFirst({
+            where: {
+              userId,
+              type: "CHAT",
+              userMessage: dayMarker,
+            },
+          });
+
+          if (!existingDay) {
+            await prisma.aIChatLog.create({
+              data: {
+                userId,
+                type: "CHAT",
+                userMessage: dayMarker,
+                aiResponse: `Session completed: ${sessionDay}`,
+                createdAt: completedDate,
+              },
+            });
+          }
+        }
+      }
+
+      res.status(201).json({
+        message: "Exercise check-in saved",
+        checkin: {
+          id: created.id,
+          weekStart,
+          sessionDay,
+          exerciseName,
+          completedAt: created.createdAt,
         },
       });
     } catch (error) {
@@ -331,14 +917,18 @@ export class AIController {
       const auth = (req as any).auth;
       const { sessionDay, completedAt } = req.body as {
         sessionDay: string;
-        completedAt?: string;
+        completedAt?: string | Date;
       };
 
       if (auth.role !== "admin" && auth.userId !== userId) {
         throw new HttpError(403, "Forbidden");
       }
 
-      const completedDate = completedAt ? new Date(completedAt) : new Date();
+      if (!sessionDay || !sessionDay.trim()) {
+        throw new HttpError(400, "sessionDay is required");
+      }
+
+      const completedDate = new Date(toIsoString(completedAt));
       const weekStart = getWeekStartIso(completedDate);
       const normalizedDay = normalizeSessionDay(sessionDay);
       const marker = `${ROUTINE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}`;
@@ -370,6 +960,7 @@ export class AIController {
           type: "CHAT",
           userMessage: marker,
           aiResponse: `Session completed: ${sessionDay}`,
+          createdAt: completedDate,
         },
       });
 
@@ -407,9 +998,18 @@ export class AIController {
         where: {
           userId,
           type: "CHAT",
-          userMessage: {
-            startsWith: ROUTINE_CHECKIN_PREFIX,
-          },
+          OR: [
+            {
+              userMessage: {
+                startsWith: ROUTINE_CHECKIN_PREFIX,
+              },
+            },
+            {
+              userMessage: {
+                startsWith: EXERCISE_CHECKIN_PREFIX,
+              },
+            },
+          ],
           createdAt: {
             gte: fromDate,
           },
@@ -418,6 +1018,7 @@ export class AIController {
       });
 
       const checkins = logs
+        .filter((item) => item.userMessage.startsWith(ROUTINE_CHECKIN_PREFIX))
         .map((item) => {
           const parts = item.userMessage.split("::");
           if (parts.length < 3) {
@@ -432,10 +1033,28 @@ export class AIController {
         })
         .filter((item): item is NonNullable<typeof item> => item !== null);
 
+      const exerciseCheckins = logs
+        .filter((item) => item.userMessage.startsWith(EXERCISE_CHECKIN_PREFIX))
+        .map((item) => {
+          const parts = item.userMessage.split("::");
+          if (parts.length < 4) {
+            return null;
+          }
+          return {
+            id: item.id,
+            weekStart: parts[1],
+            sessionDay: parts[2],
+            exerciseName: parts[3],
+            completedAt: item.createdAt,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+
       res.json({
         message: "Routine check-ins retrieved",
         count: checkins.length,
         checkins,
+        exerciseCheckins,
       });
     } catch (error) {
       next(error);
@@ -649,6 +1268,11 @@ export class AIController {
                   startsWith: STRENGTH_LOG_PREFIX,
                 },
               },
+              {
+                userMessage: {
+                  startsWith: EXERCISE_CHECKIN_PREFIX,
+                },
+              },
             ],
           },
           orderBy: { createdAt: "desc" },
@@ -705,6 +1329,11 @@ export class AIController {
               {
                 userMessage: {
                   startsWith: STRENGTH_LOG_PREFIX,
+                },
+              },
+              {
+                userMessage: {
+                  startsWith: EXERCISE_CHECKIN_PREFIX,
                 },
               },
             ],

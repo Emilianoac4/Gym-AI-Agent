@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,7 @@ import {
   GeneratedRoutine,
   RoutineCheckin,
   RoutineExercise,
+  RoutineExerciseCheckin,
   StrengthProgressSummary,
   StrengthWeeklyHistoryPoint,
 } from "../../types/api";
@@ -95,18 +96,33 @@ export function RoutineScreen() {
   const [syncingCheckins, setSyncingCheckins] = useState(false);
   const [openSession, setOpenSession] = useState<string | null>(null);
   const [checkins, setCheckins] = useState<RoutineCheckin[]>([]);
+  const [exerciseCheckins, setExerciseCheckins] = useState<RoutineExerciseCheckin[]>([]);
   const [savingSessionDay, setSavingSessionDay] = useState<string | null>(null);
+  const [regeneratingSessionDay, setRegeneratingSessionDay] = useState<string | null>(null);
+  const [removingExerciseKey, setRemovingExerciseKey] = useState<string | null>(null);
+  const [replacingExerciseKey, setReplacingExerciseKey] = useState<string | null>(null);
+  const [optionsLoadingKey, setOptionsLoadingKey] = useState<string | null>(null);
+  const [manualReplacingKey, setManualReplacingKey] = useState<string | null>(null);
+  const [openOptionsKey, setOpenOptionsKey] = useState<string | null>(null);
+  const [replacementOptionsByKey, setReplacementOptionsByKey] = useState<
+    Record<string, RoutineExercise[]>
+  >({});
   const [activeLog, setActiveLog] = useState<{ sessionDay: string; exerciseName: string } | null>(null);
   const [logKg, setLogKg] = useState("");
+  const [logUnit, setLogUnit] = useState<"kg" | "lb">("kg");
   const [logReps, setLogReps] = useState("");
   const [logSets, setLogSets] = useState("");
   const [savingLog, setSavingLog] = useState(false);
+  const [lastSavedExerciseKey, setLastSavedExerciseKey] = useState<string | null>(null);
   const [localCompleted, setLocalCompleted] = useState<Set<string>>(new Set());
+  const [localCompletedExercises, setLocalCompletedExercises] = useState<Set<string>>(new Set());
   const [strengthSummary, setStrengthSummary] = useState<StrengthProgressSummary | null>(null);
   const [strengthByExercise, setStrengthByExercise] = useState<ExerciseStrengthProgress[]>([]);
 
   const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
   const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSubmittedRef = useRef<string>("");
 
   const strengthMap = useMemo(() => {
     const map: Record<string, ExerciseStrengthProgress> = {};
@@ -152,6 +168,22 @@ export function RoutineScreen() {
 
     return value;
   }, [checkins, currentWeekStart, localCompleted, selectedWeekStart]);
+
+  const completedExercisesBySelectedWeek = useMemo(() => {
+    const value = new Set<string>();
+
+    exerciseCheckins.forEach((item) => {
+      if (item.weekStart === selectedWeekStart) {
+        value.add(`${normalize(item.sessionDay)}::${normalize(item.exerciseName)}`);
+      }
+    });
+
+    if (selectedWeekStart === currentWeekStart) {
+      localCompletedExercises.forEach((item) => value.add(item));
+    }
+
+    return value;
+  }, [currentWeekStart, exerciseCheckins, localCompletedExercises, selectedWeekStart]);
 
   const previousWeekStart = useMemo(
     () => shiftWeek(selectedWeekStart, -1),
@@ -219,7 +251,9 @@ export function RoutineScreen() {
     try {
       const data = await api.getRoutineCheckins(user.id, token, 84);
       setCheckins(data.checkins);
+      setExerciseCheckins(data.exerciseCheckins || []);
       setLocalCompleted(new Set());
+      setLocalCompletedExercises(new Set());
     } finally {
       setSyncingCheckins(false);
     }
@@ -280,6 +314,25 @@ export function RoutineScreen() {
     }
   };
 
+  const onRegenerateDay = async (sessionDay: string) => {
+    if (!user || !token) return;
+
+    setRegeneratingSessionDay(sessionDay);
+    try {
+      const data = await api.regenerateRoutineDay(user.id, token, { sessionDay });
+      setRoutine(data.routine);
+      setGeneratedAt(new Date().toISOString());
+      await Promise.all([loadCheckins(), loadStrengthProgress()]);
+    } catch (error) {
+      Alert.alert(
+        "No se pudo regenerar el dia",
+        error instanceof Error ? error.message : "Intenta de nuevo"
+      );
+    } finally {
+      setRegeneratingSessionDay(null);
+    }
+  };
+
   const onMarkCompleted = async (sessionDay: string) => {
     if (!user || !token) return;
     const normalizedDay = normalize(sessionDay);
@@ -307,15 +360,16 @@ export function RoutineScreen() {
     const exerciseName = normalize(exercise.name);
     setActiveLog({ sessionDay, exerciseName });
     setLogKg("");
+    setLogUnit("kg");
     setLogReps(parseSuggestedReps(exercise.reps));
     setLogSets(String(exercise.sets || ""));
+    setLastSavedExerciseKey(null);
   };
 
-  const onSaveExerciseLog = async (exerciseName: string) => {
+  const onSaveExerciseLog = async (exerciseName: string, loadText: string, unit: "kg" | "lb") => {
     if (!user || !token) return;
-    const loadKg = Number.parseFloat(logKg);
-    if (!Number.isFinite(loadKg) || loadKg <= 0) {
-      Alert.alert("Dato invalido", "Ingresa una carga valida en kg.");
+    const loadValue = Number.parseFloat(loadText);
+    if (!Number.isFinite(loadValue) || loadValue <= 0) {
       return;
     }
 
@@ -324,11 +378,14 @@ export function RoutineScreen() {
 
     setSavingLog(true);
     try {
-      await api.createStrengthLog(user.id, token, { exerciseName, loadKg, reps, sets });
-      setActiveLog(null);
-      setLogKg("");
-      setLogReps("");
-      setLogSets("");
+      await api.createStrengthLog(user.id, token, {
+        exerciseName,
+        loadValue,
+        loadUnit: unit,
+        reps,
+        sets,
+      });
+      setLastSavedExerciseKey(`${normalize(exerciseName)}::${unit}::${loadValue}`);
       await loadStrengthProgress();
     } catch (error) {
       Alert.alert(
@@ -339,6 +396,188 @@ export function RoutineScreen() {
       setSavingLog(false);
     }
   };
+
+  const onReplaceExercise = async (sessionDay: string, exerciseName: string) => {
+    if (!user || !token) return;
+
+    const key = `${sessionDay}::${exerciseName}`;
+    setReplacingExerciseKey(key);
+    try {
+      const data = await api.replaceRoutineExercise(user.id, token, {
+        sessionDay,
+        exerciseName,
+      });
+      setRoutine(data.routine);
+      setActiveLog(null);
+    } catch (error) {
+      Alert.alert(
+        "No se pudo reemplazar",
+        error instanceof Error ? error.message : "Intenta de nuevo"
+      );
+    } finally {
+      setReplacingExerciseKey(null);
+    }
+  };
+
+  const onLoadReplacementOptions = async (sessionDay: string, exercise: RoutineExercise) => {
+    if (!user || !token) return;
+
+    const key = `${sessionDay}::${exercise.name}`;
+    if (!replacementOptionsByKey[key]) {
+      setOptionsLoadingKey(key);
+      try {
+        const data = await api.getExerciseReplacementOptions(user.id, token, {
+          sessionDay,
+          exerciseName: exercise.name,
+          count: 5,
+        });
+        setReplacementOptionsByKey((prev) => ({
+          ...prev,
+          [key]: data.options,
+        }));
+      } catch (error) {
+        Alert.alert(
+          "No se pudieron cargar opciones",
+          error instanceof Error ? error.message : "Intenta de nuevo"
+        );
+      } finally {
+        setOptionsLoadingKey(null);
+      }
+    }
+
+    setOpenOptionsKey((prev) => (prev === key ? null : key));
+  };
+
+  const onSelectManualReplacement = async (
+    sessionDay: string,
+    exerciseName: string,
+    replacementExercise: RoutineExercise
+  ) => {
+    if (!user || !token) return;
+
+    const key = `${sessionDay}::${exerciseName}`;
+    setManualReplacingKey(key);
+    try {
+      const data = await api.replaceRoutineExercise(user.id, token, {
+        sessionDay,
+        exerciseName,
+        replacementExercise,
+      });
+      setRoutine(data.routine);
+      setOpenOptionsKey(null);
+      setActiveLog(null);
+    } catch (error) {
+      Alert.alert(
+        "No se pudo aplicar la opcion",
+        error instanceof Error ? error.message : "Intenta de nuevo"
+      );
+    } finally {
+      setManualReplacingKey(null);
+    }
+  };
+
+  const onMarkExerciseCompleted = async (sessionDay: string, exerciseName: string) => {
+    if (!user || !token) return;
+
+    const exerciseKey = `${normalize(sessionDay)}::${normalize(exerciseName)}`;
+    if (completedExercisesBySelectedWeek.has(exerciseKey)) {
+      return;
+    }
+
+    setLocalCompletedExercises((prev) => new Set([...prev, exerciseKey]));
+    try {
+      await api.createExerciseCheckin(user.id, token, {
+        sessionDay,
+        exerciseName,
+      });
+      await loadCheckins();
+    } catch (error) {
+      setLocalCompletedExercises((prev) => {
+        const next = new Set(prev);
+        next.delete(exerciseKey);
+        return next;
+      });
+      Alert.alert(
+        "No se pudo registrar el ejercicio",
+        error instanceof Error ? error.message : "Intenta de nuevo"
+      );
+    }
+  };
+
+  const onRemoveExercise = async (sessionDay: string, exerciseName: string) => {
+    if (!user || !token) return;
+
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        "Eliminar ejercicio",
+        `Se eliminara ${exerciseName} de ${translateDay(sessionDay)}.`,
+        [
+          { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
+          { text: "Eliminar", style: "destructive", onPress: () => resolve(true) },
+        ]
+      );
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const key = `${sessionDay}::${exerciseName}`;
+    setRemovingExerciseKey(key);
+    try {
+      const data = await api.removeRoutineExercise(user.id, token, {
+        sessionDay,
+        exerciseName,
+      });
+      setRoutine(data.routine);
+      setActiveLog(null);
+    } catch (error) {
+      Alert.alert(
+        "No se pudo eliminar",
+        error instanceof Error ? error.message : "Intenta de nuevo"
+      );
+    } finally {
+      setRemovingExerciseKey(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!activeLog) {
+      return;
+    }
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+
+    const value = logKg.trim();
+    if (!value) {
+      return;
+    }
+
+    const numeric = Number.parseFloat(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return;
+    }
+
+    const submitKey = `${activeLog.exerciseName}::${logUnit}::${numeric}`;
+    if (lastSubmittedRef.current === submitKey) {
+      return;
+    }
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      lastSubmittedRef.current = submitKey;
+      void onSaveExerciseLog(activeLog.exerciseName, value, logUnit);
+    }, 900);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, [activeLog, logKg, logUnit, logReps, logSets]);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -373,7 +612,7 @@ export function RoutineScreen() {
       </TouchableOpacity>
 
       {loadingRoutine && (
-        <Text style={styles.loadingHint}>Generando rutina con IA. Esto puede tardar unos segundos.</Text>
+        <Text style={styles.loadingHint}>Consultando a tu coach personalizado. Esto puede tardar unos segundos.</Text>
       )}
 
       {!routine ? (
@@ -449,6 +688,12 @@ export function RoutineScreen() {
             const isSaving = savingSessionDay === session.day;
             const completedAt = selectedWeekCompletedAt[normalizedDay];
             const canMarkCurrentWeek = selectedWeekStart === currentWeekStart;
+            const completedExercisesCount = session.exercises.filter((exercise) =>
+              completedExercisesBySelectedWeek.has(`${normalizedDay}::${normalize(exercise.name)}`)
+            ).length;
+            const allExercisesCompleted =
+              session.exercises.length > 0 && completedExercisesCount === session.exercises.length;
+            const canRegenerateDay = canMarkCurrentWeek && !isDone && !allExercisesCompleted;
 
             return (
               <View key={session.day} style={[styles.sessionCard, isDone && styles.sessionCardDone]}>
@@ -483,29 +728,56 @@ export function RoutineScreen() {
                     <TouchableOpacity
                       style={[
                         styles.completeBtn,
-                        (isDone || !canMarkCurrentWeek) && styles.completeBtnDone,
+                        (isDone || !canMarkCurrentWeek || !allExercisesCompleted) && styles.completeBtnDone,
                       ]}
-                      disabled={isDone || isSaving || !canMarkCurrentWeek}
+                      disabled={isDone || isSaving || !canMarkCurrentWeek || !allExercisesCompleted}
                       onPress={() => onMarkCompleted(session.day)}
                     >
-                      <Text style={[styles.completeBtnText, (isDone || !canMarkCurrentWeek) && styles.completeBtnTextDone]}>
+                      <Text
+                        style={[
+                          styles.completeBtnText,
+                          (isDone || !canMarkCurrentWeek || !allExercisesCompleted) && styles.completeBtnTextDone,
+                        ]}
+                      >
                         {isDone
                           ? "Sesion completada"
                           : !canMarkCurrentWeek
                           ? "Solo puedes registrar la semana actual"
+                          : !allExercisesCompleted
+                          ? `Completa ${session.exercises.length - completedExercisesCount} ejercicio(s) para cerrar el dia`
                           : isSaving
                           ? "Guardando..."
                           : "Marcar sesion como completada"}
                       </Text>
                     </TouchableOpacity>
 
+                    <TouchableOpacity
+                      style={[
+                        styles.secondaryActionBtn,
+                        (!canRegenerateDay || regeneratingSessionDay === session.day) && styles.genBtnDisabled,
+                      ]}
+                      onPress={() => onRegenerateDay(session.day)}
+                      disabled={!canRegenerateDay || regeneratingSessionDay === session.day}
+                    >
+                      <Text style={styles.secondaryActionBtnText}>
+                        {regeneratingSessionDay === session.day
+                          ? "Regenerando dia..."
+                          : !canRegenerateDay
+                          ? "No disponible: dia con progreso"
+                          : `Regenerar ${translateDay(session.day)}`}
+                      </Text>
+                    </TouchableOpacity>
+
                     {session.exercises.map((exercise) => {
                       const exerciseKey = normalize(exercise.name);
+                      const sessionExerciseKey = `${normalize(session.day)}::${exerciseKey}`;
                       const progress = strengthMap[exerciseKey];
                       const selectedWeekEntry = getWeeklyEntry(progress, selectedWeekStart);
                       const previousWeekEntry = getWeeklyEntry(progress, previousWeekStart);
                       const isLogOpen =
                         activeLog?.sessionDay === session.day && activeLog.exerciseName === exerciseKey;
+                      const isExerciseDone = completedExercisesBySelectedWeek.has(sessionExerciseKey);
+                      const actionKey = `${session.day}::${exercise.name}`;
                       const weeklyDelta =
                         selectedWeekEntry && previousWeekEntry
                           ? selectedWeekEntry.latestLoadKg - previousWeekEntry.latestLoadKg
@@ -514,7 +786,10 @@ export function RoutineScreen() {
 
                       return (
                         <View key={`${session.day}-${exercise.name}`} style={styles.exerciseRow}>
-                          <Text style={styles.exName}>{exercise.name}</Text>
+                          <Text style={styles.exName}>
+                            {exercise.name}
+                            {isExerciseDone ? "  ✓" : ""}
+                          </Text>
                           <View style={styles.exDetails}>
                             <Text style={styles.exTag}>{exercise.sets} series</Text>
                             <Text style={styles.exTag}>{exercise.reps} reps</Text>
@@ -557,6 +832,7 @@ export function RoutineScreen() {
 
                           <TouchableOpacity
                             style={styles.logToggleBtn}
+                            disabled={isExerciseDone}
                             onPress={() => {
                               if (isLogOpen) {
                                 setActiveLog(null);
@@ -566,15 +842,122 @@ export function RoutineScreen() {
                             }}
                           >
                             <Text style={styles.logToggleText}>
-                              {isLogOpen ? "Cancelar" : progress ? "Actualizar carga" : "Registrar carga"}
+                              {isExerciseDone
+                                ? "Ejercicio completado"
+                                : isLogOpen
+                                ? "Cancelar"
+                                : progress
+                                ? "Actualizar carga"
+                                : "Registrar carga"}
                             </Text>
                           </TouchableOpacity>
 
+                          <TouchableOpacity
+                            style={[styles.completeExerciseBtn, isExerciseDone && styles.completeBtnDone]}
+                            disabled={isExerciseDone || !canMarkCurrentWeek}
+                            onPress={() => onMarkExerciseCompleted(session.day, exercise.name)}
+                          >
+                            <Text style={[styles.completeExerciseBtnText, isExerciseDone && styles.completeBtnTextDone]}>
+                              {isExerciseDone
+                                ? "Ejercicio realizado"
+                                : !canMarkCurrentWeek
+                                ? "Solo semana actual"
+                                : "Marcar ejercicio realizado"}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <View style={styles.exerciseActionsRow}>
+                            <TouchableOpacity
+                              style={[
+                                styles.exerciseActionBtn,
+                                (isExerciseDone || replacingExerciseKey === actionKey) && styles.genBtnDisabled,
+                              ]}
+                              onPress={() => onReplaceExercise(session.day, exercise.name)}
+                              disabled={isExerciseDone || replacingExerciseKey === actionKey}
+                            >
+                              <Text style={styles.exerciseActionBtnText}>
+                                {replacingExerciseKey === actionKey
+                                  ? "Recomendando..."
+                                  : "Recomendar otro"}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.exerciseActionBtn,
+                                (isExerciseDone || optionsLoadingKey === actionKey || manualReplacingKey === actionKey) &&
+                                  styles.genBtnDisabled,
+                              ]}
+                              onPress={() => onLoadReplacementOptions(session.day, exercise)}
+                              disabled={isExerciseDone || optionsLoadingKey === actionKey || manualReplacingKey === actionKey}
+                            >
+                              <Text style={styles.exerciseActionBtnText}>
+                                {optionsLoadingKey === actionKey
+                                  ? "Buscando opciones..."
+                                  : manualReplacingKey === actionKey
+                                  ? "Aplicando opcion..."
+                                  : "Elegir siguiente"}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.exerciseActionBtnDanger,
+                                (isExerciseDone || removingExerciseKey === actionKey) && styles.genBtnDisabled,
+                              ]}
+                              onPress={() => onRemoveExercise(session.day, exercise.name)}
+                              disabled={isExerciseDone || removingExerciseKey === actionKey}
+                            >
+                              <Text style={styles.exerciseActionBtnDangerText}>
+                                {removingExerciseKey === actionKey
+                                  ? "Eliminando..."
+                                  : "Eliminar"}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {openOptionsKey === actionKey ? (
+                            <View style={styles.optionsPanel}>
+                              <Text style={styles.optionsPanelTitle}>Opciones sugeridas para este ejercicio</Text>
+                              {(replacementOptionsByKey[actionKey] || []).map((option) => (
+                                <TouchableOpacity
+                                  key={`${actionKey}-${option.name}`}
+                                  style={styles.optionRow}
+                                  onPress={() =>
+                                    onSelectManualReplacement(session.day, exercise.name, option)
+                                  }
+                                  disabled={manualReplacingKey === actionKey}
+                                >
+                                  <Text style={styles.optionName}>{option.name}</Text>
+                                  <Text style={styles.optionMeta}>
+                                    {option.sets} series • {option.reps} reps • {option.rest_seconds}s
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          ) : null}
+
                           {isLogOpen ? (
                             <View style={styles.logForm}>
+                              <View style={styles.unitSelectorRow}>
+                                <TouchableOpacity
+                                  style={[styles.unitChip, logUnit === "kg" && styles.unitChipSelected]}
+                                  onPress={() => setLogUnit("kg")}
+                                >
+                                  <Text style={[styles.unitChipText, logUnit === "kg" && styles.unitChipTextSelected]}>
+                                    kg
+                                  </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.unitChip, logUnit === "lb" && styles.unitChipSelected]}
+                                  onPress={() => setLogUnit("lb")}
+                                >
+                                  <Text style={[styles.unitChipText, logUnit === "lb" && styles.unitChipTextSelected]}>
+                                    lb
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
                               <View style={styles.logFormRow}>
                                 <TextInput
-                                  placeholder="Kg"
+                                  placeholder={logUnit === "kg" ? "Carga (kg)" : "Carga (lb)"}
                                   placeholderTextColor={palette.textSoft}
                                   style={[styles.input, styles.inputKg]}
                                   keyboardType="decimal-pad"
@@ -598,15 +981,13 @@ export function RoutineScreen() {
                                   onChangeText={setLogSets}
                                 />
                               </View>
-                              <TouchableOpacity
-                                style={[styles.logSaveBtn, savingLog && styles.genBtnDisabled]}
-                                onPress={() => onSaveExerciseLog(exercise.name)}
-                                disabled={savingLog}
-                              >
-                                <Text style={styles.logSaveBtnText}>
-                                  {savingLog ? "Guardando..." : "Guardar progreso"}
-                                </Text>
-                              </TouchableOpacity>
+                              <Text style={styles.autoSaveHint}>
+                                Guardado automatico al escribir una carga valida.
+                              </Text>
+                              {savingLog ? <Text style={styles.autoSaveStatus}>Guardando...</Text> : null}
+                              {lastSavedExerciseKey?.startsWith(`${exerciseKey}::`) ? (
+                                <Text style={styles.autoSaveStatusSuccess}>Ultimo registro guardado correctamente.</Text>
+                              ) : null}
                             </View>
                           ) : null}
                         </View>
@@ -909,6 +1290,21 @@ const styles = StyleSheet.create({
   completeBtnTextDone: {
     color: palette.cocoa,
   },
+  secondaryActionBtn: {
+    marginTop: 8,
+    backgroundColor: palette.surface,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  secondaryActionBtnText: {
+    color: palette.cocoa,
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   exerciseRow: {
     backgroundColor: palette.surface,
     borderRadius: 10,
@@ -1008,9 +1404,113 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  completeExerciseBtn: {
+    marginTop: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: palette.moss,
+    backgroundColor: palette.surface,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    alignSelf: "flex-start",
+  },
+  completeExerciseBtnText: {
+    color: palette.cocoa,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  exerciseActionsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  exerciseActionBtn: {
+    flex: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: palette.moss,
+    backgroundColor: palette.surface,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  exerciseActionBtnText: {
+    color: palette.cocoa,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  exerciseActionBtnDanger: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#B23A48",
+    backgroundColor: "#FCEBEC",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  exerciseActionBtnDangerText: {
+    color: "#B23A48",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  optionsPanel: {
+    marginTop: 10,
+    backgroundColor: palette.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: palette.line,
+    padding: 10,
+    gap: 8,
+  },
+  optionsPanelTitle: {
+    color: palette.ink,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  optionRow: {
+    backgroundColor: palette.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: palette.line,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  optionName: {
+    color: palette.cocoa,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  optionMeta: {
+    color: palette.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
   logForm: {
     marginTop: 8,
     gap: 8,
+  },
+  unitSelectorRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  unitChip: {
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: palette.surface,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  unitChipSelected: {
+    backgroundColor: palette.cocoa,
+    borderColor: palette.cocoa,
+  },
+  unitChipText: {
+    color: palette.cocoa,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  unitChipTextSelected: {
+    color: palette.gold,
   },
   logFormRow: {
     flexDirection: "row",
@@ -1033,15 +1533,18 @@ const styles = StyleSheet.create({
   inputSmall: {
     flex: 1,
   },
-  logSaveBtn: {
-    backgroundColor: palette.cocoa,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: "center",
+  autoSaveHint: {
+    color: palette.textMuted,
+    fontSize: 12,
   },
-  logSaveBtnText: {
-    color: palette.gold,
-    fontSize: 13,
+  autoSaveStatus: {
+    color: palette.coral,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  autoSaveStatusSuccess: {
+    color: "#2E7D32",
+    fontSize: 12,
     fontWeight: "700",
   },
   tipsCard: {

@@ -4,6 +4,47 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 const ROUTINE_CHECKIN_PREFIX = "ROUTINE_CHECKIN::";
 const STRENGTH_LOG_PREFIX = "STRENGTH_LOG::";
+const EXERCISE_CHECKIN_PREFIX = "EXERCISE_CHECKIN::";
+
+type RoutineExercise = {
+  name: string;
+  sets: number;
+  reps: string;
+  rest_seconds: number;
+  notes?: string;
+};
+
+type RoutineSession = {
+  day: string;
+  focus: string;
+  duration_minutes: number;
+  exercises: RoutineExercise[];
+};
+
+type GeneratedRoutine = {
+  routine_name: string;
+  duration_weeks: number;
+  weekly_sessions: number;
+  sessions: RoutineSession[];
+  progression_tips?: string[];
+  nutrition_notes?: string;
+};
+
+type UserRoutineContext = {
+  goal: string;
+  experienceLevel: string;
+  availability: string;
+  injuries?: string;
+  medicalConditions?: string;
+};
+
+function normalizeDay(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
 
 class AIService {
   private openai: OpenAI;
@@ -90,6 +131,11 @@ Keep answers practical, concise, and under 220 words.
             {
               userMessage: {
                 startsWith: STRENGTH_LOG_PREFIX,
+              },
+            },
+            {
+              userMessage: {
+                startsWith: EXERCISE_CHECKIN_PREFIX,
               },
             },
           ],
@@ -361,6 +407,281 @@ Customize the routine to match the user context. Return ONLY valid JSON.
     });
 
     return content;
+  }
+
+  async regenerateRoutineDay(
+    userId: string,
+    userContext: {
+      goal: string;
+      experienceLevel: string;
+      availability: string;
+      injuries?: string;
+      medicalConditions?: string;
+    },
+    currentRoutine: GeneratedRoutine,
+    sessionDay: string
+  ): Promise<GeneratedRoutine> {
+    const targetSession = currentRoutine.sessions.find(
+      (session) => normalizeDay(session.day) === normalizeDay(sessionDay)
+    );
+
+    if (!targetSession) {
+      throw new Error("Session day not found in routine");
+    }
+
+    const prompt = `
+Eres un entrenador de gimnasio. Debes regenerar SOLO un dia de rutina manteniendo el estilo del plan actual.
+
+Contexto del usuario:
+- Objetivo: ${userContext.goal}
+- Nivel: ${userContext.experienceLevel}
+- Disponibilidad: ${userContext.availability}
+- Lesiones: ${userContext.injuries || "Ninguna"}
+- Condiciones medicas: ${userContext.medicalConditions || "Ninguna"}
+
+Dia a regenerar: ${targetSession.day}
+Enfoque del dia: ${targetSession.focus}
+Duracion objetivo: ${targetSession.duration_minutes} minutos
+
+Responde SOLO JSON valido con este esquema:
+{
+  "day": "${targetSession.day}",
+  "focus": "string en espanol",
+  "duration_minutes": number,
+  "exercises": [
+    {"name":"string","sets":number,"reps":"string","rest_seconds":number,"notes":"string"}
+  ]
+}
+
+Reglas:
+- Minimo 4 ejercicios.
+- Todo en espanol.
+- No cambies el dia.
+    `;
+
+    let response;
+    try {
+      response = await this.openai.chat.completions.create({
+        model: this.models.routine,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 1200,
+      });
+    } catch (error) {
+      throw this.extractProviderError(error);
+    }
+
+    const content = (response.choices[0]?.message?.content || "").trim();
+    let newSession: RoutineSession;
+    try {
+      newSession = JSON.parse(content) as RoutineSession;
+      if (!Array.isArray(newSession.exercises) || newSession.exercises.length < 1) {
+        throw new Error("Invalid session exercises");
+      }
+      newSession.day = targetSession.day;
+    } catch {
+      throw new Error("Could not regenerate routine day. Please try again.");
+    }
+
+    const updatedSessions = currentRoutine.sessions.map((session) =>
+      normalizeDay(session.day) === normalizeDay(sessionDay) ? newSession : session
+    );
+
+    const updatedRoutine: GeneratedRoutine = {
+      ...currentRoutine,
+      sessions: updatedSessions,
+    };
+
+    await this.saveLogSafely({
+      userId,
+      type: "ROUTINE_GENERATION",
+      userMessage: `REGENERATE_DAY::${sessionDay}`,
+      aiResponse: JSON.stringify(updatedRoutine),
+    });
+
+    return updatedRoutine;
+  }
+
+  async replaceRoutineExercise(
+    userId: string,
+    userContext: UserRoutineContext,
+    currentRoutine: GeneratedRoutine,
+    sessionDay: string,
+    exerciseName: string,
+    reason?: string,
+    replacementExercise?: RoutineExercise
+  ): Promise<GeneratedRoutine> {
+    const targetSession = currentRoutine.sessions.find(
+      (session) => normalizeDay(session.day) === normalizeDay(sessionDay)
+    );
+
+    if (!targetSession) {
+      throw new Error("Session day not found in routine");
+    }
+
+    let replacement: RoutineExercise;
+
+    if (replacementExercise) {
+      replacement = {
+        name: replacementExercise.name,
+        sets: replacementExercise.sets,
+        reps: replacementExercise.reps,
+        rest_seconds: replacementExercise.rest_seconds,
+        notes: replacementExercise.notes || "Seleccionado manualmente por el usuario.",
+      };
+    } else {
+      const prompt = `
+Eres entrenador de gimnasio. Debes proponer UN ejercicio alternativo para reemplazar otro ejercicio.
+
+Contexto usuario:
+- Objetivo: ${userContext.goal}
+- Nivel: ${userContext.experienceLevel}
+- Lesiones: ${userContext.injuries || "Ninguna"}
+- Condiciones medicas: ${userContext.medicalConditions || "Ninguna"}
+
+Sesion: ${targetSession.day} (${targetSession.focus})
+Ejercicio a reemplazar: ${exerciseName}
+Motivo (si existe): ${reason || "No especificado"}
+
+Responde SOLO JSON valido:
+{
+  "name": "string",
+  "sets": number,
+  "reps": "string",
+  "rest_seconds": number,
+  "notes": "string en espanol"
+}
+`;
+
+      let response;
+      try {
+        response = await this.openai.chat.completions.create({
+          model: this.models.routine,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens: 500,
+        });
+      } catch (error) {
+        throw this.extractProviderError(error);
+      }
+
+      const content = (response.choices[0]?.message?.content || "").trim();
+      try {
+        replacement = JSON.parse(content) as RoutineExercise;
+        if (!replacement.name || typeof replacement.sets !== "number") {
+          throw new Error("Invalid replacement exercise");
+        }
+      } catch {
+        throw new Error("Could not recommend replacement exercise. Please try again.");
+      }
+    }
+
+    const updatedSessions = currentRoutine.sessions.map((session) => {
+      if (normalizeDay(session.day) !== normalizeDay(sessionDay)) {
+        return session;
+      }
+
+      const updatedExercises = session.exercises.map((exercise) =>
+        exercise.name.trim().toLowerCase() === exerciseName.trim().toLowerCase()
+          ? replacement
+          : exercise
+      );
+
+      return {
+        ...session,
+        exercises: updatedExercises,
+      };
+    });
+
+    const updatedRoutine: GeneratedRoutine = {
+      ...currentRoutine,
+      sessions: updatedSessions,
+    };
+
+    await this.saveLogSafely({
+      userId,
+      type: "ROUTINE_GENERATION",
+      userMessage: `REPLACE_EXERCISE::${sessionDay}::${exerciseName}`,
+      aiResponse: JSON.stringify(updatedRoutine),
+    });
+
+    return updatedRoutine;
+  }
+
+  async getRoutineExerciseAlternatives(
+    userContext: UserRoutineContext,
+    currentRoutine: GeneratedRoutine,
+    sessionDay: string,
+    exerciseName: string,
+    count = 5
+  ): Promise<RoutineExercise[]> {
+    const targetSession = currentRoutine.sessions.find(
+      (session) => normalizeDay(session.day) === normalizeDay(sessionDay)
+    );
+
+    if (!targetSession) {
+      throw new Error("Session day not found in routine");
+    }
+
+    const prompt = `
+Eres entrenador de gimnasio. Debes proponer ${count} ejercicios alternativos para reemplazar uno dentro de una sesion.
+
+Contexto usuario:
+- Objetivo: ${userContext.goal}
+- Nivel: ${userContext.experienceLevel}
+- Lesiones: ${userContext.injuries || "Ninguna"}
+- Condiciones medicas: ${userContext.medicalConditions || "Ninguna"}
+
+Sesion: ${targetSession.day} (${targetSession.focus})
+Ejercicio actual: ${exerciseName}
+
+Responde SOLO JSON valido con este esquema exacto:
+{
+  "options": [
+    {"name":"string","sets":number,"reps":"string","rest_seconds":number,"notes":"string en espanol"}
+  ]
+}
+
+Reglas:
+- Entrega exactamente ${count} opciones.
+- No incluyas el ejercicio actual.
+- Todo en espanol.
+`;
+
+    let response;
+    try {
+      response = await this.openai.chat.completions.create({
+        model: this.models.routine,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 900,
+      });
+    } catch (error) {
+      throw this.extractProviderError(error);
+    }
+
+    const content = (response.choices[0]?.message?.content || "").trim();
+    try {
+      const parsed = JSON.parse(content) as { options?: RoutineExercise[] };
+      const options = (parsed.options || [])
+        .filter((item) => item && item.name)
+        .slice(0, count)
+        .map((item) => ({
+          name: item.name,
+          sets: item.sets,
+          reps: item.reps,
+          rest_seconds: item.rest_seconds,
+          notes: item.notes,
+        }));
+
+      if (options.length === 0) {
+        throw new Error("No options returned");
+      }
+
+      return options;
+    } catch {
+      throw new Error("Could not generate replacement options. Please try again.");
+    }
   }
 
   /**

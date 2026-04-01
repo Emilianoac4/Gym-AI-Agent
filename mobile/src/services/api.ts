@@ -6,6 +6,7 @@ import {
   Measurement,
   ProgressSummary,
   RoutineCheckin,
+  RoutineExerciseCheckin,
   StrengthLog,
   StrengthProgressSummary,
 } from "../types/api";
@@ -130,8 +131,76 @@ export const api = {
       }
     ),
 
+  regenerateRoutineDay: (id: string, token: string, body: { sessionDay: string }) =>
+    request<{ message: string; routine: GeneratedRoutine }>(`/ai/${id}/routine/regenerate-day`, {
+      method: "POST",
+      token,
+      body,
+      timeoutMs: AI_TIMEOUT_MS,
+    }),
+
+  replaceRoutineExercise: (
+    id: string,
+    token: string,
+    body: {
+      sessionDay: string;
+      exerciseName: string;
+      reason?: string;
+      replacementExercise?: {
+        name: string;
+        sets: number;
+        reps: string;
+        rest_seconds: number;
+        notes?: string;
+      };
+    }
+  ) =>
+    request<{ message: string; routine: GeneratedRoutine }>(`/ai/${id}/routine/exercises/replace`, {
+      method: "POST",
+      token,
+      body,
+      timeoutMs: AI_TIMEOUT_MS,
+    }),
+
+  getExerciseReplacementOptions: (
+    id: string,
+    token: string,
+    body: { sessionDay: string; exerciseName: string; count?: number }
+  ) =>
+    request<{
+      message: string;
+      options: Array<{
+        name: string;
+        sets: number;
+        reps: string;
+        rest_seconds: number;
+        notes?: string;
+      }>;
+    }>(`/ai/${id}/routine/exercises/options`, {
+      method: "POST",
+      token,
+      body,
+      timeoutMs: AI_TIMEOUT_MS,
+    }),
+
+  removeRoutineExercise: (
+    id: string,
+    token: string,
+    body: { sessionDay: string; exerciseName: string }
+  ) =>
+    request<{ message: string; routine: GeneratedRoutine }>(`/ai/${id}/routine/exercises/remove`, {
+      method: "POST",
+      token,
+      body,
+    }),
+
   getRoutineCheckins: (id: string, token: string, days = 28) =>
-    request<{ message: string; count: number; checkins: RoutineCheckin[] }>(
+    request<{
+      message: string;
+      count: number;
+      checkins: RoutineCheckin[];
+      exerciseCheckins: RoutineExerciseCheckin[];
+    }>(
       `/ai/${id}/routine/checkins?days=${days}`,
       {
         token,
@@ -145,10 +214,31 @@ export const api = {
       body,
     }),
 
+  createExerciseCheckin: (
+    id: string,
+    token: string,
+    body: { sessionDay: string; exerciseName: string; completedAt?: string }
+  ) =>
+    request<{ message: string; checkin: RoutineExerciseCheckin }>(
+      `/ai/${id}/routine/exercises/checkins`,
+      {
+        method: "POST",
+        token,
+        body,
+      }
+    ),
+
   createStrengthLog: (
     id: string,
     token: string,
-    body: { exerciseName: string; loadKg: number; reps?: number; sets?: number; performedAt?: string }
+    body: {
+      exerciseName: string;
+      loadValue: number;
+      loadUnit?: "kg" | "lb";
+      reps?: number;
+      sets?: number;
+      performedAt?: string;
+    }
   ) =>
     request<{ message: string; log: StrengthLog }>(`/ai/${id}/strength/logs`, {
       method: "POST",

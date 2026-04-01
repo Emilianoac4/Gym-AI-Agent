@@ -15,10 +15,7 @@ export const routineCheckinSchema = z.object({
     .string()
     .min(1, "Session day is required")
     .max(50, "Session day is too long"),
-  completedAt: z
-    .string()
-    .datetime({ offset: true, message: "completedAt must be an ISO datetime" })
-    .optional(),
+  completedAt: z.union([z.string(), z.date()]).optional(),
 });
 
 export const routineCheckinsQuerySchema = z.object({
@@ -30,18 +27,67 @@ export const strengthLogSchema = z.object({
     .string()
     .min(2, "Exercise name is required")
     .max(80, "Exercise name is too long"),
-  loadKg: z
+  loadValue: z
     .coerce.number()
     .positive("Load must be greater than 0")
-    .max(1000, "Load is out of range"),
+    .max(2000, "Load is out of range"),
+  loadUnit: z.enum(["kg", "lb"]).optional(),
   reps: z.coerce.number().int().min(1).max(100).optional(),
   sets: z.coerce.number().int().min(1).max(30).optional(),
-  performedAt: z
-    .string()
-    .datetime({ offset: true, message: "performedAt must be an ISO datetime" })
-    .optional(),
+  performedAt: z.union([z.string(), z.date()]).optional(),
 });
 
 export const strengthProgressQuerySchema = z.object({
   days: z.coerce.number().int().min(7).max(365).optional(),
+});
+
+export const regenerateRoutineDaySchema = z.object({
+  sessionDay: z
+    .string()
+    .min(1, "Session day is required")
+    .max(50, "Session day is too long"),
+});
+
+export const removeRoutineExerciseSchema = z.object({
+  sessionDay: z
+    .string()
+    .min(1, "Session day is required")
+    .max(50, "Session day is too long"),
+  exerciseName: z
+    .string()
+    .min(2, "Exercise name is required")
+    .max(80, "Exercise name is too long"),
+});
+
+const replacementExerciseSchema = z.object({
+  name: z.string().min(2).max(80),
+  sets: z.coerce.number().int().min(1).max(20),
+  reps: z.string().min(1).max(20),
+  rest_seconds: z.coerce.number().int().min(10).max(600),
+  notes: z.string().max(240).optional(),
+});
+
+export const replaceRoutineExerciseSchema = z.object({
+  sessionDay: z
+    .string()
+    .min(1, "Session day is required")
+    .max(50, "Session day is too long"),
+  exerciseName: z
+    .string()
+    .min(2, "Exercise name is required")
+    .max(80, "Exercise name is too long"),
+  reason: z.string().max(200, "Reason is too long").optional(),
+  replacementExercise: replacementExerciseSchema.optional(),
+});
+
+export const exerciseCheckinSchema = z.object({
+  sessionDay: z.string().min(1).max(50),
+  exerciseName: z.string().min(2).max(80),
+  completedAt: z.union([z.string(), z.date()]).optional(),
+});
+
+export const exerciseOptionsSchema = z.object({
+  sessionDay: z.string().min(1).max(50),
+  exerciseName: z.string().min(2).max(80),
+  count: z.coerce.number().int().min(2).max(8).optional(),
 });
