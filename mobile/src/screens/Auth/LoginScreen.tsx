@@ -18,19 +18,22 @@ export function LoginScreen() {
   const [email, setEmail] = useState("admin@gymiai.com");
   const [password, setPassword] = useState("Admin123456");
 
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+
+  const googleExpoClientId = env.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID;
+  const googleIosClientId = env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? googleExpoClientId;
+  const googleAndroidClientId = env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? googleExpoClientId;
+  const googleWebClientId = env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? googleExpoClientId;
+
+  const hasGoogleClientId = Boolean(
+    googleExpoClientId || googleIosClientId || googleAndroidClientId || googleWebClientId,
+  );
+
   const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
-    clientId:
-      (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
-        ?.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID,
-    iosClientId:
-      (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
-        ?.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId:
-      (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
-        ?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    webClientId:
-      (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
-        ?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    clientId: googleExpoClientId,
+    iosClientId: googleIosClientId ?? "MISSING_GOOGLE_IOS_CLIENT_ID",
+    androidClientId: googleAndroidClientId ?? "MISSING_GOOGLE_ANDROID_CLIENT_ID",
+    webClientId: googleWebClientId ?? "MISSING_GOOGLE_WEB_CLIENT_ID",
   });
 
   const onLogin = async () => {
@@ -42,8 +45,11 @@ export function LoginScreen() {
   };
 
   const onGoogleLogin = async () => {
-    if (!googleRequest) {
-      Alert.alert("Google no configurado", "Falta configurar Client ID de Google en variables de entorno.");
+    if (!hasGoogleClientId || !googleRequest) {
+      Alert.alert(
+        "Google no configurado",
+        "Falta configurar EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID en mobile/.env y reiniciar Expo.",
+      );
       return;
     }
 
