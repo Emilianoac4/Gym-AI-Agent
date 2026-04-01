@@ -1,6 +1,7 @@
 import {
   AIChatLog,
   CreateMeasurementPayload,
+  GeneratedRoutine,
   ExerciseStrengthProgress,
   Measurement,
   ProgressSummary,
@@ -120,6 +121,14 @@ export const api = {
       token,
       timeoutMs: AI_TIMEOUT_MS,
     }),
+
+  getLatestRoutine: (id: string, token: string) =>
+    request<{ message: string; routine: GeneratedRoutine; generatedAt: string }>(
+      `/ai/${id}/routine/latest`,
+      {
+        token,
+      }
+    ),
 
   getRoutineCheckins: (id: string, token: string, days = 28) =>
     request<{ message: string; count: number; checkins: RoutineCheckin[] }>(

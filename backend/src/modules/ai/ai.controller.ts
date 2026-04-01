@@ -56,6 +56,20 @@ function parseStrengthPayload(raw: string): {
   }
 }
 
+function parseRoutinePayload(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function estimatedOneRM(loadKg: number, reps: number | null): number | null {
   if (!reps || reps <= 0) {
     return null;
@@ -66,6 +80,58 @@ function estimatedOneRM(loadKg: number, reps: number | null): number | null {
 }
 
 export class AIController {
+  static async getLatestRoutine(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const logs = await prisma.aIChatLog.findMany({
+        where: {
+          userId,
+          type: "ROUTINE_GENERATION",
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 5,
+      });
+
+      const latest = logs
+        .map((entry) => {
+          const routine = parseRoutinePayload(entry.aiResponse);
+          if (!routine) {
+            return null;
+          }
+
+          return {
+            routine,
+            createdAt: entry.createdAt,
+          };
+        })
+        .find((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+      if (!latest) {
+        throw new HttpError(404, "No saved routine found. Generate one first.");
+      }
+
+      res.json({
+        message: "Latest routine retrieved",
+        routine: latest.routine,
+        generatedAt: latest.createdAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async createStrengthLog(
     req: Request,
     res: Response,
@@ -195,6 +261,31 @@ export class AIController {
               ? Number((((latest.loadKg - first.loadKg) / first.loadKg) * 100).toFixed(2))
               : null;
 
+          const weeklyBuckets = new Map<string, typeof bucket>();
+          for (const entry of bucket) {
+            const weekStart = getWeekStartIso(new Date(entry.performedAt));
+            const weekItems = weeklyBuckets.get(weekStart) || [];
+            weekItems.push(entry);
+            weeklyBuckets.set(weekStart, weekItems);
+          }
+
+          const weeklyHistory = Array.from(weeklyBuckets.entries())
+            .sort(([weekA], [weekB]) => weekA.localeCompare(weekB))
+            .map(([weekStart, entriesForWeek]) => {
+              const latestWeekEntry = entriesForWeek[entriesForWeek.length - 1];
+              const bestWeekEntry = entriesForWeek.reduce((max, current) =>
+                current.loadKg > max.loadKg ? current : max
+              );
+
+              return {
+                weekStart,
+                latestLoadKg: latestWeekEntry.loadKg,
+                bestLoadKg: bestWeekEntry.loadKg,
+                logsCount: entriesForWeek.length,
+                lastPerformedAt: latestWeekEntry.performedAt,
+              };
+            });
+
           return {
             exerciseName: latest.exerciseName,
             logsCount: bucket.length,
@@ -205,6 +296,7 @@ export class AIController {
             percentChange,
             estimatedOneRM: estimatedOneRM(latest.loadKg, latest.reps),
             lastPerformedAt: latest.performedAt,
+            weeklyHistory,
           };
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)

@@ -36,10 +36,10 @@ function MainTabs() {
         },
       }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Progress" component={MeasurementsScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-      <Tab.Screen name="Routine" component={RoutineScreen} />
+      <Tab.Screen name="Inicio" component={HomeScreen} />
+      <Tab.Screen name="Medidas" component={MeasurementsScreen} />
+      <Tab.Screen name="Perfil" component={ProfileScreen} />
+      <Tab.Screen name="Rutina" component={RoutineScreen} />
       <Tab.Screen name="Coach" component={ChatScreen} />
     </Tab.Navigator>
   );

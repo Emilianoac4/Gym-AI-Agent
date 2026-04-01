@@ -9,8 +9,8 @@ export function RegisterScreen() {
   const { registerAdmin, loading } = useAuth();
 
   const [gymName, setGymName] = useState("GymAI Central");
-  const [ownerName, setOwnerName] = useState("Owner Name");
-  const [fullName, setFullName] = useState("Admin Name");
+  const [ownerName, setOwnerName] = useState("Nombre del propietario");
+  const [fullName, setFullName] = useState("Administrador principal");
   const [email, setEmail] = useState("admin@gymiai.com");
   const [password, setPassword] = useState("Admin123456");
 
@@ -39,7 +39,7 @@ export function RegisterScreen() {
           <TextInput style={styles.input} placeholder="Nombre del propietario" placeholderTextColor={palette.textSoft} value={ownerName} onChangeText={setOwnerName} />
           <TextInput style={styles.input} placeholder="Nombre completo admin" placeholderTextColor={palette.textSoft} value={fullName} onChangeText={setFullName} />
           <TextInput style={styles.input} placeholder="Email" placeholderTextColor={palette.textSoft} autoCapitalize="none" value={email} onChangeText={setEmail} />
-          <TextInput style={styles.input} placeholder="Password" placeholderTextColor={palette.textSoft} secureTextEntry value={password} onChangeText={setPassword} />
+          <TextInput style={styles.input} placeholder="Contrasena" placeholderTextColor={palette.textSoft} secureTextEntry value={password} onChangeText={setPassword} />
 
           <AppButton label={loading ? "Creando..." : "Crear y entrar"} onPress={onRegister} disabled={loading} />
         </View>

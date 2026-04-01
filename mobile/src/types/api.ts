@@ -96,6 +96,30 @@ export interface RoutineCheckin {
   completedAt: string;
 }
 
+export interface RoutineExercise {
+  name: string;
+  sets: number;
+  reps: string;
+  rest_seconds: number;
+  notes: string;
+}
+
+export interface RoutineSession {
+  day: string;
+  focus: string;
+  duration_minutes: number;
+  exercises: RoutineExercise[];
+}
+
+export interface GeneratedRoutine {
+  routine_name: string;
+  duration_weeks: number;
+  weekly_sessions: number;
+  sessions: RoutineSession[];
+  progression_tips: string[];
+  nutrition_notes: string;
+}
+
 export interface StrengthLog {
   id: string;
   exerciseName: string;
@@ -103,6 +127,14 @@ export interface StrengthLog {
   reps: number | null;
   sets: number | null;
   performedAt: string;
+}
+
+export interface StrengthWeeklyHistoryPoint {
+  weekStart: string;
+  latestLoadKg: number;
+  bestLoadKg: number;
+  logsCount: number;
+  lastPerformedAt: string;
 }
 
 export interface ExerciseStrengthProgress {
@@ -115,6 +147,7 @@ export interface ExerciseStrengthProgress {
   percentChange: number | null;
   estimatedOneRM: number | null;
   lastPerformedAt: string;
+  weeklyHistory: StrengthWeeklyHistoryPoint[];
 }
 
 export interface StrengthProgressSummary {

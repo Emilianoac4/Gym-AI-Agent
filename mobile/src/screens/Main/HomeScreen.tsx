@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
@@ -6,179 +6,221 @@ import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
-import { ProgressSummary, StrengthProgressSummary } from "../../types/api";
+import {
+  GeneratedRoutine,
+  ProgressSummary,
+  RoutineCheckin,
+  StrengthProgressSummary,
+} from "../../types/api";
 
-const memberHighlights = [
-  {
-    title: "Medicion corporal inteligente",
-    detail: "Registro automatico, carga manual y progreso semanal en un solo flujo.",
-  },
-  {
-    title: "Rutina por objetivo",
-    detail: "Planes ajustados por lesiones, disponibilidad y cargas historicas.",
-  },
-  {
-    title: "Coach y asistencia",
-    detail: "Boton para pedir ayuda al coach y luego calificar su respuesta.",
-  },
-];
+function getWeekStart(date: Date): string {
+  const value = new Date(date);
+  const day = value.getDay();
+  const diff = (day + 6) % 7;
+  value.setDate(value.getDate() - diff);
+  value.setHours(0, 0, 0, 0);
+  return value.toISOString().slice(0, 10);
+}
+
+function normalize(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function formatDayLabel(value: string): string {
+  const dayMap: Record<string, string> = {
+    monday: "Lunes",
+    tuesday: "Martes",
+    wednesday: "Miercoles",
+    thursday: "Jueves",
+    friday: "Viernes",
+    saturday: "Sabado",
+    sunday: "Domingo",
+  };
+
+  return dayMap[normalize(value)] || value;
+}
 
 const adminHighlights = [
-  {
-    title: "Actividad del gimnasio",
-    detail: "Picos de afluencia, horas fuertes y lectura de asistencia por biometria.",
-  },
-  {
-    title: "Retencion de clientes",
-    detail: "Alertas de abandono antes de vencer la suscripcion y campanas de reactivacion.",
-  },
-  {
-    title: "Satisfaccion operacional",
-    detail: "Uso de maquinas, llegada de colaboradores y score de resolucion del coach.",
-  },
+  "Picos de actividad del gimnasio",
+  "Usuarios en riesgo de abandono",
+  "Maquinas con mayor demanda",
+  "Satisfaccion del servicio de coach",
 ];
 
 export function HomeScreen() {
   const { user, token, logout } = useAuth();
   const isAdmin = user?.role === "admin";
-  const highlights = isAdmin ? adminHighlights : memberHighlights;
-  const roleLabel = isAdmin ? "Dueno del gimnasio" : "Miembro";
-  const [summary, setSummary] = useState<ProgressSummary | null>(null);
-  const [strengthSummary, setStrengthSummary] =
-    useState<StrengthProgressSummary | null>(null);
+  const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
 
-  useEffect(() => {
-    const loadSummary = async () => {
-      if (!user || !token || isAdmin) {
-        setSummary(null);
-        setStrengthSummary(null);
+  const [summary, setSummary] = useState<ProgressSummary | null>(null);
+  const [strengthSummary, setStrengthSummary] = useState<StrengthProgressSummary | null>(null);
+  const [routine, setRoutine] = useState<GeneratedRoutine | null>(null);
+  const [checkins, setCheckins] = useState<RoutineCheckin[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user || !token) {
         return;
       }
 
-      try {
-        const [progress, strength] = await Promise.all([
-          api.getProgressSummary(user.id, token),
-          api.getStrengthProgress(user.id, token, 90),
-        ]);
-        setSummary(progress.summary);
-        setStrengthSummary(strength.summary);
-      } catch {
-        setSummary(null);
-        setStrengthSummary(null);
-      }
-    };
-
-    void loadSummary();
-  }, [isAdmin, token, user]);
-
-  // Refresh data whenever the Home tab gains focus (e.g. coming back from Routine/Measurements)
-  useFocusEffect(
-    useCallback(() => {
-      if (!user || !token || isAdmin) return;
       let cancelled = false;
-      const reload = async () => {
-        try {
-          const [progress, strength] = await Promise.all([
-            api.getProgressSummary(user.id, token),
-            api.getStrengthProgress(user.id, token, 90),
-          ]);
+
+      const load = async () => {
+        if (isAdmin) {
           if (!cancelled) {
-            setSummary(progress.summary);
-            setStrengthSummary(strength.summary);
+            setSummary(null);
+            setStrengthSummary(null);
+            setRoutine(null);
+            setCheckins([]);
           }
+          return;
+        }
+
+        try {
+          const [progress, strength, latestRoutine, checkinData] = await Promise.all([
+            api.getProgressSummary(user.id, token),
+            api.getStrengthProgress(user.id, token, 120),
+            api.getLatestRoutine(user.id, token).catch(() => null),
+            api.getRoutineCheckins(user.id, token, 28),
+          ]);
+
+          if (cancelled) {
+            return;
+          }
+
+          setSummary(progress.summary);
+          setStrengthSummary(strength.summary);
+          setRoutine(latestRoutine?.routine ?? null);
+          setCheckins(checkinData.checkins);
         } catch {
-          // keep previous values if refresh fails
+          if (!cancelled) {
+            setSummary(null);
+            setStrengthSummary(null);
+            setRoutine(null);
+            setCheckins([]);
+          }
         }
       };
-      void reload();
-      return () => { cancelled = true; };
-    }, [isAdmin, token, user])
+
+      void load();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [isAdmin, token, user, currentWeekStart])
   );
 
-  const memberMainText = useMemo(() => {
-    if (isAdmin) {
-      return "Retener clientes en riesgo";
+  const completedThisWeek = useMemo(() => {
+    const value = new Set<string>();
+    checkins.forEach((item) => {
+      if (item.weekStart === currentWeekStart) {
+        value.add(normalize(item.sessionDay));
+      }
+    });
+    return value;
+  }, [checkins, currentWeekStart]);
+
+  const completedCount = routine
+    ? Math.min(completedThisWeek.size, routine.weekly_sessions)
+    : 0;
+
+  const nextSession = useMemo(() => {
+    if (!routine) {
+      return "Genera tu primera rutina personalizada";
     }
 
-    if (!summary) {
-      return "Completa tu perfil, rutina y primer check-in";
-    }
+    const pending = routine.sessions.find(
+      (session) => !completedThisWeek.has(normalize(session.day))
+    );
 
-    return summary.nextAction;
-  }, [isAdmin, summary]);
-
-  const memberSecondaryText = useMemo(() => {
-    if (isAdmin) {
-      return "84% satisfaccion coach";
-    }
-
-    if (!summary) {
-      return "Coach disponible para rutina, dieta y lesion";
-    }
-
-    const streak = summary.weeklyCheckInStreak;
-    const pending = summary.hasMeasurementThisWeek ? "check-in al dia" : "check-in pendiente";
-    const strengthPart = strengthSummary
-      ? ` | ${strengthSummary.improvingExercises} ejercicios mejorando`
-      : "";
-    return `${streak} semana(s) de racha, ${pending}${strengthPart}`;
-  }, [isAdmin, strengthSummary, summary]);
+    return pending ? `${formatDayLabel(pending.day)} · ${pending.focus}` : "Semana completada";
+  }, [completedThisWeek, routine]);
 
   return (
     <LinearGradient colors={[palette.cream, palette.gold, palette.coral]} style={styles.shell}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
           <Text style={styles.welcome}>Hola, {user?.fullName ?? "Atleta"}</Text>
-          <Text style={styles.hero}>GymAI con foco claro por tipo de usuario</Text>
+          <Text style={styles.hero}>{isAdmin ? "Panel de gestion" : "Tu semana en GymAI"}</Text>
           <Text style={styles.heroSubtitle}>
-            Esta vista prueba la identidad visual con la nueva paleta y aterriza las funciones clave para {roleLabel.toLowerCase()}.
+            {isAdmin
+              ? "Revisa el estado operativo del gimnasio y las prioridades del negocio."
+              : "Consulta tu progreso semanal, la siguiente sesion y el avance real de tus cargas."}
           </Text>
-
-          <View style={styles.badgeRow}>
-            <View style={styles.roleBadge}>
-              <Text style={styles.roleBadgeText}>{roleLabel}</Text>
-            </View>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText}>MVP visual</Text>
-            </View>
-          </View>
         </View>
 
-        <View style={styles.kpiRow}>
-          <View style={styles.kpiCardPrimary}>
-            <Text style={styles.kpiLabelDark}>{isAdmin ? "Insight principal" : "Siguiente accion"}</Text>
-            <Text style={styles.kpiValueDark}>{memberMainText}</Text>
+        {isAdmin ? (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionEyebrow}>Vision del administrador</Text>
+            <Text style={styles.sectionTitle}>Indicadores a validar</Text>
+            {adminHighlights.map((item) => (
+              <View key={item} style={styles.featureItem}>
+                <View style={styles.featureDot} />
+                <Text style={styles.featureTitle}>{item}</Text>
+              </View>
+            ))}
           </View>
-          <View style={styles.kpiCardSecondary}>
-            <Text style={styles.kpiLabelLight}>{isAdmin ? "Indicador" : "Coach IA"}</Text>
-            <Text style={styles.kpiValueLight}>{memberSecondaryText}</Text>
-          </View>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionEyebrow}>{isAdmin ? "Panel de gestion" : "Experiencia del miembro"}</Text>
-          <Text style={styles.sectionTitle}>{isAdmin ? "Funciones que debe dominar el dueno" : "Funciones que mas valor entregan al atleta"}</Text>
-          {highlights.map((item) => (
-            <View key={item.title} style={styles.featureItem}>
-              <View style={styles.featureDot} />
-              <View style={styles.featureCopy}>
-                <Text style={styles.featureTitle}>{item.title}</Text>
-                <Text style={styles.featureDetail}>{item.detail}</Text>
+        ) : (
+          <>
+            <View style={styles.kpiRow}>
+              <View style={styles.kpiCardPrimary}>
+                <Text style={styles.kpiLabelDark}>Sesiones completadas</Text>
+                <Text style={styles.kpiValueDark}>
+                  {routine ? `${completedCount}/${routine.weekly_sessions}` : "Sin rutina"}
+                </Text>
+                <Text style={styles.kpiHintDark}>Semana actual</Text>
+              </View>
+              <View style={styles.kpiCardSecondary}>
+                <Text style={styles.kpiLabelLight}>Ejercicios en mejora</Text>
+                <Text style={styles.kpiValueLight}>{strengthSummary?.improvingExercises ?? 0}</Text>
+                <Text style={styles.kpiHintLight}>Ultimos 120 dias</Text>
               </View>
             </View>
-          ))}
-        </View>
 
-        <View style={styles.twoColumnRow}>
-          <View style={styles.miniCardWarm}>
-            <Text style={styles.miniLabel}>Plus</Text>
-            <Text style={styles.miniValue}>Gimnasio tecnologico y diferenciador</Text>
-          </View>
-          <View style={styles.miniCardDark}>
-            <Text style={styles.miniLabelDark}>Operacion</Text>
-            <Text style={styles.miniValueDark}>Optimizacion de planilla y acompanamiento medible</Text>
-          </View>
-        </View>
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionEyebrow}>Siguiente paso</Text>
+              <Text style={styles.sectionTitle}>{nextSession}</Text>
+              <Text style={styles.featureDetail}>{summary?.nextAction ?? "Completa tu perfil, genera una rutina y registra tu primera sesion."}</Text>
+            </View>
+
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionEyebrow}>Resumen del miembro</Text>
+              <Text style={styles.sectionTitle}>Estado actual</Text>
+              <View style={styles.featureItem}>
+                <View style={styles.featureDot} />
+                <View style={styles.featureCopy}>
+                  <Text style={styles.featureTitle}>Racha semanal</Text>
+                  <Text style={styles.featureDetail}>{summary ? `${summary.weeklyCheckInStreak} semana(s) con check-in` : "Aun no hay check-ins registrados"}</Text>
+                </View>
+              </View>
+              <View style={styles.featureItem}>
+                <View style={styles.featureDot} />
+                <View style={styles.featureCopy}>
+                  <Text style={styles.featureTitle}>Mediciones</Text>
+                  <Text style={styles.featureDetail}>{summary ? `${summary.measurementsCount} registros guardados` : "Sin mediciones registradas"}</Text>
+                </View>
+              </View>
+              <View style={styles.featureItem}>
+                <View style={styles.featureDot} />
+                <View style={styles.featureCopy}>
+                  <Text style={styles.featureTitle}>Carga de trabajo</Text>
+                  <Text style={styles.featureDetail}>{strengthSummary ? `${strengthSummary.activeExercises} ejercicios con historial de carga` : "Aun no hay progreso de cargas registrado"}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.twoColumnRow}>
+              <View style={styles.miniCardWarm}>
+                <Text style={styles.miniLabel}>Rutina</Text>
+                <Text style={styles.miniValue}>{routine ? `${routine.sessions.length} dias planificados` : "Pendiente de generar"}</Text>
+              </View>
+              <View style={styles.miniCardDark}>
+                <Text style={styles.miniLabelDark}>Coach IA</Text>
+                <Text style={styles.miniValueDark}>Memoria conversacional y contexto del perfil activos</Text>
+              </View>
+            </View>
+          </>
+        )}
 
         <View style={styles.actions}>
           <AppButton label="Cerrar sesion" onPress={logout} />
@@ -216,11 +258,10 @@ const styles = StyleSheet.create({
   },
   hero: {
     color: palette.cocoa,
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 30,
+    lineHeight: 36,
     marginTop: 8,
     fontWeight: "800",
-    maxWidth: 320,
   },
   heroSubtitle: {
     marginTop: 12,
@@ -228,37 +269,9 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontSize: 14,
   },
-  badgeRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-    flexWrap: "wrap",
-  },
-  roleBadge: {
-    backgroundColor: palette.moss,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  roleBadgeText: {
-    color: palette.cocoa,
-    fontWeight: "700",
-    fontSize: 12,
-  },
-  statusBadge: {
-    backgroundColor: palette.cocoa,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  statusBadgeText: {
-    color: palette.gold,
-    fontWeight: "700",
-    fontSize: 12,
-  },
   kpiRow: {
     flexDirection: "column",
-    marginTop: 26,
+    marginTop: 24,
     gap: 12,
   },
   kpiCardPrimary: {
@@ -280,7 +293,12 @@ const styles = StyleSheet.create({
     color: palette.cocoa,
     marginTop: 6,
     fontWeight: "800",
-    fontSize: 18,
+    fontSize: 22,
+  },
+  kpiHintDark: {
+    color: "#5A4C40",
+    marginTop: 4,
+    fontSize: 12,
   },
   kpiLabelLight: {
     color: "#EEDDB6",
@@ -291,7 +309,12 @@ const styles = StyleSheet.create({
     color: palette.cream,
     marginTop: 6,
     fontWeight: "800",
-    fontSize: 18,
+    fontSize: 22,
+  },
+  kpiHintLight: {
+    color: "#EEDDB6",
+    marginTop: 4,
+    fontSize: 12,
   },
   sectionCard: {
     marginTop: 18,
@@ -314,7 +337,7 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     fontWeight: "800",
     marginTop: 8,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   featureItem: {
     flexDirection: "row",

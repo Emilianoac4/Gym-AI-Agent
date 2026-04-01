@@ -17,6 +17,7 @@ aiRouter.use(authenticate);
 
 // Generate personalized workout routine
 aiRouter.post("/:userId/routine", AIController.generateRoutine);
+aiRouter.get("/:userId/routine/latest", AIController.getLatestRoutine);
 
 // Persist and read weekly routine check-ins
 aiRouter.post(

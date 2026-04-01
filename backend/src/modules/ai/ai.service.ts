@@ -286,30 +286,39 @@ CRITICAL REQUIREMENTS:
 3. Each session must have AT LEAST 4 exercises with full details
 4. Include practical progression tips and nutrition advice
 
-Generate JSON ONLY (no markdown, no explanation, valid JSON only):
+Generate JSON ONLY (no markdown, no explanation, valid JSON only).
+Use Spanish for all visible values returned to the app:
+- routine_name in Spanish
+- sessions[].day in Spanish (e.g. Lunes, Martes)
+- sessions[].focus in Spanish
+- sessions[].exercises[].notes in Spanish
+- progression_tips in Spanish
+- nutrition_notes in Spanish
+
+JSON schema:
 {
-  "routine_name": "Custom ${userContext.experienceLevel} ${userContext.goal} Routine",
+  "routine_name": "Rutina ${userContext.goal} ${userContext.experienceLevel}",
   "duration_weeks": 12,
   "weekly_sessions": ${userContext.availability.includes("3") ? 3 : userContext.availability.includes("4") ? 4 : userContext.availability.includes("5") ? 5 : 3},
   "sessions": [
     {
-      "day": "Monday",
-      "focus": "Upper Body Push",
+      "day": "Lunes",
+      "focus": "Empuje de tren superior",
       "duration_minutes": 60,
       "exercises": [
-        {"name": "Barbell Bench Press", "sets": 4, "reps": "6-8", "rest_seconds": 120, "notes": "Focus on chest"},
-        {"name": "Incline Dumbbell Press", "sets": 3, "reps": "8-10", "rest_seconds": 90, "notes": "Chest and shoulders"},
-        {"name": "Cable Flyes", "sets": 3, "reps": "12-15", "rest_seconds": 60, "notes": "Isolate chest"},
-        {"name": "Shoulder Press", "sets": 3, "reps": "8-10", "rest_seconds": 90, "notes": "Shoulder development"}
+        {"name": "Press de banca con barra", "sets": 4, "reps": "6-8", "rest_seconds": 120, "notes": "Enfocate en controlar el pecho y la tecnica"},
+        {"name": "Press inclinado con mancuernas", "sets": 3, "reps": "8-10", "rest_seconds": 90, "notes": "Trabajo principal de pecho superior y hombro"},
+        {"name": "Aperturas en polea", "sets": 3, "reps": "12-15", "rest_seconds": 60, "notes": "Busca amplitud y estiramiento"},
+        {"name": "Press militar", "sets": 3, "reps": "8-10", "rest_seconds": 90, "notes": "Prioriza estabilidad y rango completo"}
       ]
     }
   ],
   "progression_tips": [
-    "Increase weight by 5-10% when you can complete all reps with good form",
-    "Track all lifts in a journal for consistency",
-    "Rest 48 hours between same muscle groups"
+    "Aumenta la carga entre 2.5% y 5% cuando completes todas las repeticiones con buena tecnica",
+    "Registra cada ejercicio para comparar tu progreso semana a semana",
+    "Deja al menos 48 horas antes de repetir el mismo grupo muscular"
   ],
-  "nutrition_notes": "Target 0.8-1g protein per lb of bodyweight, eat in slight caloric surplus for muscle gains"
+  "nutrition_notes": "Prioriza una ingesta suficiente de proteina, hidratacion constante y una distribucion de comidas que favorezca tu objetivo"
 }
 
 Customize the routine to match the user context. Return ONLY valid JSON.
@@ -348,7 +357,7 @@ Customize the routine to match the user context. Return ONLY valid JSON.
       userId,
       type: "ROUTINE_GENERATION",
       userMessage: prompt.substring(0, 500),
-      aiResponse: content.substring(0, 1000),
+      aiResponse: content,
     });
 
     return content;

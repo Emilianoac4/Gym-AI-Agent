@@ -71,19 +71,19 @@ export function LoginScreen() {
     }
 
     if (result.type !== "success") {
-      Alert.alert("Google Sign-In", "No fue posible completar el acceso con Google.");
+      Alert.alert("Google", "No fue posible completar el acceso con Google.");
     }
   };
 
   const onAppleLogin = async () => {
     if (Platform.OS !== "ios") {
-      Alert.alert("No disponible", "Apple Sign-In solo esta disponible en iOS.");
+      Alert.alert("No disponible", "Apple solo esta disponible en iOS.");
       return;
     }
 
     const isAvailable = await AppleAuthentication.isAvailableAsync();
     if (!isAvailable) {
-      Alert.alert("No disponible", "Apple Sign-In no esta disponible en este dispositivo.");
+      Alert.alert("No disponible", "Apple no esta disponible en este dispositivo.");
       return;
     }
 
@@ -109,7 +109,7 @@ export function LoginScreen() {
       }
 
       Alert.alert(
-        "Apple Sign-In",
+        "Apple",
         error instanceof Error ? error.message : "No fue posible iniciar sesion con Apple.",
       );
     }
@@ -126,7 +126,7 @@ export function LoginScreen() {
         ((googleResponse as unknown as { params?: Record<string, string> }).params?.id_token ?? "");
 
       if (!idToken) {
-        Alert.alert("Google Sign-In", "Google no devolvio un token valido.");
+        Alert.alert("Google", "Google no devolvio un token valido.");
         return;
       }
 
@@ -134,7 +134,7 @@ export function LoginScreen() {
         await loginWithGoogle(idToken);
       } catch (error) {
         Alert.alert(
-          "Google Sign-In",
+          "Google",
           error instanceof Error ? error.message : "No fue posible iniciar sesion con Google.",
         );
       }
@@ -171,14 +171,14 @@ export function LoginScreen() {
 
         <TextInput
           style={styles.input}
-          placeholder="Password"
+          placeholder="Contrasena"
           placeholderTextColor={palette.textSoft}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
         />
 
-        <AppButton label={loading ? "Ingresando..." : "Iniciar Sesion"} onPress={onLogin} disabled={loading} />
+        <AppButton label={loading ? "Ingresando..." : "Iniciar sesion"} onPress={onLogin} disabled={loading} />
 
         <View style={styles.socialGroup}>
           <TouchableOpacity
