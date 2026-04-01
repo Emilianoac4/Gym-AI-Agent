@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { randomUUID } from "crypto";
 import { env } from "./config/env";
 import { authRouter } from "./modules/auth/auth.routes";
 import { usersRouter } from "./modules/users/users.routes";
@@ -12,9 +13,30 @@ export const app = express();
 
 app.set("trust proxy", 1);
 
+app.use((req, res, next) => {
+  const requestId = randomUUID();
+  const start = Date.now();
+
+  req.requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
+
+  console.log(`[REQ] ${requestId} ${req.method} ${req.originalUrl}`);
+
+  res.on("finish", () => {
+    const durationMs = Date.now() - start;
+    console.log(`[RES] ${requestId} ${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms`);
+  });
+
+  next();
+});
+
 app.use(
   cors({
-    origin: env.CORS_ORIGIN ? env.CORS_ORIGIN.split(",").map((value) => value.trim()) : true,
+    origin: env.CORS_ORIGIN
+      ? env.CORS_ORIGIN === "*"
+        ? true
+        : env.CORS_ORIGIN.split(",").map((value) => value.trim())
+      : true,
   })
 );
 app.use(express.json());

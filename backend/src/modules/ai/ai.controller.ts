@@ -221,4 +221,48 @@ export class AIController {
       next(error);
     }
   }
+
+  static async clearChatHistory(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+
+      // Authorization
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      let deletedCount = 0;
+
+      try {
+        const result = await prisma.aIChatLog.deleteMany({
+          where: {
+            userId,
+            type: "CHAT",
+          },
+        });
+        deletedCount = result.count;
+      } catch (error) {
+        const candidate = error as { code?: string; message?: string };
+        const isMissingTable =
+          candidate?.code === "P2021" ||
+          (candidate?.message || "").includes("ai_chat_logs");
+
+        if (!isMissingTable) {
+          throw error;
+        }
+      }
+
+      res.json({
+        message: "Chat history cleared",
+        deletedCount,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

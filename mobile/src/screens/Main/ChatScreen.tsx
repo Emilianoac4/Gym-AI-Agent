@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -32,6 +33,7 @@ export function ChatScreen() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [clearing, setClearing] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
 
   const loadHistory = useCallback(async () => {
@@ -78,6 +80,37 @@ export function ChatScreen() {
   React.useEffect(() => {
     loadHistory();
   }, [loadHistory]);
+
+  const onClearChat = () => {
+    if (!user || !token || clearing) {
+      return;
+    }
+
+    Alert.alert(
+      "Limpiar chat",
+      "Se eliminara el historial de esta conversacion. Esta accion no se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Limpiar",
+          style: "destructive",
+          onPress: async () => {
+            setClearing(true);
+            try {
+              await api.clearChatHistory(user.id, token);
+              setMessages([WELCOME_MESSAGE]);
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : "Error inesperado";
+              Alert.alert("No se pudo limpiar", message);
+            } finally {
+              setClearing(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const onSend = async () => {
     const text = input.trim();
@@ -126,7 +159,18 @@ export function ChatScreen() {
       keyboardVerticalOffset={90}
     >
       <View style={styles.header}>
-        <Text style={styles.title}>Coach IA</Text>
+        <View style={styles.headerTopRow}>
+          <Text style={styles.title}>Coach IA</Text>
+          <TouchableOpacity
+            onPress={onClearChat}
+            disabled={clearing || loadingHistory}
+            style={styles.clearButton}
+          >
+            <Text style={styles.clearButtonText}>
+              {clearing ? "Limpiando..." : "Limpiar chat"}
+            </Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.subtitle}>Tu entrenador personal inteligente</Text>
       </View>
 
@@ -184,10 +228,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#E2ECF2",
   },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   title: {
     fontSize: 24,
     fontWeight: "800",
     color: palette.ink,
+  },
+  clearButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "#EEF3F7",
+    borderWidth: 1,
+    borderColor: "#D3DEE6",
+  },
+  clearButtonText: {
+    color: "#355266",
+    fontSize: 12,
+    fontWeight: "700",
   },
   subtitle: {
     color: "#556977",

@@ -24,11 +24,24 @@ export function MeasurementsScreen() {
 
   const [weightKg, setWeightKg] = useState("");
   const [bodyFatPct, setBodyFatPct] = useState("");
+  const [muscleMass, setMuscleMass] = useState("");
+  const [chestCm, setChestCm] = useState("");
   const [waistCm, setWaistCm] = useState("");
+  const [hipCm, setHipCm] = useState("");
+  const [armCm, setArmCm] = useState("");
 
   const hasAnyValue = useMemo(
-    () => Boolean(weightKg.trim() || bodyFatPct.trim() || waistCm.trim()),
-    [weightKg, bodyFatPct, waistCm],
+    () =>
+      Boolean(
+        weightKg.trim() ||
+          bodyFatPct.trim() ||
+          muscleMass.trim() ||
+          chestCm.trim() ||
+          waistCm.trim() ||
+          hipCm.trim() ||
+          armCm.trim(),
+      ),
+    [weightKg, bodyFatPct, muscleMass, chestCm, waistCm, hipCm, armCm],
   );
 
   const loadMeasurements = async () => {
@@ -64,10 +77,22 @@ export function MeasurementsScreen() {
     const payload = {
       weightKg: toOptionalPositiveNumber(weightKg),
       bodyFatPct: toOptionalPositiveNumber(bodyFatPct),
+      muscleMass: toOptionalPositiveNumber(muscleMass),
+      chestCm: toOptionalPositiveNumber(chestCm),
       waistCm: toOptionalPositiveNumber(waistCm),
+      hipCm: toOptionalPositiveNumber(hipCm),
+      armCm: toOptionalPositiveNumber(armCm),
     };
 
-    if (!payload.weightKg && !payload.bodyFatPct && !payload.waistCm) {
+    if (
+      !payload.weightKg &&
+      !payload.bodyFatPct &&
+      !payload.muscleMass &&
+      !payload.chestCm &&
+      !payload.waistCm &&
+      !payload.hipCm &&
+      !payload.armCm
+    ) {
       Alert.alert("Valores invalidos", "Usa numeros positivos para guardar la medicion.");
       return;
     }
@@ -77,7 +102,11 @@ export function MeasurementsScreen() {
       await api.createMeasurement(user.id, token, payload);
       setWeightKg("");
       setBodyFatPct("");
+      setMuscleMass("");
+      setChestCm("");
       setWaistCm("");
+      setHipCm("");
+      setArmCm("");
       await loadMeasurements();
       Alert.alert("Medicion guardada", "Tu progreso fue registrado correctamente.");
     } catch (error) {
@@ -111,6 +140,24 @@ export function MeasurementsScreen() {
           placeholder="18"
         />
 
+        <Text style={styles.label}>Masa muscular (kg)</Text>
+        <TextInput
+          style={styles.input}
+          value={muscleMass}
+          onChangeText={setMuscleMass}
+          keyboardType="decimal-pad"
+          placeholder="32"
+        />
+
+        <Text style={styles.label}>Pecho (cm)</Text>
+        <TextInput
+          style={styles.input}
+          value={chestCm}
+          onChangeText={setChestCm}
+          keyboardType="decimal-pad"
+          placeholder="100"
+        />
+
         <Text style={styles.label}>Cintura (cm)</Text>
         <TextInput
           style={styles.input}
@@ -118,6 +165,24 @@ export function MeasurementsScreen() {
           onChangeText={setWaistCm}
           keyboardType="decimal-pad"
           placeholder="84"
+        />
+
+        <Text style={styles.label}>Cadera (cm)</Text>
+        <TextInput
+          style={styles.input}
+          value={hipCm}
+          onChangeText={setHipCm}
+          keyboardType="decimal-pad"
+          placeholder="96"
+        />
+
+        <Text style={styles.label}>Brazo (cm)</Text>
+        <TextInput
+          style={styles.input}
+          value={armCm}
+          onChangeText={setArmCm}
+          keyboardType="decimal-pad"
+          placeholder="34"
         />
 
         <AppButton label={loading ? "Guardando..." : "Guardar medicion"} onPress={onSave} disabled={loading} />
@@ -133,7 +198,11 @@ export function MeasurementsScreen() {
               <Text style={styles.rowDate}>{new Date(item.date).toLocaleDateString()}</Text>
               <Text style={styles.rowValue}>Peso: {item.weightKg ?? "-"} kg</Text>
               <Text style={styles.rowValue}>Grasa: {item.bodyFatPct ?? "-"} %</Text>
+              <Text style={styles.rowValue}>Masa muscular: {item.muscleMass ?? "-"} kg</Text>
+              <Text style={styles.rowValue}>Pecho: {item.chestCm ?? "-"} cm</Text>
               <Text style={styles.rowValue}>Cintura: {item.waistCm ?? "-"} cm</Text>
+              <Text style={styles.rowValue}>Cadera: {item.hipCm ?? "-"} cm</Text>
+              <Text style={styles.rowValue}>Brazo: {item.armCm ?? "-"} cm</Text>
             </View>
           ))
         )}

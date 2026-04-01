@@ -27,3 +27,6 @@ aiRouter.get("/:userId/tip", AIController.getDailyTip);
 
 // Get chat history
 aiRouter.get("/:userId/history", AIController.getChatHistory);
+
+// Clear chat history
+aiRouter.delete("/:userId/history", AIController.clearChatHistory);
