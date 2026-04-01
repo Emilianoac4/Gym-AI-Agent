@@ -65,10 +65,13 @@ export function RoutineScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Rutina IA</Text>
-      <Text style={styles.subtitle}>
-        Genera un plan de entrenamiento adaptado a tu perfil actual.
-      </Text>
+      <View style={styles.heroCard}>
+        <Text style={styles.eyebrow}>Planificacion inteligente</Text>
+        <Text style={styles.title}>Rutina IA</Text>
+        <Text style={styles.subtitle}>
+          Genera un plan de entrenamiento adaptado a tu perfil actual.
+        </Text>
+      </View>
 
       <TouchableOpacity
         style={[styles.genBtn, loading && styles.genBtnDisabled]}
@@ -76,7 +79,7 @@ export function RoutineScreen() {
         disabled={loading}
       >
         {loading ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={palette.cocoa} />
         ) : (
           <Text style={styles.genBtnText}>
             {routine ? "Regenerar rutina" : "Generar rutina personalizada"}
@@ -174,38 +177,55 @@ export function RoutineScreen() {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: palette.snow,
+    backgroundColor: palette.background,
     padding: 20,
+  },
+  heroCard: {
+    backgroundColor: palette.card,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: palette.line,
+    marginBottom: 20,
+  },
+  eyebrow: {
+    color: palette.coral,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   title: {
     fontSize: 28,
     fontWeight: "800",
     color: palette.ink,
+    marginTop: 8,
   },
   subtitle: {
     marginTop: 8,
-    color: "#556977",
-    marginBottom: 20,
+    color: palette.textMuted,
     fontSize: 14,
   },
   genBtn: {
-    backgroundColor: palette.ocean,
-    borderRadius: 14,
-    paddingVertical: 14,
+    backgroundColor: palette.gold,
+    borderRadius: 16,
+    paddingVertical: 15,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: palette.cocoa,
   },
   genBtnDisabled: {
-    backgroundColor: "#B0C4CF",
+    opacity: 0.6,
   },
   genBtnText: {
-    color: "#FFFFFF",
+    color: palette.cocoa,
     fontWeight: "700",
     fontSize: 15,
   },
   loadingHint: {
     marginTop: 12,
     textAlign: "center",
-    color: "#8FA0AE",
+    color: palette.textSoft,
     fontSize: 13,
   },
   routineContainer: {
@@ -213,12 +233,14 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   routineHeader: {
-    backgroundColor: palette.ocean,
+    backgroundColor: palette.moss,
     borderRadius: 16,
     padding: 16,
+    borderWidth: 1,
+    borderColor: palette.line,
   },
   routineName: {
-    color: "#FFFFFF",
+    color: palette.cocoa,
     fontSize: 18,
     fontWeight: "800",
   },
@@ -228,21 +250,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   metaBadge: {
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: palette.surface,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   metaText: {
-    color: "#FFFFFF",
+    color: palette.cocoa,
     fontSize: 12,
     fontWeight: "600",
   },
   sessionCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: palette.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E2ECF2",
+    borderColor: palette.line,
     overflow: "hidden",
   },
   sessionHeader: {
@@ -257,7 +279,7 @@ const styles = StyleSheet.create({
     color: palette.ink,
   },
   sessionFocus: {
-    color: "#556977",
+    color: palette.textMuted,
     fontSize: 13,
     marginTop: 2,
   },
@@ -266,22 +288,22 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   sessionDuration: {
-    color: palette.ocean,
+    color: palette.coral,
     fontWeight: "600",
     fontSize: 13,
   },
   sessionArrow: {
-    color: "#8FA0AE",
+    color: palette.textSoft,
     fontSize: 11,
   },
   exerciseList: {
     borderTopWidth: 1,
-    borderTopColor: "#E2ECF2",
+    borderTopColor: palette.line,
     padding: 12,
     gap: 10,
   },
   exerciseRow: {
-    backgroundColor: "#F7FAFC",
+    backgroundColor: palette.surface,
     borderRadius: 10,
     padding: 10,
   },
@@ -297,8 +319,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   exTag: {
-    backgroundColor: "#E8F4FF",
-    color: palette.ocean,
+    backgroundColor: palette.surfaceMuted,
+    color: palette.cocoa,
     fontSize: 12,
     fontWeight: "600",
     borderRadius: 6,
@@ -307,16 +329,16 @@ const styles = StyleSheet.create({
   },
   exNotes: {
     marginTop: 6,
-    color: "#556977",
+    color: palette.textMuted,
     fontSize: 12,
     fontStyle: "italic",
   },
   tipsCard: {
-    backgroundColor: "#F0FFF4",
+    backgroundColor: palette.surfaceMuted,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#C6F6D5",
+    borderColor: palette.line,
   },
   tipsTitle: {
     fontWeight: "700",
@@ -325,20 +347,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   tip: {
-    color: "#276749",
+    color: palette.textMuted,
     fontSize: 13,
     lineHeight: 20,
     marginBottom: 4,
   },
   nutritionCard: {
-    backgroundColor: "#FFFBEB",
+    backgroundColor: palette.gold,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#FBD38D",
+    borderColor: palette.cocoa,
   },
   nutritionText: {
-    color: "#744210",
+    color: palette.cocoa,
     fontSize: 13,
     lineHeight: 20,
   },

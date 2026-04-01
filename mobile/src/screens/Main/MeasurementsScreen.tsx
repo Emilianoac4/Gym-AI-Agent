@@ -118,8 +118,11 @@ export function MeasurementsScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Mediciones</Text>
-      <Text style={styles.subtitle}>Registra tus metricas para seguir tu progreso semanal.</Text>
+      <View style={styles.heroCard}>
+        <Text style={styles.eyebrow}>Progreso corporal</Text>
+        <Text style={styles.title}>Mediciones</Text>
+        <Text style={styles.subtitle}>Registra tus metricas para seguir tu progreso semanal.</Text>
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.label}>Peso (kg)</Text>
@@ -129,6 +132,7 @@ export function MeasurementsScreen() {
           onChangeText={setWeightKg}
           keyboardType="decimal-pad"
           placeholder="72.5"
+          placeholderTextColor={palette.textSoft}
         />
 
         <Text style={styles.label}>Grasa corporal (%)</Text>
@@ -138,6 +142,7 @@ export function MeasurementsScreen() {
           onChangeText={setBodyFatPct}
           keyboardType="decimal-pad"
           placeholder="18"
+          placeholderTextColor={palette.textSoft}
         />
 
         <Text style={styles.label}>Masa muscular (kg)</Text>
@@ -147,6 +152,7 @@ export function MeasurementsScreen() {
           onChangeText={setMuscleMass}
           keyboardType="decimal-pad"
           placeholder="32"
+          placeholderTextColor={palette.textSoft}
         />
 
         <Text style={styles.label}>Pecho (cm)</Text>
@@ -156,6 +162,7 @@ export function MeasurementsScreen() {
           onChangeText={setChestCm}
           keyboardType="decimal-pad"
           placeholder="100"
+          placeholderTextColor={palette.textSoft}
         />
 
         <Text style={styles.label}>Cintura (cm)</Text>
@@ -165,6 +172,7 @@ export function MeasurementsScreen() {
           onChangeText={setWaistCm}
           keyboardType="decimal-pad"
           placeholder="84"
+          placeholderTextColor={palette.textSoft}
         />
 
         <Text style={styles.label}>Cadera (cm)</Text>
@@ -174,6 +182,7 @@ export function MeasurementsScreen() {
           onChangeText={setHipCm}
           keyboardType="decimal-pad"
           placeholder="96"
+          placeholderTextColor={palette.textSoft}
         />
 
         <Text style={styles.label}>Brazo (cm)</Text>
@@ -183,6 +192,7 @@ export function MeasurementsScreen() {
           onChangeText={setArmCm}
           keyboardType="decimal-pad"
           placeholder="34"
+          placeholderTextColor={palette.textSoft}
         />
 
         <AppButton label={loading ? "Guardando..." : "Guardar medicion"} onPress={onSave} disabled={loading} />
@@ -214,18 +224,33 @@ export function MeasurementsScreen() {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: palette.snow,
+    backgroundColor: palette.background,
     padding: 20,
+  },
+  heroCard: {
+    backgroundColor: palette.card,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: palette.line,
+    marginBottom: 16,
+  },
+  eyebrow: {
+    color: palette.coral,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   title: {
     fontSize: 28,
     fontWeight: "800",
     color: palette.ink,
+    marginTop: 8,
   },
   subtitle: {
     marginTop: 8,
-    color: "#556977",
-    marginBottom: 16,
+    color: palette.textMuted,
   },
   sectionTitle: {
     marginTop: 18,
@@ -236,8 +261,10 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: palette.card,
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: palette.line,
   },
   label: {
     fontWeight: "700",
@@ -247,23 +274,24 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "#CFD9DF",
+    borderColor: palette.line,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 4,
-    backgroundColor: "#FAFCFD",
+    backgroundColor: palette.cream,
+    color: palette.ink,
   },
   empty: {
-    color: "#6F7D87",
+    color: palette.textMuted,
   },
   row: {
     borderWidth: 1,
-    borderColor: "#E3EBF0",
+    borderColor: palette.line,
     borderRadius: 12,
     padding: 10,
     marginBottom: 10,
-    backgroundColor: "#FBFDFE",
+    backgroundColor: palette.surface,
   },
   rowDate: {
     fontWeight: "800",
@@ -271,7 +299,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   rowValue: {
-    color: "#435867",
+    color: palette.textMuted,
     fontSize: 13,
   },
 });

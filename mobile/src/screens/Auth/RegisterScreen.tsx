@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { palette } from "../../theme/palette";
@@ -22,34 +23,56 @@ export function RegisterScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Primer setup del gimnasio</Text>
-        <Text style={styles.subtitle}>Crea el usuario administrador inicial para tu app.</Text>
+    <LinearGradient colors={palette.gradientHero} style={styles.shell}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>Setup inicial</Text>
+          <Text style={styles.title}>Primer setup del gimnasio</Text>
+          <Text style={styles.subtitle}>Crea el usuario administrador inicial para tu app.</Text>
 
-        <TextInput style={styles.input} placeholder="Nombre del gimnasio" value={gymName} onChangeText={setGymName} />
-        <TextInput style={styles.input} placeholder="Nombre del propietario" value={ownerName} onChangeText={setOwnerName} />
-        <TextInput style={styles.input} placeholder="Nombre completo admin" value={fullName} onChangeText={setFullName} />
-        <TextInput style={styles.input} placeholder="Email" autoCapitalize="none" value={email} onChangeText={setEmail} />
-        <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
+          <View style={styles.banner}>
+            <Text style={styles.bannerTitle}>Listo para probar la nueva identidad</Text>
+            <Text style={styles.bannerText}>Esta configuracion deja activa la experiencia visual base para Expo.</Text>
+          </View>
 
-        <AppButton label={loading ? "Creando..." : "Crear y entrar"} onPress={onRegister} disabled={loading} />
-      </View>
-    </ScrollView>
+          <TextInput style={styles.input} placeholder="Nombre del gimnasio" placeholderTextColor={palette.textSoft} value={gymName} onChangeText={setGymName} />
+          <TextInput style={styles.input} placeholder="Nombre del propietario" placeholderTextColor={palette.textSoft} value={ownerName} onChangeText={setOwnerName} />
+          <TextInput style={styles.input} placeholder="Nombre completo admin" placeholderTextColor={palette.textSoft} value={fullName} onChangeText={setFullName} />
+          <TextInput style={styles.input} placeholder="Email" placeholderTextColor={palette.textSoft} autoCapitalize="none" value={email} onChangeText={setEmail} />
+          <TextInput style={styles.input} placeholder="Password" placeholderTextColor={palette.textSoft} secureTextEntry value={password} onChangeText={setPassword} />
+
+          <AppButton label={loading ? "Creando..." : "Crear y entrar"} onPress={onRegister} disabled={loading} />
+        </View>
+      </ScrollView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  shell: {
+    flex: 1,
+  },
   container: {
     flexGrow: 1,
     justifyContent: "center",
     padding: 20,
-    backgroundColor: palette.snow,
   },
   card: {
     backgroundColor: palette.card,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 24,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: palette.line,
+    shadowColor: palette.cocoa,
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
+  },
+  eyebrow: {
+    color: palette.coral,
+    fontWeight: "700",
+    marginBottom: 6,
   },
   title: {
     color: palette.ink,
@@ -57,17 +80,34 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   subtitle: {
-    color: "#556977",
+    color: palette.textMuted,
     marginTop: 8,
     marginBottom: 18,
   },
+  banner: {
+    backgroundColor: palette.surfaceMuted,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 18,
+  },
+  bannerTitle: {
+    color: palette.cocoa,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  bannerText: {
+    color: palette.textMuted,
+    marginTop: 6,
+    lineHeight: 20,
+  },
   input: {
     borderWidth: 1,
-    borderColor: "#CFD9DF",
+    borderColor: palette.line,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 12,
-    backgroundColor: "#FAFCFD",
+    backgroundColor: palette.cream,
+    color: palette.ink,
   },
 });

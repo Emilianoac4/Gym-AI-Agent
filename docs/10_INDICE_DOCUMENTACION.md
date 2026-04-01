@@ -16,6 +16,7 @@
 
 ### Para continuar con Fase 3+:
 1. Lee [Roadmap Detallado](docs/09_ROADMAP_CONTINUIDAD.md)
+2. Revisa [Funcionalidades por Rol](docs/12_FUNCIONALIDADES_POR_ROL.md)
 2. Estudia [Arquitectura General](docs/05_ARQUITECTURA_DETALLADA.md)
 3. Consulta [Decisiones Técnicas](docs/08_DECISIONES_TROUBLESHOOTING.md)
 
@@ -218,6 +219,23 @@
 - PostgreSQL vs NoSQL
 - JWT stateless auth
 - Zod validation
+
+---
+
+### 👥 [12_FUNCIONALIDADES_POR_ROL.md](docs/12_FUNCIONALIDADES_POR_ROL.md)  📍 **NUEVO**
+**Contenido**: propuesta funcional por tipo de usuario y priorizacion de producto  
+**Para quién**: founders, product, diseño, desarrollo  
+**Tiempo**: 15 min  
+**Secciones**:
+- valor por miembro y admin
+- modulos priorizados por rol
+- dependencias tecnicas
+- fases MVP, operativa e integraciones
+
+**Cuándo consultar**:
+- quieres decidir que construir primero
+- necesitas alinear negocio y desarrollo
+- vas a separar navegacion o permisos por rol
 - bcryptjs hashing
 - OpenAI GPT-4
 - Module-per-feature architecture

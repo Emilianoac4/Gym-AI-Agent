@@ -77,6 +77,8 @@ OPENAI_API_KEY="sk-..."
 
 **Alcance**:
 
+- Referencia funcional por rol disponible en [12_FUNCIONALIDADES_POR_ROL.md](docs/12_FUNCIONALIDADES_POR_ROL.md)
+
 #### Frontend Architecture
 ```
 react-native-app/

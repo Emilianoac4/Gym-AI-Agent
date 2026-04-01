@@ -22,15 +22,25 @@ export function LoginScreen() {
   };
 
   return (
-    <LinearGradient colors={["#EAF4FF", "#F4F7F9"]} style={styles.container}>
+    <LinearGradient colors={palette.gradientHero} style={styles.container}>
       <View style={styles.card}>
         <Text style={styles.eyebrow}>GymAI</Text>
         <Text style={styles.title}>Entrena con inteligencia</Text>
         <Text style={styles.subtitle}>Tu progreso, mediciones y coach IA en una sola app.</Text>
 
+        <View style={styles.highlightStrip}>
+          <View style={styles.highlightPill}>
+            <Text style={styles.highlightText}>Rutinas IA</Text>
+          </View>
+          <View style={styles.highlightPillAlt}>
+            <Text style={styles.highlightTextAlt}>Seguimiento real</Text>
+          </View>
+        </View>
+
         <TextInput
           style={styles.input}
           placeholder="Email"
+          placeholderTextColor={palette.textSoft}
           keyboardType="email-address"
           autoCapitalize="none"
           value={email}
@@ -40,6 +50,7 @@ export function LoginScreen() {
         <TextInput
           style={styles.input}
           placeholder="Password"
+          placeholderTextColor={palette.textSoft}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
@@ -63,16 +74,18 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: palette.card,
-    borderRadius: 24,
-    padding: 22,
-    shadowColor: "#163247",
-    shadowOpacity: 0.1,
+    borderRadius: 28,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: palette.line,
+    shadowColor: palette.cocoa,
+    shadowOpacity: 0.12,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 10 },
     elevation: 5,
   },
   eyebrow: {
-    color: palette.sky,
+    color: palette.coral,
     fontWeight: "700",
     marginBottom: 6,
   },
@@ -84,20 +97,49 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 8,
     marginBottom: 20,
-    color: "#4E606D",
+    color: palette.textMuted,
     lineHeight: 20,
+  },
+  highlightStrip: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+    marginBottom: 18,
+  },
+  highlightPill: {
+    backgroundColor: palette.moss,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  highlightPillAlt: {
+    backgroundColor: palette.cocoa,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  highlightText: {
+    color: palette.cocoa,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  highlightTextAlt: {
+    color: palette.gold,
+    fontWeight: "700",
+    fontSize: 12,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#CFD9DF",
+    borderColor: palette.line,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 12,
-    backgroundColor: "#FAFCFD",
+    backgroundColor: palette.cream,
+    color: palette.ink,
   },
   link: {
-    color: palette.ocean,
+    color: palette.cocoa,
     textAlign: "center",
     marginTop: 14,
     fontWeight: "600",

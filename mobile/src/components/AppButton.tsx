@@ -10,7 +10,11 @@ type Props = {
 
 export function AppButton({ label, onPress, disabled }: Props) {
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.button, pressed && styles.pressed, disabled && styles.disabled]}>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [styles.button, pressed && styles.pressed, disabled && styles.disabled]}
+    >
       <Text style={styles.text}>{label}</Text>
     </Pressable>
   );
@@ -18,19 +22,29 @@ export function AppButton({ label, onPress, disabled }: Props) {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: palette.ocean,
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: palette.cocoa,
+    paddingVertical: 15,
+    borderRadius: 16,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: palette.gold,
+    shadowColor: palette.cocoa,
+    shadowOpacity: 0.18,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 14,
+    elevation: 4,
   },
   pressed: {
-    opacity: 0.85,
+    opacity: 0.92,
+    transform: [{ scale: 0.99 }],
   },
   disabled: {
-    opacity: 0.5,
+    opacity: 0.55,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   text: {
-    color: palette.snow,
+    color: palette.gold,
     fontSize: 16,
     fontWeight: "700",
   },

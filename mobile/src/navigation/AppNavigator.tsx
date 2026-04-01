@@ -20,9 +20,20 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: palette.ocean,
-        tabBarInactiveTintColor: "#6F7D87",
-        tabBarStyle: { height: 64, paddingBottom: 8, paddingTop: 6 },
+        tabBarActiveTintColor: palette.cocoa,
+        tabBarInactiveTintColor: palette.tabInactive,
+        tabBarStyle: {
+          height: 72,
+          paddingBottom: 10,
+          paddingTop: 10,
+          backgroundColor: palette.card,
+          borderTopColor: palette.line,
+          borderTopWidth: 1,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "700",
+        },
       }}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
@@ -38,11 +49,11 @@ const navTheme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    background: palette.snow,
-    primary: palette.ocean,
+    background: palette.background,
+    primary: palette.cocoa,
     text: palette.ink,
-    card: "#FFFFFF",
-    border: "#D5DEE4",
+    card: palette.card,
+    border: palette.line,
   },
 };
 

@@ -47,18 +47,21 @@ export function ProfileScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Perfil Deportivo</Text>
-      <Text style={styles.subtitle}>Estos datos alimentan la IA para rutinas y nutricion personalizadas.</Text>
+      <View style={styles.heroCard}>
+        <Text style={styles.eyebrow}>Perfil base</Text>
+        <Text style={styles.title}>Perfil Deportivo</Text>
+        <Text style={styles.subtitle}>Estos datos alimentan la IA para rutinas y nutricion personalizadas.</Text>
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.label}>Objetivo</Text>
-        <TextInput style={styles.input} value={goal} onChangeText={setGoal} placeholder="Ganar masa muscular" />
+        <TextInput style={styles.input} value={goal} onChangeText={setGoal} placeholder="Ganar masa muscular" placeholderTextColor={palette.textSoft} />
 
         <Text style={styles.label}>Disponibilidad</Text>
-        <TextInput style={styles.input} value={availability} onChangeText={setAvailability} placeholder="4 dias por semana" />
+        <TextInput style={styles.input} value={availability} onChangeText={setAvailability} placeholder="4 dias por semana" placeholderTextColor={palette.textSoft} />
 
         <Text style={styles.label}>Nivel</Text>
-        <TextInput style={styles.input} value={experienceLvl} onChangeText={setExperienceLvl} placeholder="Intermedio" />
+        <TextInput style={styles.input} value={experienceLvl} onChangeText={setExperienceLvl} placeholder="Intermedio" placeholderTextColor={palette.textSoft} />
 
         <AppButton label="Guardar perfil" onPress={onSave} />
       </View>
@@ -69,23 +72,40 @@ export function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: palette.snow,
+    backgroundColor: palette.background,
     padding: 20,
+  },
+  heroCard: {
+    backgroundColor: palette.card,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: palette.line,
+    marginBottom: 16,
+  },
+  eyebrow: {
+    color: palette.coral,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   title: {
     fontSize: 28,
     fontWeight: "800",
     color: palette.ink,
+    marginTop: 8,
   },
   subtitle: {
     marginTop: 8,
-    color: "#556977",
-    marginBottom: 16,
+    color: palette.textMuted,
   },
   card: {
     backgroundColor: palette.card,
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: palette.line,
   },
   label: {
     fontWeight: "700",
@@ -95,11 +115,12 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "#CFD9DF",
+    borderColor: palette.line,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 4,
-    backgroundColor: "#FAFCFD",
+    backgroundColor: palette.cream,
+    color: palette.ink,
   },
 });
