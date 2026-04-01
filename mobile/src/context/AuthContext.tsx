@@ -7,6 +7,8 @@ type AuthContextValue = {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
+  loginWithApple: (idToken: string) => Promise<void>;
   registerAdmin: (input: {
     gymName: string;
     ownerName: string;
@@ -28,6 +30,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const data = await api.login({ email, password });
+      setToken(data.token);
+      setUser(data.user);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginWithGoogle = async (idToken: string) => {
+    setLoading(true);
+    try {
+      const data = await api.loginWithGoogle({ idToken });
+      setToken(data.token);
+      setUser(data.user);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginWithApple = async (idToken: string) => {
+    setLoading(true);
+    try {
+      const data = await api.loginWithApple({ idToken });
       setToken(data.token);
       setUser(data.user);
     } finally {
@@ -71,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const value = useMemo(
-    () => ({ user, token, loading, login, registerAdmin, logout }),
+    () => ({ user, token, loading, login, loginWithGoogle, loginWithApple, registerAdmin, logout }),
     [user, token, loading],
   );
 

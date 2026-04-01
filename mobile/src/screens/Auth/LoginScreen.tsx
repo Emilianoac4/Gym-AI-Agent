@@ -1,17 +1,37 @@
-import React, { useState } from "react";
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
+import * as WebBrowser from "expo-web-browser";
+import * as Google from "expo-auth-session/providers/google";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { useAuth } from "../../context/AuthContext";
 import { AppButton } from "../../components/AppButton";
 import { palette } from "../../theme/palette";
 
+WebBrowser.maybeCompleteAuthSession();
+
 export function LoginScreen() {
   const navigation = useNavigation<any>();
-  const { login, loading } = useAuth();
+  const { login, loginWithGoogle, loginWithApple, loading } = useAuth();
 
   const [email, setEmail] = useState("admin@gymiai.com");
   const [password, setPassword] = useState("Admin123456");
+
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
+    clientId:
+      (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+        ?.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID,
+    iosClientId:
+      (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+        ?.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId:
+      (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+        ?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId:
+      (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+        ?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
 
   const onLogin = async () => {
     try {
@@ -20,6 +40,91 @@ export function LoginScreen() {
       Alert.alert("No fue posible ingresar", error instanceof Error ? error.message : "Error inesperado");
     }
   };
+
+  const onGoogleLogin = async () => {
+    if (!googleRequest) {
+      Alert.alert("Google no configurado", "Falta configurar Client ID de Google en variables de entorno.");
+      return;
+    }
+
+    const result = await promptGoogleAsync();
+
+    if (result.type === "cancel") {
+      return;
+    }
+
+    if (result.type !== "success") {
+      Alert.alert("Google Sign-In", "No fue posible completar el acceso con Google.");
+    }
+  };
+
+  const onAppleLogin = async () => {
+    if (Platform.OS !== "ios") {
+      Alert.alert("No disponible", "Apple Sign-In solo esta disponible en iOS.");
+      return;
+    }
+
+    const isAvailable = await AppleAuthentication.isAvailableAsync();
+    if (!isAvailable) {
+      Alert.alert("No disponible", "Apple Sign-In no esta disponible en este dispositivo.");
+      return;
+    }
+
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        throw new Error("Apple no devolvio un token valido.");
+      }
+
+      await loginWithApple(credential.identityToken);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("The user canceled the authorization attempt")
+      ) {
+        return;
+      }
+
+      Alert.alert(
+        "Apple Sign-In",
+        error instanceof Error ? error.message : "No fue posible iniciar sesion con Apple.",
+      );
+    }
+  };
+
+  useEffect(() => {
+    const run = async () => {
+      if (googleResponse?.type !== "success") {
+        return;
+      }
+
+      const idToken =
+        googleResponse.authentication?.idToken ??
+        ((googleResponse as unknown as { params?: Record<string, string> }).params?.id_token ?? "");
+
+      if (!idToken) {
+        Alert.alert("Google Sign-In", "Google no devolvio un token valido.");
+        return;
+      }
+
+      try {
+        await loginWithGoogle(idToken);
+      } catch (error) {
+        Alert.alert(
+          "Google Sign-In",
+          error instanceof Error ? error.message : "No fue posible iniciar sesion con Google.",
+        );
+      }
+    };
+
+    run();
+  }, [googleResponse, loginWithGoogle]);
 
   return (
     <LinearGradient colors={palette.gradientHero} style={styles.container}>
@@ -57,6 +162,26 @@ export function LoginScreen() {
         />
 
         <AppButton label={loading ? "Ingresando..." : "Iniciar Sesion"} onPress={onLogin} disabled={loading} />
+
+        <View style={styles.socialGroup}>
+          <TouchableOpacity
+            style={[styles.socialButton, styles.googleButton]}
+            onPress={onGoogleLogin}
+            disabled={loading}
+          >
+            <Text style={styles.googleButtonText}>Continuar con Google</Text>
+          </TouchableOpacity>
+
+          {Platform.OS === "ios" ? (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={12}
+              style={styles.appleButton}
+              onPress={onAppleLogin}
+            />
+          ) : null}
+        </View>
 
         <TouchableOpacity onPress={() => navigation.navigate("Register")}>
           <Text style={styles.link}>Crear cuenta inicial de gimnasio</Text>
@@ -143,5 +268,27 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 14,
     fontWeight: "600",
+  },
+  socialGroup: {
+    marginTop: 6,
+    gap: 10,
+  },
+  socialButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  googleButton: {
+    borderColor: palette.line,
+    backgroundColor: palette.cream,
+  },
+  googleButtonText: {
+    color: palette.ink,
+    fontWeight: "700",
+  },
+  appleButton: {
+    width: "100%",
+    height: 44,
   },
 });

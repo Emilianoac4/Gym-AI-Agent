@@ -21,6 +21,10 @@ cp .env.example .env
 
 ```env
 EXPO_PUBLIC_API_BASE_URL=http://192.168.1.10:3000
+EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID=<google-expo-client-id>
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=<google-ios-client-id>
+EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=<google-android-client-id>
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<google-web-client-id>
 ```
 
 3. Instala dependencias:
@@ -38,6 +42,8 @@ npm run start
 ## Flujo actual implementado
 
 - Login
+- Login con Google
+- Login con Apple (iOS)
 - Registro admin inicial
 - Home
 - Perfil (leer y actualizar)

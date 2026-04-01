@@ -2,9 +2,11 @@ import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
+import { env } from "../../config/env";
 import { HttpError } from "../../utils/http-error";
 import { signAuthToken, verifyAuthToken } from "../../utils/jwt";
-import { LoginInput, RegisterInput } from "./auth.validation";
+import { LoginInput, OauthLoginInput, RegisterInput } from "./auth.validation";
+import { verifyAppleIdToken, verifyGoogleIdToken } from "./oauth.providers";
 
 const parseAdminFromHeader = (req: Request): { userId: string; role: UserRole } | null => {
   const authHeader = req.headers.authorization;
@@ -109,4 +111,54 @@ export const login = async (
       gymId: user.gymId,
     },
   });
+};
+
+const completeOauthLogin = async (email: string, res: Response): Promise<void> => {
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user || !user.isActive) {
+    throw new HttpError(
+      404,
+      "No account is linked to this social email. Ask an admin to create your account first.",
+    );
+  }
+
+  const token = signAuthToken({ userId: user.id, role: user.role });
+
+  res.json({
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      gymId: user.gymId,
+    },
+  });
+};
+
+export const oauthGoogle = async (
+  req: Request<unknown, unknown, OauthLoginInput>,
+  res: Response,
+): Promise<void> => {
+  const identity = await verifyGoogleIdToken(req.body.idToken);
+
+  if (!identity.emailVerified && !env.AUTH_ALLOW_UNVERIFIED_SOCIAL_EMAIL) {
+    throw new HttpError(401, "Google email is not verified");
+  }
+
+  await completeOauthLogin(identity.email, res);
+};
+
+export const oauthApple = async (
+  req: Request<unknown, unknown, OauthLoginInput>,
+  res: Response,
+): Promise<void> => {
+  const identity = await verifyAppleIdToken(req.body.idToken);
+
+  if (!identity.emailVerified && !env.AUTH_ALLOW_UNVERIFIED_SOCIAL_EMAIL) {
+    throw new HttpError(401, "Apple email is not verified");
+  }
+
+  await completeOauthLogin(identity.email, res);
 };

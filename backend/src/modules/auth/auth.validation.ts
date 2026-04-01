@@ -22,5 +22,10 @@ export const loginSchema = z.object({
   password: z.string().min(8),
 });
 
+export const oauthLoginSchema = z.object({
+  idToken: z.string().min(20),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type OauthLoginInput = z.infer<typeof oauthLoginSchema>;

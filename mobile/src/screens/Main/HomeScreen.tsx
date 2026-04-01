@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
+import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
+import { ProgressSummary } from "../../types/api";
 
 const memberHighlights = [
   {
@@ -36,10 +38,55 @@ const adminHighlights = [
 ];
 
 export function HomeScreen() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
   const isAdmin = user?.role === "admin";
   const highlights = isAdmin ? adminHighlights : memberHighlights;
   const roleLabel = isAdmin ? "Dueno del gimnasio" : "Miembro";
+  const [summary, setSummary] = useState<ProgressSummary | null>(null);
+
+  useEffect(() => {
+    const loadSummary = async () => {
+      if (!user || !token || isAdmin) {
+        setSummary(null);
+        return;
+      }
+
+      try {
+        const data = await api.getProgressSummary(user.id, token);
+        setSummary(data.summary);
+      } catch {
+        setSummary(null);
+      }
+    };
+
+    void loadSummary();
+  }, [isAdmin, token, user]);
+
+  const memberMainText = useMemo(() => {
+    if (isAdmin) {
+      return "Retener clientes en riesgo";
+    }
+
+    if (!summary) {
+      return "Completa tu perfil, rutina y primer check-in";
+    }
+
+    return summary.nextAction;
+  }, [isAdmin, summary]);
+
+  const memberSecondaryText = useMemo(() => {
+    if (isAdmin) {
+      return "84% satisfaccion coach";
+    }
+
+    if (!summary) {
+      return "Coach disponible para rutina, dieta y lesion";
+    }
+
+    const streak = summary.weeklyCheckInStreak;
+    const pending = summary.hasMeasurementThisWeek ? "check-in al dia" : "check-in pendiente";
+    return `${streak} semana(s) de racha, ${pending}`;
+  }, [isAdmin, summary]);
 
   return (
     <LinearGradient colors={[palette.cream, palette.gold, palette.coral]} style={styles.shell}>
@@ -64,11 +111,11 @@ export function HomeScreen() {
         <View style={styles.kpiRow}>
           <View style={styles.kpiCardPrimary}>
             <Text style={styles.kpiLabelDark}>{isAdmin ? "Insight principal" : "Siguiente accion"}</Text>
-            <Text style={styles.kpiValueDark}>{isAdmin ? "Retener clientes en riesgo" : "Registrar medidas y ajustar rutina"}</Text>
+            <Text style={styles.kpiValueDark}>{memberMainText}</Text>
           </View>
           <View style={styles.kpiCardSecondary}>
             <Text style={styles.kpiLabelLight}>{isAdmin ? "Indicador" : "Coach IA"}</Text>
-            <Text style={styles.kpiValueLight}>{isAdmin ? "84% satisfaccion coach" : "Disponible para rutina, dieta y lesion"}</Text>
+            <Text style={styles.kpiValueLight}>{memberSecondaryText}</Text>
           </View>
         </View>
 

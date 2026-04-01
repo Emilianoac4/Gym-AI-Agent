@@ -57,6 +57,38 @@ export interface CreateMeasurementPayload {
   photoUrl?: string;
 }
 
+export interface ProgressSummaryMetric {
+  latest: number | null;
+  weeklyChange: number | null;
+  monthlyChange: number | null;
+}
+
+export interface ProgressTimelinePoint {
+  id: string;
+  date: string;
+  weightKg?: number;
+  bodyFatPct?: number;
+  muscleMass?: number;
+  waistCm?: number;
+  armCm?: number;
+}
+
+export interface ProgressSummary {
+  measurementsCount: number;
+  hasMeasurementThisWeek: boolean;
+  daysSinceLastMeasurement: number | null;
+  weeklyCheckInStreak: number;
+  nextAction: string;
+  metrics: {
+    weightKg: ProgressSummaryMetric;
+    bodyFatPct: ProgressSummaryMetric;
+    muscleMass: ProgressSummaryMetric;
+    waistCm: ProgressSummaryMetric;
+    armCm: ProgressSummaryMetric;
+  };
+  timeline: ProgressTimelinePoint[];
+}
+
 export type AIChatLogType = "CHAT" | "ROUTINE_GENERATION" | "NUTRITION_GENERATION" | "DAILY_TIP";
 
 export interface AIChatLog {

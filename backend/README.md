@@ -32,6 +32,11 @@ npm install
 # Actualiza:
 OPENAI_API_KEY="sk-your-openai-api-key-here"  # Get from https://platform.openai.com/api-keys
 PORT=3000
+
+# Social auth (optional)
+GOOGLE_OAUTH_CLIENT_IDS="google-client-id-1,google-client-id-2"
+APPLE_OAUTH_AUDIENCES="com.gymai.mobile"
+AUTH_ALLOW_UNVERIFIED_SOCIAL_EMAIL="false"
 ```
 
 ### 3. Crear tablas en Supabase
@@ -66,6 +71,8 @@ npm run dev
 ### Autenticación (Fase 1)
 - `POST /auth/register` - Registro nuevo
 - `POST /auth/login` - Login y generar JWT
+- `POST /auth/oauth/google` - Login con Google (requiere cuenta existente por email)
+- `POST /auth/oauth/apple` - Login con Apple (requiere cuenta existente por email)
 
 ### Usuarios (Fase 1)
 - `GET /users/:id/profile` - Obtener perfil
@@ -74,6 +81,7 @@ npm run dev
 ### Mediciones (Fase 1)
 - `POST /users/:id/measurements` - Crear medición
 - `GET /users/:id/measurements` - Listar mediciones
+- `GET /users/:id/measurements/progress` - Resumen de progreso (cambios semanales/mensuales, racha y proxima accion)
 
 ### IA (Fase 2)
 - `POST /ai/:userId/routine` - Generar rutina
@@ -147,7 +155,13 @@ backend/
    - Expira en 1 hora
    - Usar en `Authorization: Bearer <token>`
 
-3. **Autorización**:
+3. **Login social**:
+   - `POST /auth/oauth/google` y `POST /auth/oauth/apple`
+   - Validan `idToken` del proveedor en backend
+   - Vinculan por email verificado con cuenta existente
+   - Si el email no existe en la BD, retorna 404 para evitar alta no autorizada
+
+4. **Autorización**:
    - Rutas protegidas validan token
    - Members acceden solo a sus datos
    - Admins acceden a todo

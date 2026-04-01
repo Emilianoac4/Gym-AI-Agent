@@ -3,7 +3,7 @@ import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-nati
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
-import { Measurement } from "../../types/api";
+import { Measurement, ProgressSummary } from "../../types/api";
 import { palette } from "../../theme/palette";
 
 function toOptionalPositiveNumber(value: string): number | undefined {
@@ -20,6 +20,7 @@ function toOptionalPositiveNumber(value: string): number | undefined {
 export function MeasurementsScreen() {
   const { user, token } = useAuth();
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [progressSummary, setProgressSummary] = useState<ProgressSummary | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [weightKg, setWeightKg] = useState("");
@@ -51,13 +52,25 @@ export function MeasurementsScreen() {
 
     setLoading(true);
     try {
-      const data = await api.getMeasurements(user.id, token);
-      setMeasurements(data.measurements);
+      const [measurementsData, summaryData] = await Promise.all([
+        api.getMeasurements(user.id, token),
+        api.getProgressSummary(user.id, token),
+      ]);
+      setMeasurements(measurementsData.measurements);
+      setProgressSummary(summaryData.summary);
     } catch (error) {
       Alert.alert("No se pudieron cargar mediciones", error instanceof Error ? error.message : "Error inesperado");
     } finally {
       setLoading(false);
     }
+  };
+
+  const renderDelta = (value: number | null, suffix: string) => {
+    if (value === null) {
+      return "Sin datos";
+    }
+    const sign = value > 0 ? "+" : "";
+    return `${sign}${value}${suffix}`;
   };
 
   useEffect(() => {
@@ -123,6 +136,48 @@ export function MeasurementsScreen() {
         <Text style={styles.title}>Mediciones</Text>
         <Text style={styles.subtitle}>Registra tus metricas para seguir tu progreso semanal.</Text>
       </View>
+
+      {progressSummary ? (
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>Resumen de progreso</Text>
+          <Text style={styles.summaryHint}>{progressSummary.nextAction}</Text>
+
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>Registros</Text>
+              <Text style={styles.summaryValue}>{progressSummary.measurementsCount}</Text>
+            </View>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>Racha semanal</Text>
+              <Text style={styles.summaryValue}>{progressSummary.weeklyCheckInStreak}</Text>
+            </View>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>Ultimo check-in</Text>
+              <Text style={styles.summaryValue}>
+                {progressSummary.daysSinceLastMeasurement === null
+                  ? "Sin datos"
+                  : `${progressSummary.daysSinceLastMeasurement} dia(s)`}
+              </Text>
+            </View>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>Estado semanal</Text>
+              <Text style={styles.summaryValue}>{progressSummary.hasMeasurementThisWeek ? "Al dia" : "Pendiente"}</Text>
+            </View>
+          </View>
+
+          <View style={styles.trendCard}>
+            <Text style={styles.trendTitle}>Cambios vs periodos anteriores</Text>
+            <Text style={styles.trendText}>Peso (7 dias): {renderDelta(progressSummary.metrics.weightKg.weeklyChange, " kg")}</Text>
+            <Text style={styles.trendText}>Peso (30 dias): {renderDelta(progressSummary.metrics.weightKg.monthlyChange, " kg")}</Text>
+            <Text style={styles.trendText}>
+              Cintura (30 dias): {renderDelta(progressSummary.metrics.waistCm.monthlyChange, " cm")}
+            </Text>
+            <Text style={styles.trendText}>
+              Brazo (30 dias): {renderDelta(progressSummary.metrics.armCm.monthlyChange, " cm")}
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.card}>
         <Text style={styles.label}>Peso (kg)</Text>
@@ -251,6 +306,65 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 8,
     color: palette.textMuted,
+  },
+  summaryCard: {
+    backgroundColor: palette.card,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: palette.line,
+    marginBottom: 14,
+  },
+  summaryTitle: {
+    color: palette.ink,
+    fontWeight: "800",
+    fontSize: 17,
+  },
+  summaryHint: {
+    color: palette.textMuted,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  summaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  summaryCell: {
+    width: "47%",
+    backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: 12,
+    padding: 10,
+  },
+  summaryLabel: {
+    color: palette.textSoft,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  summaryValue: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  trendCard: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: palette.surfaceMuted,
+  },
+  trendTitle: {
+    color: palette.ink,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  trendText: {
+    color: palette.textMuted,
+    marginBottom: 4,
   },
   sectionTitle: {
     marginTop: 18,

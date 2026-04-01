@@ -1,4 +1,4 @@
-import { AIChatLog, CreateMeasurementPayload, Measurement } from "../types/api";
+import { AIChatLog, CreateMeasurementPayload, Measurement, ProgressSummary } from "../types/api";
 
 const API_BASE_URL =
   (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
@@ -71,6 +71,18 @@ export const api = {
       body: payload,
     }),
 
+  loginWithGoogle: (payload: { idToken: string }) =>
+    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "member"; gymId: string } }>("/auth/oauth/google", {
+      method: "POST",
+      body: payload,
+    }),
+
+  loginWithApple: (payload: { idToken: string }) =>
+    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "member"; gymId: string } }>("/auth/oauth/apple", {
+      method: "POST",
+      body: payload,
+    }),
+
   register: (payload: {
     gym?: { name: string; ownerName: string; address?: string; phone?: string };
     user: { email: string; password: string; fullName: string; role: "admin" | "member" };
@@ -129,6 +141,11 @@ export const api = {
 
   getMeasurements: (id: string, token: string) =>
     request<{ measurements: Measurement[] }>(`/users/${id}/measurements`, {
+      token,
+    }),
+
+  getProgressSummary: (id: string, token: string) =>
+    request<{ summary: ProgressSummary }>(`/users/${id}/measurements/progress`, {
       token,
     }),
 
