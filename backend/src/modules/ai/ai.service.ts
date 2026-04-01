@@ -138,41 +138,48 @@ Keep answers practical, concise, and under 220 words.
     }
   ): Promise<string> {
     const prompt = `
-You are an expert fitness coach. Based on the following user profile, generate a detailed personalized workout routine in JSON format.
+You are an expert fitness coach creating a personalized workout routine.
 
-User Context:
+User Profile:
 - Goal: ${userContext.goal}
 - Experience Level: ${userContext.experienceLevel}
 - Weekly Availability: ${userContext.availability}
 - Medical Conditions: ${userContext.medicalConditions || "None"}
 - Current Injuries: ${userContext.injuries || "None"}
 
-Generate a JSON response with the following structure:
+CRITICAL REQUIREMENTS:
+1. Generate a complete, detailed routine with exercises for ALL sessions
+2. Number of sessions must match weekly_sessions field
+3. Each session must have AT LEAST 4 exercises with full details
+4. Include practical progression tips and nutrition advice
+
+Generate JSON ONLY (no markdown, no explanation, valid JSON only):
 {
-  "routine_name": "string",
-  "duration_weeks": number,
-  "weekly_sessions": number,
+  "routine_name": "Custom ${userContext.experienceLevel} ${userContext.goal} Routine",
+  "duration_weeks": 12,
+  "weekly_sessions": ${userContext.availability.includes("3") ? 3 : userContext.availability.includes("4") ? 4 : userContext.availability.includes("5") ? 5 : 3},
   "sessions": [
     {
-      "day": "string (e.g., Monday)",
-      "focus": "string (e.g., Upper Body)",
-      "duration_minutes": number,
+      "day": "Monday",
+      "focus": "Upper Body Push",
+      "duration_minutes": 60,
       "exercises": [
-        {
-          "name": "string",
-          "sets": number,
-          "reps": "string (e.g., 8-10)",
-          "rest_seconds": number,
-          "notes": "string"
-        }
+        {"name": "Barbell Bench Press", "sets": 4, "reps": "6-8", "rest_seconds": 120, "notes": "Focus on chest"},
+        {"name": "Incline Dumbbell Press", "sets": 3, "reps": "8-10", "rest_seconds": 90, "notes": "Chest and shoulders"},
+        {"name": "Cable Flyes", "sets": 3, "reps": "12-15", "rest_seconds": 60, "notes": "Isolate chest"},
+        {"name": "Shoulder Press", "sets": 3, "reps": "8-10", "rest_seconds": 90, "notes": "Shoulder development"}
       ]
     }
   ],
-  "progression_tips": ["string"],
-  "nutrition_notes": "string"
+  "progression_tips": [
+    "Increase weight by 5-10% when you can complete all reps with good form",
+    "Track all lifts in a journal for consistency",
+    "Rest 48 hours between same muscle groups"
+  ],
+  "nutrition_notes": "Target 0.8-1g protein per lb of bodyweight, eat in slight caloric surplus for muscle gains"
 }
 
-Ensure the routine respects medical conditions and injuries. Return ONLY valid JSON.
+Customize the routine to match the user context. Return ONLY valid JSON.
     `;
 
     let response;
@@ -187,7 +194,22 @@ Ensure the routine respects medical conditions and injuries. Return ONLY valid J
       throw this.extractProviderError(error);
     }
 
-    const content = response.choices[0]?.message?.content || "";
+    const content = (response.choices[0]?.message?.content || "").trim();
+    
+    // Validate that response contains valid JSON structure with sessions
+    try {
+      const parsed = JSON.parse(content);
+      if (!parsed.sessions || parsed.sessions.length === 0) {
+        throw new Error("Generated routine has no sessions");
+      }
+      if (parsed.sessions.some((s: any) => !s.exercises || s.exercises.length === 0)) {
+        throw new Error("Some sessions have no exercises");
+      }
+    } catch (error) {
+      // If JSON is invalid or incomplete, throw error for user feedback
+      const validationError = error instanceof Error ? error.message : "Invalid JSON from AI";
+      throw new Error(`Routine generation incomplete: ${validationError}. Please try again.`);
+    }
     
     await this.saveLogSafely({
       userId,
