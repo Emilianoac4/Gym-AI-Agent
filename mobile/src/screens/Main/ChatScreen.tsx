@@ -34,7 +34,23 @@ export function ChatScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [clearing, setClearing] = useState(false);
+  const [startingNewConversation, setStartingNewConversation] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
+
+  const getHistoryStatus = () => {
+    if (loadingHistory) {
+      return "Sincronizando historial...";
+    }
+
+    if (!lastSyncAt) {
+      return "Historial sin sincronizacion reciente";
+    }
+
+    const hours = String(lastSyncAt.getHours()).padStart(2, "0");
+    const minutes = String(lastSyncAt.getMinutes()).padStart(2, "0");
+    return `Historial sincronizado ${hours}:${minutes}`;
+  };
 
   const loadHistory = useCallback(async () => {
     if (!user || !token) {
@@ -69,6 +85,7 @@ export function ChatScreen() {
       });
 
       setMessages(historyMessages.length > 0 ? historyMessages : [WELCOME_MESSAGE]);
+      setLastSyncAt(new Date());
     } catch (error) {
       setMessages([WELCOME_MESSAGE]);
     } finally {
@@ -122,13 +139,16 @@ export function ChatScreen() {
     setLoading(true);
 
     try {
-      const data = await api.askCoach(user.id, token, text);
+      const data = await api.askCoach(user.id, token, text, {
+        startNewConversation: startingNewConversation,
+      });
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         text: data.response,
       };
       setMessages((prev) => [...prev, aiMsg]);
+      setStartingNewConversation(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error desconocido";
       const errMsg: Message = {
@@ -141,6 +161,16 @@ export function ChatScreen() {
       setLoading(false);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     }
+  };
+
+  const onStartNewConversation = () => {
+    if (loading || loadingHistory || clearing) {
+      return;
+    }
+
+    setMessages([WELCOME_MESSAGE]);
+    setStartingNewConversation(true);
+    setInput("");
   };
 
   const renderItem = ({ item }: { item: Message }) => {
@@ -161,17 +191,32 @@ export function ChatScreen() {
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <Text style={styles.title}>Coach IA</Text>
-          <TouchableOpacity
-            onPress={onClearChat}
-            disabled={clearing || loadingHistory}
-            style={styles.clearButton}
-          >
-            <Text style={styles.clearButtonText}>
-              {clearing ? "Limpiando..." : "Limpiar chat"}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={onStartNewConversation}
+              disabled={loading || loadingHistory || clearing}
+              style={styles.secondaryButton}
+            >
+              <Text style={styles.secondaryButtonText}>Nueva conversacion</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onClearChat}
+              disabled={clearing || loadingHistory}
+              style={styles.clearButton}
+            >
+              <Text style={styles.clearButtonText}>
+                {clearing ? "Limpiando..." : "Limpiar"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={styles.subtitle}>Tu entrenador personal inteligente</Text>
+        <Text style={styles.syncStatus}>{getHistoryStatus()}</Text>
+        {startingNewConversation && (
+          <Text style={styles.newConversationHint}>
+            Nueva conversacion activa: el proximo mensaje se enviara sin contexto previo.
+          </Text>
+        )}
       </View>
 
       <FlatList
@@ -234,10 +279,28 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
+  headerActions: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
   title: {
     fontSize: 24,
     fontWeight: "800",
     color: palette.ink,
+  },
+  secondaryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: palette.card,
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  secondaryButtonText: {
+    color: palette.ink,
+    fontSize: 12,
+    fontWeight: "700",
   },
   clearButton: {
     paddingHorizontal: 12,
@@ -256,6 +319,17 @@ const styles = StyleSheet.create({
     color: palette.textMuted,
     fontSize: 13,
     marginTop: 2,
+  },
+  syncStatus: {
+    color: palette.textSoft,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  newConversationHint: {
+    marginTop: 6,
+    color: palette.coral,
+    fontSize: 12,
+    fontWeight: "600",
   },
   messageList: {
     paddingHorizontal: 16,

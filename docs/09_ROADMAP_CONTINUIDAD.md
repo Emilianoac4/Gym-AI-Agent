@@ -8,6 +8,8 @@
 
 ## 📅 Roadmap Completo
 
+Referencia de ejecucion actualizada: [13_PLAN_IMPLEMENTACION_FUNCIONES.md](docs/13_PLAN_IMPLEMENTACION_FUNCIONES.md)
+
 ### ✅ Fase 1: Fundamentos (Completa)
 **Período**: Marzo 26-30, 2026 (5 días)  
 **Status**: DEPLOYABLE

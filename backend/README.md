@@ -157,8 +157,7 @@ backend/
 ### OpenAI Integration
 
 **Modelos usados:**
-- `gpt-4`: Rutinas y planes nutricionales (precisión JSON)
-- `gpt-3.5-turbo`: Chat y tips (velocidad y costo)
+- `gpt-4o-mini` por defecto para rutina, nutricion, chat y tips (configurable por variable de entorno)
 
 **Prompt Engineering:**
 - Contexto del usuario (perfil, lesiones, metas)
@@ -168,8 +167,12 @@ backend/
 
 **Límites:**
 - Max 2000 tokens por rutina/nutrición
-- Max 800 tokens por chat/tip
+- Max 800 tokens por chat (configurable con `OPENAI_CHAT_MAX_TOKENS`)
 - Temperatura 0.7-0.8 (respuestas creativas)
+
+**Memoria conversacional (Fase A):**
+- El endpoint de chat inyecta una ventana de historial reciente del usuario para dar continuidad a la conversación.
+- Variables de control: `OPENAI_CHAT_CONTEXT_TURNS`, `OPENAI_CHAT_CONTEXT_MAX_CHARS`, `OPENAI_CHAT_MAX_TOKENS`.
 
 ## 💾 Base de Datos
 

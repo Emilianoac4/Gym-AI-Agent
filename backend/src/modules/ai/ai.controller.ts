@@ -119,7 +119,10 @@ export class AIController {
 
   static async chat(req: Request, res: Response, next: NextFunction) {
     try {
-      const { message } = req.body;
+      const { message, startNewConversation } = req.body as {
+        message: string;
+        startNewConversation?: boolean;
+      };
       const userId = req.params.userId as string;
       const auth = (req as any).auth;
 
@@ -133,7 +136,9 @@ export class AIController {
       }
 
       // Chat with AI
-      const response = await aiService.chat(userId, message);
+      const response = await aiService.chat(userId, message, {
+        startNewConversation: Boolean(startNewConversation),
+      });
 
       res.json({
         message: "Chat response received",

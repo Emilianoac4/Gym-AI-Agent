@@ -236,6 +236,23 @@
 - quieres decidir que construir primero
 - necesitas alinear negocio y desarrollo
 - vas a separar navegacion o permisos por rol
+
+---
+
+### 🧭 [13_PLAN_IMPLEMENTACION_FUNCIONES.md](docs/13_PLAN_IMPLEMENTACION_FUNCIONES.md)  📍 **NUEVO**
+**Contenido**: plan de ejecucion por fases para implementar y mejorar funciones clave  
+**Para quién**: founders, product manager, backend/mobile leads  
+**Tiempo**: 10-15 min  
+**Secciones**:
+- estado actual y baseline tecnico
+- fases A-D con criterios de salida
+- backlog tecnico priorizado
+- riesgos, metricas y sprint de 72 horas
+
+**Cuándo consultar**:
+- quieres pasar de ideas a ejecucion concreta
+- necesitas priorizar por impacto y riesgo
+- quieres coordinar backend, mobile y negocio en un mismo plan
 - bcryptjs hashing
 - OpenAI GPT-4
 - Module-per-feature architecture

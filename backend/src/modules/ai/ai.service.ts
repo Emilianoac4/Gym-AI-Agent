@@ -5,6 +5,9 @@ const prisma = new PrismaClient();
 
 class AIService {
   private openai: OpenAI;
+  private readonly chatContextTurns: number;
+  private readonly chatContextMaxChars: number;
+  private readonly chatMaxTokens: number;
   private readonly models: {
     routine: string;
     chat: string;
@@ -42,6 +45,77 @@ Keep answers practical, concise, and under 220 words.
     /\b(descanso|sueno|recuperacion|dolor muscular|estiramiento|calentamiento)\b/i,
     /\b(salud|habitos|bienestar|fitness|coach)\b/i,
   ];
+
+  private static readonly DEFAULT_CHAT_CONTEXT_TURNS = 12;
+  private static readonly MAX_CHAT_CONTEXT_TURNS = 20;
+  private static readonly DEFAULT_CHAT_CONTEXT_MAX_CHARS = 500;
+  private static readonly MIN_CHAT_CONTEXT_MAX_CHARS = 120;
+  private static readonly DEFAULT_CHAT_MAX_TOKENS = 800;
+
+  private toPositiveInt(
+    value: string | undefined,
+    fallback: number,
+    options?: { min?: number; max?: number }
+  ): number {
+    const parsed = Number.parseInt(value || "", 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return fallback;
+    }
+
+    const min = options?.min;
+    const max = options?.max;
+
+    if (typeof min === "number" && parsed < min) {
+      return min;
+    }
+
+    if (typeof max === "number" && parsed > max) {
+      return max;
+    }
+
+    return parsed;
+  }
+
+  private trimForContext(text: string): string {
+    return text.trim().slice(0, this.chatContextMaxChars);
+  }
+
+  private async getRecentChatContext(userId: string) {
+    try {
+      const history = await prisma.aIChatLog.findMany({
+        where: {
+          userId,
+          type: "CHAT",
+        },
+        orderBy: { createdAt: "desc" },
+        take: this.chatContextTurns,
+      });
+
+      const ordered = [...history].reverse();
+
+      return ordered.flatMap((entry) => {
+        const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+        const previousUserMessage = this.trimForContext(entry.userMessage || "");
+        const previousAssistantMessage = this.trimForContext(entry.aiResponse || "");
+
+        if (previousUserMessage) {
+          messages.push({ role: "user", content: previousUserMessage });
+        }
+
+        if (previousAssistantMessage) {
+          messages.push({ role: "assistant", content: previousAssistantMessage });
+        }
+
+        return messages;
+      });
+    } catch (error) {
+      if (this.isLogTableMissing(error)) {
+        return [];
+      }
+
+      throw error;
+    }
+  }
 
   private isOutOfScope(message: string): boolean {
     const trimmed = message.trim();
@@ -99,6 +173,21 @@ Keep answers practical, concise, and under 220 words.
       throw new Error("OPENAI_API_KEY is not set");
     }
     this.openai = new OpenAI({ apiKey });
+    this.chatContextTurns = this.toPositiveInt(
+      process.env.OPENAI_CHAT_CONTEXT_TURNS,
+      AIService.DEFAULT_CHAT_CONTEXT_TURNS,
+      { min: 1, max: AIService.MAX_CHAT_CONTEXT_TURNS }
+    );
+    this.chatContextMaxChars = this.toPositiveInt(
+      process.env.OPENAI_CHAT_CONTEXT_MAX_CHARS,
+      AIService.DEFAULT_CHAT_CONTEXT_MAX_CHARS,
+      { min: AIService.MIN_CHAT_CONTEXT_MAX_CHARS }
+    );
+    this.chatMaxTokens = this.toPositiveInt(
+      process.env.OPENAI_CHAT_MAX_TOKENS,
+      AIService.DEFAULT_CHAT_MAX_TOKENS,
+      { min: 200 }
+    );
     // Use configurable models so deployments do not break when a model is unavailable.
     this.models = {
       routine: process.env.OPENAI_MODEL_ROUTINE || "gpt-4o-mini",
@@ -224,7 +313,11 @@ Customize the routine to match the user context. Return ONLY valid JSON.
   /**
    * Free-form chat with AI fitness coach
    */
-  async chat(userId: string, userMessage: string): Promise<string> {
+  async chat(
+    userId: string,
+    userMessage: string,
+    options: { startNewConversation?: boolean } = {}
+  ): Promise<string> {
     if (this.isOutOfScope(userMessage)) {
       await this.saveLogSafely({
         userId,
@@ -238,14 +331,16 @@ Customize the routine to match the user context. Return ONLY valid JSON.
 
     let response;
     try {
+      const recentContext = options.startNewConversation ? [] : await this.getRecentChatContext(userId);
       response = await this.openai.chat.completions.create({
         model: this.models.chat,
         messages: [
           { role: "system", content: AIService.CHAT_SYSTEM_PROMPT },
+          ...recentContext,
           { role: "user", content: userMessage },
         ],
         temperature: 0.7,
-        max_tokens: 800,
+        max_tokens: this.chatMaxTokens,
       });
     } catch (error) {
       throw this.extractProviderError(error);

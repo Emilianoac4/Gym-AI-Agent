@@ -100,11 +100,19 @@ export const api = {
       timeoutMs: AI_TIMEOUT_MS,
     }),
 
-  askCoach: (id: string, token: string, message: string) =>
+  askCoach: (
+    id: string,
+    token: string,
+    message: string,
+    options?: { startNewConversation?: boolean }
+  ) =>
     request<{ message: string; response: string }>(`/ai/${id}/chat`, {
       method: "POST",
       token,
-      body: { message },
+      body: {
+        message,
+        startNewConversation: options?.startNewConversation ?? false,
+      },
       timeoutMs: AI_TIMEOUT_MS,
     }),
 
