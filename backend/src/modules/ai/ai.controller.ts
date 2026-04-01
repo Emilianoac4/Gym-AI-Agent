@@ -222,7 +222,7 @@ export class AIController {
     });
   }
 
-  private static async getCurrentWeekCompletionState(userId: string) {
+  private static async getCurrentWeekCompletionState(userId: string, since?: Date) {
     const weekStart = getWeekStartIso(new Date());
 
     const [dayLogs, exerciseLogs] = await Promise.all([
@@ -233,6 +233,13 @@ export class AIController {
           userMessage: {
             startsWith: `${ROUTINE_CHECKIN_PREFIX}${weekStart}::`,
           },
+          ...(since
+            ? {
+                createdAt: {
+                  gte: since,
+                },
+              }
+            : {}),
         },
       }),
       prisma.aIChatLog.findMany({
@@ -242,6 +249,13 @@ export class AIController {
           userMessage: {
             startsWith: `${EXERCISE_CHECKIN_PREFIX}${weekStart}::`,
           },
+          ...(since
+            ? {
+                createdAt: {
+                  gte: since,
+                },
+              }
+            : {}),
         },
       }),
     ]);
@@ -379,7 +393,10 @@ export class AIController {
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
-      const completionState = await AIController.getCurrentWeekCompletionState(userId);
+      const completionState = await AIController.getCurrentWeekCompletionState(
+        userId,
+        latest.createdAt
+      );
       const normalizedSession = normalizeSessionDay(sessionDay);
 
       if (completionState.completedDays.has(normalizedSession)) {
@@ -429,10 +446,8 @@ export class AIController {
             (exercise) => !completedExercises.has(normalizeExerciseName(exercise.name))
           );
 
-          const desiredNewCount = Math.max(
-            targetSession.exercises.length - locked.length,
-            0
-          );
+          const baselineExerciseCount = Math.max(targetSession.exercises.length, 5);
+          const desiredNewCount = Math.max(baselineExerciseCount - locked.length, 0);
 
           const newExercises = candidates.slice(0, desiredNewCount);
 
@@ -490,7 +505,10 @@ export class AIController {
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
-      const completionState = await AIController.getCurrentWeekCompletionState(userId);
+      const completionState = await AIController.getCurrentWeekCompletionState(
+        userId,
+        latest.createdAt
+      );
       const normalizedSession = normalizeSessionDay(sessionDay);
       const normalizedExercise = normalizeExerciseName(exerciseName);
 
@@ -548,7 +566,10 @@ export class AIController {
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const normalizedSession = normalizeDayName(sessionDay);
       const normalizedExercise = normalizeExerciseName(exerciseName);
-      const completionState = await AIController.getCurrentWeekCompletionState(userId);
+      const completionState = await AIController.getCurrentWeekCompletionState(
+        userId,
+        latest.createdAt
+      );
 
       if (completionState.completedDays.has(normalizedSession)) {
         throw new HttpError(409, "Este dia ya esta completado y no se puede modificar");
@@ -629,6 +650,27 @@ export class AIController {
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
+      const completionState = await AIController.getCurrentWeekCompletionState(
+        userId,
+        latest.createdAt
+      );
+      const normalizedSession = normalizeSessionDay(sessionDay);
+      const normalizedExercise = normalizeExerciseName(exerciseName);
+
+      if (completionState.completedDays.has(normalizedSession)) {
+        throw new HttpError(409, "Este dia ya esta completado y no se puede modificar");
+      }
+
+      const completedInDay =
+        completionState.completedExercisesByDay.get(normalizedSession) ||
+        new Set<string>();
+
+      if (completedInDay.has(normalizedExercise)) {
+        throw new HttpError(
+          409,
+          "Este ejercicio ya fue marcado como realizado y no se puede reemplazar"
+        );
+      }
 
       const options = await aiService.getRoutineExerciseAlternatives(
         userContext,
@@ -671,12 +713,16 @@ export class AIController {
       const normalizedDay = normalizeSessionDay(sessionDay);
       const normalizedExercise = normalizeExerciseName(exerciseName);
       const marker = `${EXERCISE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}::${normalizedExercise}`;
+      const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
 
       const existing = await prisma.aIChatLog.findFirst({
         where: {
           userId,
           type: "CHAT",
           userMessage: marker,
+          createdAt: {
+            gte: latestRoutine.createdAt,
+          },
         },
       });
 
@@ -705,7 +751,6 @@ export class AIController {
       });
 
       // Auto complete day when every exercise in the session is marked.
-      const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
       const session = latestRoutine.routine.sessions.find(
         (item) => normalizeSessionDay(item.day) === normalizedDay
       );
@@ -717,6 +762,9 @@ export class AIController {
             type: "CHAT",
             userMessage: {
               startsWith: `${EXERCISE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}::`,
+            },
+            createdAt: {
+              gte: latestRoutine.createdAt,
             },
           },
         });
@@ -740,6 +788,9 @@ export class AIController {
               userId,
               type: "CHAT",
               userMessage: dayMarker,
+              createdAt: {
+                gte: latestRoutine.createdAt,
+              },
             },
           });
 
@@ -932,12 +983,16 @@ export class AIController {
       const weekStart = getWeekStartIso(completedDate);
       const normalizedDay = normalizeSessionDay(sessionDay);
       const marker = `${ROUTINE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}`;
+      const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
 
       const existing = await prisma.aIChatLog.findFirst({
         where: {
           userId,
           type: "CHAT",
           userMessage: marker,
+          createdAt: {
+            gte: latestRoutine.createdAt,
+          },
         },
       });
 
@@ -993,6 +1048,9 @@ export class AIController {
 
       const days = req.query.days ? parseInt(req.query.days as string, 10) : 28;
       const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
+      const effectiveFromDate =
+        latestRoutine.createdAt > fromDate ? latestRoutine.createdAt : fromDate;
 
       const logs = await prisma.aIChatLog.findMany({
         where: {
@@ -1011,7 +1069,7 @@ export class AIController {
             },
           ],
           createdAt: {
-            gte: fromDate,
+            gte: effectiveFromDate,
           },
         },
         orderBy: { createdAt: "desc" },

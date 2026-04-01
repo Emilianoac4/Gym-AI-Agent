@@ -64,7 +64,7 @@ const replacementExerciseSchema = z.object({
   sets: z.coerce.number().int().min(1).max(20),
   reps: z.string().min(1).max(20),
   rest_seconds: z.coerce.number().int().min(10).max(600),
-  notes: z.string().max(240).optional(),
+  notes: z.string().max(240).nullable().optional(),
 });
 
 export const replaceRoutineExerciseSchema = z.object({

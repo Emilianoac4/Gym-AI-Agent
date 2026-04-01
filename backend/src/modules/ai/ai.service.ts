@@ -429,6 +429,8 @@ Customize the routine to match the user context. Return ONLY valid JSON.
       throw new Error("Session day not found in routine");
     }
 
+    const targetExerciseCount = Math.max(targetSession.exercises.length, 5);
+
     const prompt = `
 Eres un entrenador de gimnasio. Debes regenerar SOLO un dia de rutina manteniendo el estilo del plan actual.
 
@@ -454,7 +456,7 @@ Responde SOLO JSON valido con este esquema:
 }
 
 Reglas:
-- Minimo 4 ejercicios.
+- Entrega exactamente ${targetExerciseCount} ejercicios.
 - Todo en espanol.
 - No cambies el dia.
     `;
@@ -478,6 +480,10 @@ Reglas:
       if (!Array.isArray(newSession.exercises) || newSession.exercises.length < 1) {
         throw new Error("Invalid session exercises");
       }
+      if (newSession.exercises.length < targetExerciseCount) {
+        throw new Error("Insufficient exercises returned");
+      }
+      newSession.exercises = newSession.exercises.slice(0, targetExerciseCount);
       newSession.day = targetSession.day;
     } catch {
       throw new Error("Could not regenerate routine day. Please try again.");
@@ -668,10 +674,10 @@ Reglas:
         .slice(0, count)
         .map((item) => ({
           name: item.name,
-          sets: item.sets,
-          reps: item.reps,
-          rest_seconds: item.rest_seconds,
-          notes: item.notes,
+          sets: Number(item.sets),
+          reps: String(item.reps || "10-12"),
+          rest_seconds: Number(item.rest_seconds),
+          notes: typeof item.notes === "string" ? item.notes : undefined,
         }));
 
       if (options.length === 0) {
