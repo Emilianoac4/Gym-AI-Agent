@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useFocusEffect } from "@react-navigation/native";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
@@ -69,6 +70,30 @@ export function HomeScreen() {
 
     void loadSummary();
   }, [isAdmin, token, user]);
+
+  // Refresh data whenever the Home tab gains focus (e.g. coming back from Routine/Measurements)
+  useFocusEffect(
+    useCallback(() => {
+      if (!user || !token || isAdmin) return;
+      let cancelled = false;
+      const reload = async () => {
+        try {
+          const [progress, strength] = await Promise.all([
+            api.getProgressSummary(user.id, token),
+            api.getStrengthProgress(user.id, token, 90),
+          ]);
+          if (!cancelled) {
+            setSummary(progress.summary);
+            setStrengthSummary(strength.summary);
+          }
+        } catch {
+          // keep previous values if refresh fails
+        }
+      };
+      void reload();
+      return () => { cancelled = true; };
+    }, [isAdmin, token, user])
+  );
 
   const memberMainText = useMemo(() => {
     if (isAdmin) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
@@ -50,18 +51,16 @@ export function RoutineScreen() {
   const [openSession, setOpenSession] = useState<string | null>(null);
   const [checkins, setCheckins] = useState<RoutineCheckin[]>([]);
   const [savingSessionDay, setSavingSessionDay] = useState<string | null>(null);
-  const [exerciseNameInput, setExerciseNameInput] = useState("");
-  const [loadKgInput, setLoadKgInput] = useState("");
-  const [repsInput, setRepsInput] = useState("");
-  const [setsInput, setSetsInput] = useState("");
-  const [savingStrengthLog, setSavingStrengthLog] = useState(false);
-  const [syncingStrengthProgress, setSyncingStrengthProgress] = useState(false);
-  const [strengthSummary, setStrengthSummary] = useState<StrengthProgressSummary | null>(
-    null
-  );
-  const [strengthByExercise, setStrengthByExercise] = useState<
-    ExerciseStrengthProgress[]
-  >([]);
+  // Per-exercise inline log form
+  const [activeLog, setActiveLog] = useState<{ sessionDay: string; exerciseName: string } | null>(null);
+  const [logKg, setLogKg] = useState("");
+  const [logReps, setLogReps] = useState("");
+  const [logSets, setLogSets] = useState("");
+  const [savingLog, setSavingLog] = useState(false);
+  // Optimistic check-in (immediate visual feedback before API confirms)
+  const [localCompleted, setLocalCompleted] = useState<Set<string>>(new Set());
+  const [strengthSummary, setStrengthSummary] = useState<StrengthProgressSummary | null>(null);
+  const [strengthByExercise, setStrengthByExercise] = useState<ExerciseStrengthProgress[]>([]);
 
   const currentWeekStart = useMemo(() => {
     const now = new Date();
@@ -81,8 +80,19 @@ export function RoutineScreen() {
         set.add(normalized(item.sessionDay));
       }
     });
+    // merge optimistic completions for immediate visual feedback
+    localCompleted.forEach((d) => set.add(d));
     return set;
-  }, [checkins, currentWeekStart]);
+  }, [checkins, currentWeekStart, localCompleted]);
+
+  // Lookup map: normalized exercise name → strength progress
+  const strengthMap = useMemo(() => {
+    const map: Record<string, ExerciseStrengthProgress> = {};
+    strengthByExercise.forEach((e) => {
+      map[e.exerciseName] = e;
+    });
+    return map;
+  }, [strengthByExercise]);
 
   const loadCheckins = async () => {
     if (!user || !token) return;
@@ -90,6 +100,8 @@ export function RoutineScreen() {
     try {
       const data = await api.getRoutineCheckins(user.id, token, 56);
       setCheckins(data.checkins);
+      // Once server confirms, clear optimistic set
+      setLocalCompleted(new Set());
     } catch {
       // Keep the screen usable even when check-in sync fails.
     } finally {
@@ -99,8 +111,6 @@ export function RoutineScreen() {
 
   const loadStrengthProgress = async () => {
     if (!user || !token) return;
-
-    setSyncingStrengthProgress(true);
     try {
       const data = await api.getStrengthProgress(user.id, token, 90);
       setStrengthSummary(data.summary);
@@ -108,8 +118,6 @@ export function RoutineScreen() {
     } catch {
       setStrengthSummary(null);
       setStrengthByExercise([]);
-    } finally {
-      setSyncingStrengthProgress(false);
     }
   };
 
@@ -141,13 +149,20 @@ export function RoutineScreen() {
 
   const onMarkCompleted = async (sessionDay: string) => {
     if (!user || !token) return;
-
+    const norm = normalized(sessionDay);
+    // Optimistic: show as completed immediately
+    setLocalCompleted((prev) => new Set([...prev, norm]));
     setSavingSessionDay(sessionDay);
     try {
       await api.createRoutineCheckin(user.id, token, { sessionDay });
       await loadCheckins();
-      Alert.alert("Sesion registrada", `Marcaste ${sessionDay} como completada.`);
     } catch (error) {
+      // Revert optimistic on failure
+      setLocalCompleted((prev) => {
+        const next = new Set(prev);
+        next.delete(norm);
+        return next;
+      });
       Alert.alert(
         "No se pudo registrar",
         error instanceof Error ? error.message : "Intenta de nuevo"
@@ -157,55 +172,31 @@ export function RoutineScreen() {
     }
   };
 
-  const onSaveStrengthLog = async () => {
+  const onSaveExerciseLog = async (exerciseName: string) => {
     if (!user || !token) return;
-
-    const exerciseName = exerciseNameInput.trim();
-    const loadKg = Number.parseFloat(loadKgInput);
-
-    if (!exerciseName) {
-      Alert.alert("Dato faltante", "Escribe el nombre del ejercicio.");
-      return;
-    }
-
+    const loadKg = Number.parseFloat(logKg);
     if (!Number.isFinite(loadKg) || loadKg <= 0) {
-      Alert.alert("Dato invalido", "Ingresa una carga valida en kg.");
+      Alert.alert("Dato inválido", "Ingresa una carga válida en kg.");
       return;
     }
-
-    const reps = repsInput.trim() ? Number.parseInt(repsInput.trim(), 10) : undefined;
-    const sets = setsInput.trim() ? Number.parseInt(setsInput.trim(), 10) : undefined;
-
-    if (typeof reps === "number" && (!Number.isFinite(reps) || reps <= 0)) {
-      Alert.alert("Dato invalido", "Las repeticiones deben ser mayores a 0.");
-      return;
-    }
-
-    if (typeof sets === "number" && (!Number.isFinite(sets) || sets <= 0)) {
-      Alert.alert("Dato invalido", "Las series deben ser mayores a 0.");
-      return;
-    }
-
-    setSavingStrengthLog(true);
+    const reps = logReps.trim() ? Number.parseInt(logReps.trim(), 10) : undefined;
+    const sets = logSets.trim() ? Number.parseInt(logSets.trim(), 10) : undefined;
+    setSavingLog(true);
     try {
-      await api.createStrengthLog(user.id, token, {
-        exerciseName,
-        loadKg,
-        reps,
-        sets,
-      });
-      setLoadKgInput("");
-      setRepsInput("");
-      setSetsInput("");
+      await api.createStrengthLog(user.id, token, { exerciseName, loadKg, reps, sets });
+      setActiveLog(null);
+      setLogKg("");
+      setLogReps("");
+      setLogSets("");
       await loadStrengthProgress();
-      Alert.alert("Carga guardada", "Tu progreso de fuerza se actualizo.");
+      Alert.alert("Carga guardada", `Progreso de "${exerciseName}" actualizado.`);
     } catch (error) {
       Alert.alert(
         "No se pudo guardar",
         error instanceof Error ? error.message : "Intenta de nuevo"
       );
     } finally {
-      setSavingStrengthLog(false);
+      setSavingLog(false);
     }
   };
 
@@ -217,6 +208,11 @@ export function RoutineScreen() {
         <Text style={styles.subtitle}>
           Genera un plan de entrenamiento adaptado a tu perfil actual.
         </Text>
+        {strengthSummary && (
+          <Text style={styles.summaryBadge}>
+            {strengthSummary.activeExercises} ejercicios • {strengthSummary.improvingExercises} en mejora
+          </Text>
+        )}
       </View>
 
       <TouchableOpacity
@@ -239,92 +235,6 @@ export function RoutineScreen() {
         </Text>
       )}
 
-      <View style={styles.strengthCard}>
-        <Text style={styles.strengthTitle}>Progreso de cargas</Text>
-        <Text style={styles.strengthSubtitle}>
-          Registra tu ultima serie pesada para medir mejora semanal y mensual.
-        </Text>
-
-        <View style={styles.inputGroup}>
-          <TextInput
-            placeholder="Ejercicio (ej: curl de biceps)"
-            placeholderTextColor={palette.textSoft}
-            style={styles.input}
-            value={exerciseNameInput}
-            onChangeText={setExerciseNameInput}
-          />
-          <View style={styles.inputRow}>
-            <TextInput
-              placeholder="Kg"
-              placeholderTextColor={palette.textSoft}
-              style={[styles.input, styles.inputHalf]}
-              keyboardType="decimal-pad"
-              value={loadKgInput}
-              onChangeText={setLoadKgInput}
-            />
-            <TextInput
-              placeholder="Reps"
-              placeholderTextColor={palette.textSoft}
-              style={[styles.input, styles.inputHalf]}
-              keyboardType="number-pad"
-              value={repsInput}
-              onChangeText={setRepsInput}
-            />
-            <TextInput
-              placeholder="Series"
-              placeholderTextColor={palette.textSoft}
-              style={[styles.input, styles.inputHalf]}
-              keyboardType="number-pad"
-              value={setsInput}
-              onChangeText={setSetsInput}
-            />
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.logBtn, savingStrengthLog && styles.genBtnDisabled]}
-          onPress={onSaveStrengthLog}
-          disabled={savingStrengthLog}
-        >
-          <Text style={styles.logBtnText}>
-            {savingStrengthLog ? "Guardando carga..." : "Guardar carga"}
-          </Text>
-        </TouchableOpacity>
-
-        {strengthSummary ? (
-          <Text style={styles.strengthMeta}>
-            {strengthSummary.totalLogs} registros totales, {strengthSummary.activeExercises} ejercicios
-            activos, {strengthSummary.improvingExercises} en mejora.
-          </Text>
-        ) : null}
-        {syncingStrengthProgress && (
-          <Text style={styles.syncText}>Sincronizando progreso de cargas...</Text>
-        )}
-
-        {strengthByExercise.slice(0, 4).map((exercise) => (
-          <View key={exercise.exerciseName} style={styles.strengthRow}>
-            <View style={styles.strengthRowTop}>
-              <Text style={styles.strengthExerciseName}>{exercise.exerciseName}</Text>
-              <Text
-                style={[
-                  styles.strengthChange,
-                  exercise.absoluteChangeKg >= 0
-                    ? styles.strengthPositive
-                    : styles.strengthNegative,
-                ]}
-              >
-                {exercise.absoluteChangeKg >= 0 ? "+" : ""}
-                {exercise.absoluteChangeKg.toFixed(1)} kg
-              </Text>
-            </View>
-            <Text style={styles.strengthStats}>
-              Ultimo {exercise.latestLoadKg.toFixed(1)} kg | Mejor {exercise.bestLoadKg.toFixed(1)} kg
-              {exercise.estimatedOneRM ? ` | 1RM est. ${exercise.estimatedOneRM.toFixed(1)} kg` : ""}
-            </Text>
-          </View>
-        ))}
-      </View>
-
       {routine && (
         <View style={styles.routineContainer}>
           {/* Header */}
@@ -339,79 +249,180 @@ export function RoutineScreen() {
               </View>
             </View>
             <Text style={styles.progressText}>
-              Progreso semanal: {Math.min(completedThisWeek.size, routine.weekly_sessions)}/
+              Esta semana: {Math.min(completedThisWeek.size, routine.weekly_sessions)}/
               {routine.weekly_sessions} sesiones completadas
             </Text>
             {syncingCheckins && (
-              <Text style={styles.syncText}>Sincronizando check-ins...</Text>
+              <Text style={styles.syncText}>Sincronizando...</Text>
             )}
           </View>
 
           {/* Sessions */}
-          {routine.sessions?.map((session, i) => (
-            <View key={i} style={styles.sessionCard}>
-              <TouchableOpacity
-                style={styles.sessionHeader}
-                onPress={() =>
-                  setOpenSession(openSession === session.day ? null : session.day)
-                }
-              >
-                <View>
-                  <Text style={styles.sessionDay}>{session.day}</Text>
-                  <Text style={styles.sessionFocus}>{session.focus}</Text>
-                </View>
-                <View style={styles.sessionMeta}>
-                  <Text style={styles.sessionDuration}>{session.duration_minutes} min</Text>
-                  <Text style={styles.sessionArrow}>
-                    {openSession === session.day ? "▲" : "▼"}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              {openSession === session.day && (
-                <View style={styles.exerciseList}>
-                  <TouchableOpacity
-                    style={[
-                      styles.completeBtn,
-                      completedThisWeek.has(normalized(session.day)) && styles.completeBtnDone,
-                    ]}
-                    disabled={
-                      completedThisWeek.has(normalized(session.day)) ||
-                      savingSessionDay === session.day
-                    }
-                    onPress={() => onMarkCompleted(session.day)}
-                  >
-                    <Text style={styles.completeBtnText}>
-                      {completedThisWeek.has(normalized(session.day))
-                        ? "Sesion completada esta semana"
-                        : savingSessionDay === session.day
-                        ? "Guardando..."
-                        : "Marcar como completada"}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {session.exercises?.map((ex, j) => (
-                    <View key={j} style={styles.exerciseRow}>
-                      <Text style={styles.exName}>{ex.name}</Text>
-                      <View style={styles.exDetails}>
-                        <Text style={styles.exTag}>{ex.sets} series</Text>
-                        <Text style={styles.exTag}>{ex.reps} reps</Text>
-                        <Text style={styles.exTag}>{ex.rest_seconds}s descanso</Text>
-                      </View>
-                      {ex.notes ? (
-                        <Text style={styles.exNotes}>{ex.notes}</Text>
-                      ) : null}
+          {routine.sessions?.map((session, i) => {
+            const isDone = completedThisWeek.has(normalized(session.day));
+            const isSaving = savingSessionDay === session.day;
+            return (
+              <View key={i} style={[styles.sessionCard, isDone && styles.sessionCardDone]}>
+                <TouchableOpacity
+                  style={styles.sessionHeader}
+                  onPress={() =>
+                    setOpenSession(openSession === session.day ? null : session.day)
+                  }
+                >
+                  <View style={styles.sessionHeaderLeft}>
+                    {isDone && <Text style={styles.doneCheck}>✓ </Text>}
+                    <View>
+                      <Text style={[styles.sessionDay, isDone && styles.sessionDayDone]}>
+                        {session.day}
+                      </Text>
+                      <Text style={styles.sessionFocus}>{session.focus}</Text>
                     </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          ))}
+                  </View>
+                  <View style={styles.sessionMeta}>
+                    <Text style={styles.sessionDuration}>{session.duration_minutes} min</Text>
+                    <Text style={styles.sessionArrow}>
+                      {openSession === session.day ? "▲" : "▼"}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {openSession === session.day && (
+                  <View style={styles.exerciseList}>
+                    {/* Mark complete button */}
+                    <TouchableOpacity
+                      style={[styles.completeBtn, isDone && styles.completeBtnDone]}
+                      disabled={isDone || isSaving}
+                      onPress={() => onMarkCompleted(session.day)}
+                    >
+                      <Text style={[styles.completeBtnText, isDone && styles.completeBtnTextDone]}>
+                        {isDone
+                          ? "✓ Sesión completada esta semana"
+                          : isSaving
+                          ? "Guardando..."
+                          : "Marcar sesión como completada"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Exercises with inline log */}
+                    {session.exercises?.map((ex, j) => {
+                      const exKey = normalized(ex.name);
+                      const progress = strengthMap[exKey];
+                      const isLogOpen =
+                        activeLog?.sessionDay === session.day &&
+                        activeLog?.exerciseName === exKey;
+
+                      return (
+                        <View key={j} style={styles.exerciseRow}>
+                          <Text style={styles.exName}>{ex.name}</Text>
+                          <View style={styles.exDetails}>
+                            <Text style={styles.exTag}>{ex.sets} series</Text>
+                            <Text style={styles.exTag}>{ex.reps} reps</Text>
+                            <Text style={styles.exTag}>{ex.rest_seconds}s descanso</Text>
+                          </View>
+                          {ex.notes ? (
+                            <Text style={styles.exNotes}>{ex.notes}</Text>
+                          ) : null}
+
+                          {/* Inline strength progress for this exercise */}
+                          {progress && (
+                            <View style={styles.exProgress}>
+                              <Text style={styles.exProgressText}>
+                                Último: {progress.latestLoadKg.toFixed(1)} kg
+                                {"  "}Mejor: {progress.bestLoadKg.toFixed(1)} kg
+                                {progress.absoluteChangeKg !== 0 && (
+                                  <Text
+                                    style={
+                                      progress.absoluteChangeKg > 0
+                                        ? styles.progressUp
+                                        : styles.progressDown
+                                    }
+                                  >
+                                    {"  "}
+                                    {progress.absoluteChangeKg > 0 ? "▲" : "▼"}{" "}
+                                    {Math.abs(progress.absoluteChangeKg).toFixed(1)} kg
+                                  </Text>
+                                )}
+                              </Text>
+                              {progress.estimatedOneRM ? (
+                                <Text style={styles.exProgressSub}>
+                                  1RM estimado: {progress.estimatedOneRM.toFixed(1)} kg
+                                </Text>
+                              ) : null}
+                            </View>
+                          )}
+
+                          {/* Toggle log form */}
+                          <TouchableOpacity
+                            style={styles.logToggleBtn}
+                            onPress={() => {
+                              if (isLogOpen) {
+                                setActiveLog(null);
+                              } else {
+                                setActiveLog({ sessionDay: session.day, exerciseName: exKey });
+                                setLogKg("");
+                                setLogReps(String(ex.sets > 0 ? ex.reps : ""));
+                                setLogSets(String(ex.sets > 0 ? ex.sets : ""));
+                              }
+                            }}
+                          >
+                            <Text style={styles.logToggleText}>
+                              {isLogOpen ? "Cancelar" : progress ? "Actualizar carga" : "+ Registrar carga"}
+                            </Text>
+                          </TouchableOpacity>
+
+                          {/* Inline log form */}
+                          {isLogOpen && (
+                            <View style={styles.logForm}>
+                              <View style={styles.logFormRow}>
+                                <TextInput
+                                  placeholder="Kg"
+                                  placeholderTextColor={palette.textSoft}
+                                  style={[styles.input, styles.inputKg]}
+                                  keyboardType="decimal-pad"
+                                  value={logKg}
+                                  onChangeText={setLogKg}
+                                />
+                                <TextInput
+                                  placeholder="Reps"
+                                  placeholderTextColor={palette.textSoft}
+                                  style={[styles.input, styles.inputSmall]}
+                                  keyboardType="number-pad"
+                                  value={logReps}
+                                  onChangeText={setLogReps}
+                                />
+                                <TextInput
+                                  placeholder="Series"
+                                  placeholderTextColor={palette.textSoft}
+                                  style={[styles.input, styles.inputSmall]}
+                                  keyboardType="number-pad"
+                                  value={logSets}
+                                  onChangeText={setLogSets}
+                                />
+                              </View>
+                              <TouchableOpacity
+                                style={[styles.logSaveBtn, savingLog && styles.genBtnDisabled]}
+                                onPress={() => onSaveExerciseLog(ex.name)}
+                                disabled={savingLog}
+                              >
+                                <Text style={styles.logSaveBtnText}>
+                                  {savingLog ? "Guardando..." : "Guardar"}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            );
+          })}
 
           {/* Progression tips */}
           {routine.progression_tips?.length > 0 && (
             <View style={styles.tipsCard}>
-              <Text style={styles.tipsTitle}>Consejos de progresion</Text>
+              <Text style={styles.tipsTitle}>Consejos de progresión</Text>
               {routine.progression_tips.map((tip, i) => (
                 <Text key={i} style={styles.tip}>
                   • {tip}
@@ -487,28 +498,80 @@ const styles = StyleSheet.create({
     color: palette.textSoft,
     fontSize: 13,
   },
-  strengthCard: {
-    marginTop: 16,
-    backgroundColor: palette.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: palette.line,
-    padding: 14,
-    gap: 10,
+  summaryBadge: {
+    marginTop: 10,
+    color: palette.cocoa,
+    fontSize: 12,
+    fontWeight: "600",
+    backgroundColor: palette.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: "flex-start",
   },
-  strengthTitle: {
-    color: palette.ink,
+  sessionCardDone: {
+    borderColor: palette.moss,
+    borderWidth: 2,
+  },
+  sessionHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  doneCheck: {
+    color: "#2E7D32",
     fontWeight: "800",
-    fontSize: 17,
+    fontSize: 16,
+    marginRight: 4,
   },
-  strengthSubtitle: {
+  sessionDayDone: {
+    color: "#2E7D32",
+  },
+  completeBtnTextDone: {
+    color: palette.cocoa,
+  },
+  exProgress: {
+    marginTop: 8,
+    backgroundColor: palette.surfaceMuted,
+    borderRadius: 8,
+    padding: 8,
+  },
+  exProgressText: {
+    color: palette.ink,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  exProgressSub: {
     color: palette.textMuted,
-    fontSize: 13,
+    fontSize: 11,
+    marginTop: 2,
   },
-  inputGroup: {
+  progressUp: {
+    color: "#2E7D32",
+    fontWeight: "700",
+  },
+  progressDown: {
+    color: "#B23A48",
+    fontWeight: "700",
+  },
+  logToggleBtn: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: palette.coral,
+  },
+  logToggleText: {
+    color: palette.coral,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  logForm: {
+    marginTop: 8,
     gap: 8,
   },
-  inputRow: {
+  logFormRow: {
     flexDirection: "row",
     gap: 8,
   },
@@ -523,57 +586,22 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
   },
-  inputHalf: {
+  inputKg: {
+    flex: 2,
+  },
+  inputSmall: {
     flex: 1,
   },
-  logBtn: {
+  logSaveBtn: {
     backgroundColor: palette.cocoa,
     borderRadius: 10,
-    paddingVertical: 11,
+    paddingVertical: 10,
     alignItems: "center",
   },
-  logBtnText: {
+  logSaveBtnText: {
     color: palette.gold,
     fontSize: 13,
     fontWeight: "700",
-  },
-  strengthMeta: {
-    color: palette.textSoft,
-    fontSize: 12,
-  },
-  strengthRow: {
-    backgroundColor: palette.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: palette.line,
-    padding: 10,
-    gap: 4,
-  },
-  strengthRowTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  strengthExerciseName: {
-    color: palette.ink,
-    fontWeight: "700",
-    fontSize: 13,
-    flex: 1,
-  },
-  strengthChange: {
-    fontWeight: "700",
-    fontSize: 12,
-  },
-  strengthPositive: {
-    color: "#2E7D32",
-  },
-  strengthNegative: {
-    color: "#B23A48",
-  },
-  strengthStats: {
-    color: palette.textMuted,
-    fontSize: 12,
   },
   routineContainer: {
     marginTop: 20,
