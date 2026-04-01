@@ -89,6 +89,40 @@ export interface ProgressSummary {
   timeline: ProgressTimelinePoint[];
 }
 
+export interface RoutineCheckin {
+  id: string;
+  weekStart: string;
+  sessionDay: string;
+  completedAt: string;
+}
+
+export interface StrengthLog {
+  id: string;
+  exerciseName: string;
+  loadKg: number;
+  reps: number | null;
+  sets: number | null;
+  performedAt: string;
+}
+
+export interface ExerciseStrengthProgress {
+  exerciseName: string;
+  logsCount: number;
+  latestLoadKg: number;
+  firstLoadKg: number;
+  bestLoadKg: number;
+  absoluteChangeKg: number;
+  percentChange: number | null;
+  estimatedOneRM: number | null;
+  lastPerformedAt: string;
+}
+
+export interface StrengthProgressSummary {
+  totalLogs: number;
+  activeExercises: number;
+  improvingExercises: number;
+}
+
 export type AIChatLogType = "CHAT" | "ROUTINE_GENERATION" | "NUTRITION_GENERATION" | "DAILY_TIP";
 
 export interface AIChatLog {

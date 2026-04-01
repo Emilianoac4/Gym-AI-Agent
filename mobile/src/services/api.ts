@@ -1,4 +1,13 @@
-import { AIChatLog, CreateMeasurementPayload, Measurement, ProgressSummary } from "../types/api";
+import {
+  AIChatLog,
+  CreateMeasurementPayload,
+  ExerciseStrengthProgress,
+  Measurement,
+  ProgressSummary,
+  RoutineCheckin,
+  StrengthLog,
+  StrengthProgressSummary,
+} from "../types/api";
 
 const API_BASE_URL =
   (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
@@ -110,6 +119,42 @@ export const api = {
       method: "POST",
       token,
       timeoutMs: AI_TIMEOUT_MS,
+    }),
+
+  getRoutineCheckins: (id: string, token: string, days = 28) =>
+    request<{ message: string; count: number; checkins: RoutineCheckin[] }>(
+      `/ai/${id}/routine/checkins?days=${days}`,
+      {
+        token,
+      }
+    ),
+
+  createRoutineCheckin: (id: string, token: string, body: { sessionDay: string; completedAt?: string }) =>
+    request<{ message: string; checkin: RoutineCheckin }>(`/ai/${id}/routine/checkins`, {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  createStrengthLog: (
+    id: string,
+    token: string,
+    body: { exerciseName: string; loadKg: number; reps?: number; sets?: number; performedAt?: string }
+  ) =>
+    request<{ message: string; log: StrengthLog }>(`/ai/${id}/strength/logs`, {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  getStrengthProgress: (id: string, token: string, days = 90) =>
+    request<{
+      message: string;
+      summary: StrengthProgressSummary;
+      exercises: ExerciseStrengthProgress[];
+      recentLogs: StrengthLog[];
+    }>(`/ai/${id}/strength/progress?days=${days}`, {
+      token,
     }),
 
   askCoach: (

@@ -2,6 +2,8 @@ import OpenAI from "openai";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
+const ROUTINE_CHECKIN_PREFIX = "ROUTINE_CHECKIN::";
+const STRENGTH_LOG_PREFIX = "STRENGTH_LOG::";
 
 class AIService {
   private openai: OpenAI;
@@ -79,6 +81,18 @@ Keep answers practical, concise, and under 220 words.
         where: {
           userId,
           type: "CHAT",
+          NOT: [
+            {
+              userMessage: {
+                startsWith: ROUTINE_CHECKIN_PREFIX,
+              },
+            },
+            {
+              userMessage: {
+                startsWith: STRENGTH_LOG_PREFIX,
+              },
+            },
+          ],
         },
         orderBy: { createdAt: "desc" },
         take: this.chatContextTurns,

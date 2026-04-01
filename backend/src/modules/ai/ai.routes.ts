@@ -2,7 +2,13 @@ import { Router } from "express";
 import { AIController } from "./ai.controller";
 import { validate } from "../../middleware/validate.middleware";
 import { authenticate } from "../../middleware/auth.middleware";
-import { chatMessageSchema } from "./ai.validation";
+import {
+  chatMessageSchema,
+  routineCheckinSchema,
+  routineCheckinsQuerySchema,
+  strengthLogSchema,
+  strengthProgressQuerySchema,
+} from "./ai.validation";
 
 export const aiRouter = Router();
 
@@ -11,6 +17,30 @@ aiRouter.use(authenticate);
 
 // Generate personalized workout routine
 aiRouter.post("/:userId/routine", AIController.generateRoutine);
+
+// Persist and read weekly routine check-ins
+aiRouter.post(
+  "/:userId/routine/checkins",
+  validate(routineCheckinSchema),
+  AIController.createRoutineCheckin
+);
+aiRouter.get(
+  "/:userId/routine/checkins",
+  validate(routineCheckinsQuerySchema),
+  AIController.getRoutineCheckins
+);
+
+// Persist and read strength progression logs
+aiRouter.post(
+  "/:userId/strength/logs",
+  validate(strengthLogSchema),
+  AIController.createStrengthLog
+);
+aiRouter.get(
+  "/:userId/strength/progress",
+  validate(strengthProgressQuerySchema),
+  AIController.getStrengthProgress
+);
 
 // Generate personalized nutrition plan
 aiRouter.post("/:userId/nutrition", AIController.generateNutrition);

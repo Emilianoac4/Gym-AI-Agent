@@ -2,6 +2,7 @@
   "expo": {
     "name": "GymAI",
     "slug": "gymai-mobile",
+    "owner": "ealfaroc",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",

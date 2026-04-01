@@ -5,7 +5,7 @@ import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
-import { ProgressSummary } from "../../types/api";
+import { ProgressSummary, StrengthProgressSummary } from "../../types/api";
 
 const memberHighlights = [
   {
@@ -43,19 +43,27 @@ export function HomeScreen() {
   const highlights = isAdmin ? adminHighlights : memberHighlights;
   const roleLabel = isAdmin ? "Dueno del gimnasio" : "Miembro";
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
+  const [strengthSummary, setStrengthSummary] =
+    useState<StrengthProgressSummary | null>(null);
 
   useEffect(() => {
     const loadSummary = async () => {
       if (!user || !token || isAdmin) {
         setSummary(null);
+        setStrengthSummary(null);
         return;
       }
 
       try {
-        const data = await api.getProgressSummary(user.id, token);
-        setSummary(data.summary);
+        const [progress, strength] = await Promise.all([
+          api.getProgressSummary(user.id, token),
+          api.getStrengthProgress(user.id, token, 90),
+        ]);
+        setSummary(progress.summary);
+        setStrengthSummary(strength.summary);
       } catch {
         setSummary(null);
+        setStrengthSummary(null);
       }
     };
 
@@ -85,8 +93,11 @@ export function HomeScreen() {
 
     const streak = summary.weeklyCheckInStreak;
     const pending = summary.hasMeasurementThisWeek ? "check-in al dia" : "check-in pendiente";
-    return `${streak} semana(s) de racha, ${pending}`;
-  }, [isAdmin, summary]);
+    const strengthPart = strengthSummary
+      ? ` | ${strengthSummary.improvingExercises} ejercicios mejorando`
+      : "";
+    return `${streak} semana(s) de racha, ${pending}${strengthPart}`;
+  }, [isAdmin, strengthSummary, summary]);
 
   return (
     <LinearGradient colors={[palette.cream, palette.gold, palette.coral]} style={styles.shell}>

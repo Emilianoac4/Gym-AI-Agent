@@ -4,8 +4,352 @@ import { PrismaClient } from "@prisma/client";
 import { HttpError } from "../../utils/http-error";
 
 const prisma = new PrismaClient();
+const ROUTINE_CHECKIN_PREFIX = "ROUTINE_CHECKIN::";
+const STRENGTH_LOG_PREFIX = "STRENGTH_LOG::";
+
+function getWeekStartIso(date: Date): string {
+  const clone = new Date(date);
+  clone.setUTCHours(0, 0, 0, 0);
+  const day = clone.getUTCDay();
+  const diff = (day + 6) % 7;
+  clone.setUTCDate(clone.getUTCDate() - diff);
+  return clone.toISOString().slice(0, 10);
+}
+
+function normalizeSessionDay(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizeExerciseName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function parseStrengthPayload(raw: string): {
+  exerciseName: string;
+  loadKg: number;
+  reps: number | null;
+  sets: number | null;
+  performedAt: string;
+} | null {
+  try {
+    const parsed = JSON.parse(raw) as {
+      exerciseName?: string;
+      loadKg?: number;
+      reps?: number;
+      sets?: number;
+      performedAt?: string;
+    };
+
+    if (!parsed.exerciseName || typeof parsed.loadKg !== "number") {
+      return null;
+    }
+
+    return {
+      exerciseName: parsed.exerciseName,
+      loadKg: parsed.loadKg,
+      reps: typeof parsed.reps === "number" ? parsed.reps : null,
+      sets: typeof parsed.sets === "number" ? parsed.sets : null,
+      performedAt: parsed.performedAt || new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function estimatedOneRM(loadKg: number, reps: number | null): number | null {
+  if (!reps || reps <= 0) {
+    return null;
+  }
+
+  const value = loadKg * (1 + reps / 30);
+  return Number(value.toFixed(2));
+}
 
 export class AIController {
+  static async createStrengthLog(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+      const { exerciseName, loadKg, reps, sets, performedAt } = req.body as {
+        exerciseName: string;
+        loadKg: number;
+        reps?: number;
+        sets?: number;
+        performedAt?: string;
+      };
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const performedDate = performedAt ? new Date(performedAt) : new Date();
+      const normalizedExercise = normalizeExerciseName(exerciseName);
+      const marker = `${STRENGTH_LOG_PREFIX}${normalizedExercise}`;
+
+      const payload = {
+        exerciseName: exerciseName.trim(),
+        loadKg,
+        reps: typeof reps === "number" ? reps : null,
+        sets: typeof sets === "number" ? sets : null,
+        performedAt: performedDate.toISOString(),
+      };
+
+      const created = await prisma.aIChatLog.create({
+        data: {
+          userId,
+          type: "CHAT",
+          userMessage: marker,
+          aiResponse: JSON.stringify(payload),
+          createdAt: performedDate,
+        },
+      });
+
+      res.status(201).json({
+        message: "Strength log saved",
+        log: {
+          id: created.id,
+          ...payload,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getStrengthProgress(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const days = req.query.days ? parseInt(req.query.days as string, 10) : 90;
+      const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const logs = await prisma.aIChatLog.findMany({
+        where: {
+          userId,
+          type: "CHAT",
+          userMessage: {
+            startsWith: STRENGTH_LOG_PREFIX,
+          },
+          createdAt: {
+            gte: fromDate,
+          },
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      });
+
+      const entries = logs
+        .map((item) => {
+          const payload = parseStrengthPayload(item.aiResponse);
+          if (!payload) {
+            return null;
+          }
+
+          return {
+            id: item.id,
+            exerciseName: payload.exerciseName,
+            loadKg: payload.loadKg,
+            reps: payload.reps,
+            sets: payload.sets,
+            performedAt: payload.performedAt,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+
+      const grouped = new Map<string, typeof entries>();
+      for (const entry of entries) {
+        const key = normalizeExerciseName(entry.exerciseName);
+        const bucket = grouped.get(key) || [];
+        bucket.push(entry);
+        grouped.set(key, bucket);
+      }
+
+      const exerciseProgress = Array.from(grouped.values())
+        .map((bucket) => {
+          if (bucket.length === 0) {
+            return null;
+          }
+
+          const first = bucket[0];
+          const latest = bucket[bucket.length - 1];
+          const best = bucket.reduce((max, current) =>
+            current.loadKg > max.loadKg ? current : max
+          );
+          const absoluteChangeKg = Number((latest.loadKg - first.loadKg).toFixed(2));
+          const percentChange =
+            first.loadKg > 0
+              ? Number((((latest.loadKg - first.loadKg) / first.loadKg) * 100).toFixed(2))
+              : null;
+
+          return {
+            exerciseName: latest.exerciseName,
+            logsCount: bucket.length,
+            latestLoadKg: latest.loadKg,
+            firstLoadKg: first.loadKg,
+            bestLoadKg: best.loadKg,
+            absoluteChangeKg,
+            percentChange,
+            estimatedOneRM: estimatedOneRM(latest.loadKg, latest.reps),
+            lastPerformedAt: latest.performedAt,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+        .sort((a, b) => a.exerciseName.localeCompare(b.exerciseName));
+
+      const improvingExercises = exerciseProgress.filter(
+        (item) => item.absoluteChangeKg > 0
+      ).length;
+
+      res.json({
+        message: "Strength progress retrieved",
+        summary: {
+          totalLogs: entries.length,
+          activeExercises: exerciseProgress.length,
+          improvingExercises,
+        },
+        exercises: exerciseProgress,
+        recentLogs: entries.slice(-20).reverse(),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createRoutineCheckin(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+      const { sessionDay, completedAt } = req.body as {
+        sessionDay: string;
+        completedAt?: string;
+      };
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const completedDate = completedAt ? new Date(completedAt) : new Date();
+      const weekStart = getWeekStartIso(completedDate);
+      const normalizedDay = normalizeSessionDay(sessionDay);
+      const marker = `${ROUTINE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}`;
+
+      const existing = await prisma.aIChatLog.findFirst({
+        where: {
+          userId,
+          type: "CHAT",
+          userMessage: marker,
+        },
+      });
+
+      if (existing) {
+        res.json({
+          message: "Routine check-in already registered for this week",
+          checkin: {
+            id: existing.id,
+            sessionDay,
+            completedAt: existing.createdAt,
+            weekStart,
+          },
+        });
+        return;
+      }
+
+      const created = await prisma.aIChatLog.create({
+        data: {
+          userId,
+          type: "CHAT",
+          userMessage: marker,
+          aiResponse: `Session completed: ${sessionDay}`,
+        },
+      });
+
+      res.status(201).json({
+        message: "Routine check-in saved",
+        checkin: {
+          id: created.id,
+          sessionDay,
+          completedAt: created.createdAt,
+          weekStart,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getRoutineCheckins(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const days = req.query.days ? parseInt(req.query.days as string, 10) : 28;
+      const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const logs = await prisma.aIChatLog.findMany({
+        where: {
+          userId,
+          type: "CHAT",
+          userMessage: {
+            startsWith: ROUTINE_CHECKIN_PREFIX,
+          },
+          createdAt: {
+            gte: fromDate,
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const checkins = logs
+        .map((item) => {
+          const parts = item.userMessage.split("::");
+          if (parts.length < 3) {
+            return null;
+          }
+          return {
+            id: item.id,
+            weekStart: parts[1],
+            sessionDay: parts[2],
+            completedAt: item.createdAt,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+
+      res.json({
+        message: "Routine check-ins retrieved",
+        count: checkins.length,
+        checkins,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async generateRoutine(
     req: Request,
     res: Response,
@@ -202,6 +546,18 @@ export class AIController {
           where: {
             userId,
             type: "CHAT",
+            NOT: [
+              {
+                userMessage: {
+                  startsWith: ROUTINE_CHECKIN_PREFIX,
+                },
+              },
+              {
+                userMessage: {
+                  startsWith: STRENGTH_LOG_PREFIX,
+                },
+              },
+            ],
           },
           orderBy: { createdAt: "desc" },
           take: limit,
@@ -248,6 +604,18 @@ export class AIController {
           where: {
             userId,
             type: "CHAT",
+            NOT: [
+              {
+                userMessage: {
+                  startsWith: ROUTINE_CHECKIN_PREFIX,
+                },
+              },
+              {
+                userMessage: {
+                  startsWith: STRENGTH_LOG_PREFIX,
+                },
+              },
+            ],
           },
         });
         deletedCount = result.count;

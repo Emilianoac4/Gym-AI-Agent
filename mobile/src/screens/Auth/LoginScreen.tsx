@@ -3,8 +3,10 @@ import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } 
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import * as WebBrowser from "expo-web-browser";
+import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import * as AppleAuthentication from "expo-apple-authentication";
+import Constants from "expo-constants";
 import { useAuth } from "../../context/AuthContext";
 import { AppButton } from "../../components/AppButton";
 import { palette } from "../../theme/palette";
@@ -25,11 +27,11 @@ export function LoginScreen() {
   const googleAndroidClientId = env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? googleExpoClientId;
   const googleWebClientId = env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? googleExpoClientId;
   const shouldPreferExpoClient = Boolean(googleExpoClientId || googleWebClientId);
+  const runningInExpoGo = Constants.executionEnvironment === "storeClient";
 
   const hasGoogleClientId = Boolean(
     googleExpoClientId || googleWebClientId || googleIosClientId || googleAndroidClientId,
   );
-
   const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
     clientId: googleExpoClientId ?? googleWebClientId ?? googleIosClientId,
     iosClientId: shouldPreferExpoClient ? undefined : (googleIosClientId ?? undefined),
@@ -49,7 +51,15 @@ export function LoginScreen() {
     if (!hasGoogleClientId || !googleRequest) {
       Alert.alert(
         "Google no configurado",
-        "Falta configurar EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID o EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID en mobile/.env y reiniciar Expo.",
+        "Falta configurar EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID o EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID en mobile/.env y reiniciar Expo.",
+      );
+      return;
+    }
+
+    if (runningInExpoGo) {
+      Alert.alert(
+        "Google no disponible en Expo Go",
+        "Google OAuth requiere un Development Build en iOS. En Expo Go este flujo es bloqueado por politica de OAuth.",
       );
       return;
     }

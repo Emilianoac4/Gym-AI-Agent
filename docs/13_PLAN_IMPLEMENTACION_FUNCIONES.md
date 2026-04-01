@@ -53,7 +53,9 @@
 **Estado actual (Abril 1, 2026)**:
 - Implementado: endpoint de resumen de progreso (`/users/:id/measurements/progress`) con cambios semanales/mensuales por metrica, racha semanal y sugerencia de siguiente accion.
 - Implementado: consumo mobile en Home y Mediciones para mostrar progreso visible y check-in semanal.
-- Pendiente para cerrar Fase B completa: progreso de cargas por ejercicio, persistencia de rutina semanal y alertas push programadas.
+- Implementado: persistencia de rutina semanal (`/ai/:userId/routine/checkins`) para registrar sesiones completadas y visualizar avance semanal en la pantalla de Rutina.
+- Implementado: progreso de cargas por ejercicio (`/ai/:userId/strength/logs` y `/ai/:userId/strength/progress`) con registro de series pesadas y tendencia por ejercicio en mobile.
+- Pendiente para cerrar Fase B completa: alertas push programadas.
 
 ### Modulos
 - Medicion corporal inteligente + carga manual asistida.
