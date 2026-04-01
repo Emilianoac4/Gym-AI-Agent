@@ -24,16 +24,17 @@ export function LoginScreen() {
   const googleIosClientId = env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? googleExpoClientId;
   const googleAndroidClientId = env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? googleExpoClientId;
   const googleWebClientId = env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? googleExpoClientId;
+  const shouldPreferExpoClient = Boolean(googleExpoClientId || googleWebClientId);
 
   const hasGoogleClientId = Boolean(
-    googleExpoClientId || googleIosClientId || googleAndroidClientId || googleWebClientId,
+    googleExpoClientId || googleWebClientId || googleIosClientId || googleAndroidClientId,
   );
 
   const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
-    clientId: googleExpoClientId,
-    iosClientId: googleIosClientId ?? "MISSING_GOOGLE_IOS_CLIENT_ID",
-    androidClientId: googleAndroidClientId ?? "MISSING_GOOGLE_ANDROID_CLIENT_ID",
-    webClientId: googleWebClientId ?? "MISSING_GOOGLE_WEB_CLIENT_ID",
+    clientId: googleExpoClientId ?? googleWebClientId ?? googleIosClientId,
+    iosClientId: shouldPreferExpoClient ? undefined : (googleIosClientId ?? undefined),
+    androidClientId: googleAndroidClientId ?? undefined,
+    webClientId: googleWebClientId ?? undefined,
   });
 
   const onLogin = async () => {
@@ -48,7 +49,7 @@ export function LoginScreen() {
     if (!hasGoogleClientId || !googleRequest) {
       Alert.alert(
         "Google no configurado",
-        "Falta configurar EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID en mobile/.env y reiniciar Expo.",
+        "Falta configurar EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID o EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID en mobile/.env y reiniciar Expo.",
       );
       return;
     }
