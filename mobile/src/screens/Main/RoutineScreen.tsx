@@ -254,6 +254,12 @@ export function RoutineScreen() {
       setExerciseCheckins(data.exerciseCheckins || []);
       setLocalCompleted(new Set());
       setLocalCompletedExercises(new Set());
+    } catch (error) {
+      setCheckins([]);
+      setExerciseCheckins([]);
+      setLocalCompleted(new Set());
+      setLocalCompletedExercises(new Set());
+      throw error;
     } finally {
       setSyncingCheckins(false);
     }
