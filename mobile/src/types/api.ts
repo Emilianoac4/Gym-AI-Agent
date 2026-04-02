@@ -17,6 +17,7 @@ export interface LoginResponse {
 export interface Profile {
   id: string;
   userId: string;
+  gender?: "female" | "male" | "prefer_not_to_say";
   birthDate?: string;
   heightCm?: number;
   goal?: string;

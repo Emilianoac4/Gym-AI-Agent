@@ -75,6 +75,8 @@ export const getUserProfileById = async (req: Request<{ id: string }>, res: Resp
     throw new HttpError(401, "Unauthorized");
   }
 
+  const actorUserId = req.auth.userId;
+
   const user = await prisma.user.findUnique({
     where: { id: req.params.id },
     include: { profile: true },
@@ -137,6 +139,7 @@ export const updateUserProfileById = async (
     where: { userId: id },
     create: {
       userId: id,
+      gender: req.body.gender,
       birthDate: req.body.birthDate ? new Date(req.body.birthDate) : undefined,
       heightCm: req.body.heightCm,
       goal: req.body.goal,
@@ -147,6 +150,7 @@ export const updateUserProfileById = async (
       dietPrefs: req.body.dietPrefs,
     },
     update: {
+      gender: req.body.gender,
       birthDate: req.body.birthDate ? new Date(req.body.birthDate) : undefined,
       heightCm: req.body.heightCm,
       goal: req.body.goal,
@@ -369,6 +373,8 @@ export const createUser = async (
     throw new HttpError(403, "Forbidden");
   }
 
+  const actorUserId = req.auth.userId;
+
   const requester = await prisma.user.findUnique({
     where: { id: req.auth.userId },
     select: { gymId: true, isActive: true, role: true },
@@ -409,47 +415,104 @@ export const createUser = async (
       })()
     : null;
 
-  const created = await prisma.user.create({
-    data: {
-      gymId: requester.gymId,
-      email: req.body.email,
-      passwordHash,
-      emailVerifiedAt: null,
-      emailVerificationLastSentAt: verificationSentAt,
-      emailVerificationTokenHash: tokenHash,
-      emailVerificationTokenExpiresAt: tokenExpiresAt,
-      fullName: req.body.fullName,
-      role: req.body.role as UserRole,
-      membershipStartAt,
-      membershipEndAt,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      role: true,
-      createdAt: true,
-      membershipStartAt: true,
-      membershipEndAt: true,
-    },
-  });
-
-  if (isMemberRole && membershipStartAt && membershipEndAt && req.body.paymentMethod && req.body.paymentAmount) {
-    await prisma.membershipTransaction.create({
+  const created = await prisma.$transaction(async (tx) => {
+    const newUser = await tx.user.create({
       data: {
         gymId: requester.gymId,
-        userId: created.id,
-        actorUserId: req.auth.userId,
-        type: MembershipTransactionType.activation,
-        paymentMethod: req.body.paymentMethod as PaymentMethod,
-        amount: req.body.paymentAmount,
-        membershipMonths: req.body.membershipMonths ?? 1,
+        email: req.body.email,
+        passwordHash,
+        emailVerifiedAt: null,
+        emailVerificationLastSentAt: verificationSentAt,
+        emailVerificationTokenHash: tokenHash,
+        emailVerificationTokenExpiresAt: tokenExpiresAt,
+        fullName: req.body.fullName,
+        role: req.body.role as UserRole,
         membershipStartAt,
         membershipEndAt,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        createdAt: true,
+        membershipStartAt: true,
+        membershipEndAt: true,
       },
     });
-  }
+
+    if (isMemberRole && req.body.profile) {
+      await tx.userProfile.create({
+        data: {
+          userId: newUser.id,
+          gender: req.body.profile.gender,
+          goal: req.body.profile.goal,
+          availability: `${req.body.profile.availabilityDays} dias/semana`,
+          experienceLvl: `Nivel ${req.body.profile.level}`,
+        },
+      });
+    }
+
+    if (
+      isMemberRole &&
+      membershipStartAt &&
+      membershipEndAt &&
+      req.body.paymentMethod &&
+      req.body.paymentAmount
+    ) {
+      await tx.membershipTransaction.create({
+        data: {
+          gymId: requester.gymId,
+          userId: newUser.id,
+          actorUserId,
+          type: MembershipTransactionType.activation,
+          paymentMethod: req.body.paymentMethod as PaymentMethod,
+          amount: req.body.paymentAmount,
+          membershipMonths: req.body.membershipMonths ?? 1,
+          membershipStartAt,
+          membershipEndAt,
+        },
+      });
+    }
+
+    if (isMemberRole && req.body.initialMeasurement) {
+      const {
+        weightKg,
+        bodyFatPct,
+        muscleMass,
+        chestCm,
+        waistCm,
+        hipCm,
+        armCm,
+      } = req.body.initialMeasurement;
+      const hasMeasurementData =
+        weightKg !== undefined ||
+        bodyFatPct !== undefined ||
+        muscleMass !== undefined ||
+        chestCm !== undefined ||
+        waistCm !== undefined ||
+        hipCm !== undefined ||
+        armCm !== undefined;
+
+      if (hasMeasurementData) {
+        await tx.measurement.create({
+          data: {
+            userId: newUser.id,
+            weightKg,
+            bodyFatPct,
+            muscleMass,
+            chestCm,
+            waistCm,
+            hipCm,
+            armCm,
+          },
+        });
+      }
+    }
+
+    return newUser;
+  });
 
   console.log(
     `[AUDIT] action=users.create actor=${req.auth.userId} target=${created.id} role=${created.role}`,

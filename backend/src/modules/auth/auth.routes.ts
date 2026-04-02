@@ -8,6 +8,7 @@ import {
 	requestEmailVerification,
 	register,
 	resetPassword,
+	resetPasswordFromQuery,
 	verifyEmail,
 	verifyEmailFromQuery,
 } from "./auth.controller";
@@ -38,6 +39,7 @@ authRouter.post(
 authRouter.get("/verify-email", verifyEmailFromQuery);
 authRouter.post("/verify-email", validate(verifyEmailSchema), verifyEmail);
 authRouter.post("/forgot-password", validate(forgotPasswordSchema), forgotPassword);
+authRouter.get("/reset-password", resetPasswordFromQuery);
 authRouter.post("/reset-password", validate(resetPasswordSchema), resetPassword);
 authRouter.post(
 	"/change-temporary-password",

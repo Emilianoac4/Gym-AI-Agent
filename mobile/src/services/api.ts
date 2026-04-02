@@ -409,6 +409,21 @@ export const api = {
       membershipMonths?: number;
       paymentMethod?: "card" | "transfer" | "cash";
       paymentAmount?: number;
+      profile?: {
+        gender: "female" | "male" | "prefer_not_to_say";
+        goal: string;
+        availabilityDays: number;
+        level: number;
+      };
+      initialMeasurement?: {
+        weightKg?: number;
+        bodyFatPct?: number;
+        muscleMass?: number;
+        chestCm?: number;
+        waistCm?: number;
+        hipCm?: number;
+        armCm?: number;
+      };
     }
   ) =>
     request<{

@@ -8,6 +8,25 @@ export const createUserSchema = z.object({
   membershipMonths: z.number().int().min(1).max(12).optional(),
   paymentMethod: z.enum(["card", "transfer", "cash"]).optional(),
   paymentAmount: z.number().positive().optional(),
+  profile: z
+    .object({
+      gender: z.enum(["female", "male", "prefer_not_to_say"]),
+      goal: z.string().min(2),
+      availabilityDays: z.number().int().min(1).max(7),
+      level: z.number().int().min(1).max(5),
+    })
+    .optional(),
+  initialMeasurement: z
+    .object({
+      weightKg: z.number().positive().optional(),
+      bodyFatPct: z.number().min(1).max(100).optional(),
+      muscleMass: z.number().positive().optional(),
+      chestCm: z.number().positive().optional(),
+      waistCm: z.number().positive().optional(),
+      hipCm: z.number().positive().optional(),
+      armCm: z.number().positive().optional(),
+    })
+    .optional(),
 }).superRefine((value, ctx) => {
   if (value.role === "member" && !value.membershipMonths) {
     ctx.addIssue({
@@ -32,6 +51,14 @@ export const createUserSchema = z.object({
       path: ["paymentAmount"],
     });
   }
+
+  if (value.role === "member" && !value.profile) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debes completar los datos personales del cliente",
+      path: ["profile"],
+    });
+  }
 });
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;
@@ -45,6 +72,7 @@ export const renewMembershipSchema = z.object({
 export type RenewMembershipInput = z.infer<typeof renewMembershipSchema>;
 
 export const updateProfileSchema = z.object({
+  gender: z.enum(["female", "male", "prefer_not_to_say"]).optional(),
   birthDate: z.string().datetime().optional(),
   heightCm: z.number().positive().optional(),
   goal: z.string().optional(),

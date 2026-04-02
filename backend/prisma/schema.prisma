@@ -61,6 +61,7 @@ model User {
 model UserProfile {
   id             String    @id @default(uuid())
   userId         String    @unique @map("user_id")
+  gender         String?   @map("gender")
   birthDate      DateTime? @map("birth_date")
   heightCm       Float?    @map("height_cm")
   goal           String?

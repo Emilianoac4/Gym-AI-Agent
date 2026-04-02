@@ -152,6 +152,182 @@ const renderVerificationHtml = (
 </html>`;
 };
 
+const renderResetPasswordHtml = (token: string) => {
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tuco | Recuperar contrasena</title>
+    <style>
+      :root {
+        --bg: #f8f5ee;
+        --card: #fffdf9;
+        --text: #463c33;
+        --muted: #6f6256;
+        --accent: #abc270;
+        --accent-strong: #8aa14d;
+        --danger: #c65a4a;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at top, #ffe7bc 0%, var(--bg) 45%);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .card {
+        width: min(92vw, 520px);
+        background: var(--card);
+        border: 1px solid #ecdcc2;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 12px 30px rgba(70, 60, 51, 0.1);
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 24px;
+      }
+      p {
+        margin: 0 0 14px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      label {
+        display: block;
+        margin: 12px 0 6px;
+        font-weight: 600;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #d8cdb8;
+        border-radius: 10px;
+        padding: 11px 12px;
+        font-size: 15px;
+        background: #fff;
+      }
+      .btn {
+        margin-top: 16px;
+        width: 100%;
+        border: 0;
+        border-radius: 10px;
+        padding: 12px;
+        font-size: 15px;
+        font-weight: 700;
+        color: #fff;
+        background: var(--accent-strong);
+        cursor: pointer;
+      }
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .msg {
+        margin-top: 12px;
+        font-size: 14px;
+        line-height: 1.4;
+      }
+      .ok { color: var(--accent-strong); }
+      .err { color: var(--danger); }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="main">
+      <h1>Restablece tu contrasena</h1>
+      <p>Ingresa y confirma tu nueva contrasena para continuar en Tuco.</p>
+
+      <form id="reset-form">
+        <label for="newPassword">Nueva contrasena</label>
+        <input id="newPassword" type="password" minlength="8" required />
+
+        <label for="confirmPassword">Confirmar contrasena</label>
+        <input id="confirmPassword" type="password" minlength="8" required />
+
+        <button class="btn" id="submitBtn" type="submit">Guardar nueva contrasena</button>
+      </form>
+
+      <div id="msg" class="msg"></div>
+    </main>
+
+    <script>
+      const form = document.getElementById('reset-form');
+      const msg = document.getElementById('msg');
+      const submitBtn = document.getElementById('submitBtn');
+      const token = ${JSON.stringify(token)};
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const newPassword = document.getElementById('newPassword').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+
+        if (newPassword.length < 8) {
+          msg.className = 'msg err';
+          msg.textContent = 'La contrasena debe tener al menos 8 caracteres.';
+          return;
+        }
+
+        if (newPassword !== confirmPassword) {
+          msg.className = 'msg err';
+          msg.textContent = 'La confirmacion de contrasena no coincide.';
+          return;
+        }
+
+        submitBtn.disabled = true;
+        msg.className = 'msg';
+        msg.textContent = 'Guardando...';
+
+        try {
+          const response = await fetch('/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, newPassword }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.message || 'No se pudo actualizar la contrasena.');
+          }
+
+          msg.className = 'msg ok';
+          msg.textContent = 'Contrasena actualizada correctamente. Ya puedes volver a la app.';
+          form.reset();
+        } catch (error) {
+          msg.className = 'msg err';
+          msg.textContent = error instanceof Error ? error.message : 'Error inesperado.';
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>`;
+};
+
+export const resetPasswordFromQuery = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+
+  if (!token || token.length < 16) {
+    res
+      .status(400)
+      .type("html")
+      .send(
+        renderVerificationHtml(
+          "error",
+          "Enlace invalido",
+          "El enlace de recuperacion no es valido. Solicita uno nuevo desde la app.",
+        ),
+      );
+    return;
+  }
+
+  res.status(200).type("html").send(renderResetPasswordHtml(token));
+};
+
 export const register = async (
   req: Request<Record<string, never>, unknown, RegisterInput>,
   res: Response,

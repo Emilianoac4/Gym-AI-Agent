@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,6 +23,7 @@ export function RegisterScreen() {
   const [fullName, setFullName] = useState("Administrador principal");
   const [email, setEmail] = useState("admin@gymiai.com");
   const [password, setPassword] = useState("Admin123456");
+  const [showPassword, setShowPassword] = useState(false);
 
   const onRegister = async () => {
     try {
@@ -57,7 +59,19 @@ export function RegisterScreen() {
             <TextInput style={styles.input} placeholder="Nombre del propietario" placeholderTextColor={palette.textSoft} value={ownerName} onChangeText={setOwnerName} />
             <TextInput style={styles.input} placeholder="Nombre completo admin" placeholderTextColor={palette.textSoft} value={fullName} onChangeText={setFullName} />
             <TextInput style={styles.input} placeholder="Email" placeholderTextColor={palette.textSoft} autoCapitalize="none" value={email} onChangeText={setEmail} />
-            <TextInput style={styles.input} placeholder="Contrasena" placeholderTextColor={palette.textSoft} secureTextEntry value={password} onChangeText={setPassword} />
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={[styles.input, styles.passwordInput]}
+                placeholder="Contrasena"
+                placeholderTextColor={palette.textSoft}
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={setPassword}
+              />
+              <TouchableOpacity style={styles.passwordToggle} onPress={() => setShowPassword((v) => !v)}>
+                <Text style={styles.passwordToggleText}>{showPassword ? "Ocultar" : "Mostrar"}</Text>
+              </TouchableOpacity>
+            </View>
 
             <AppButton label={loading ? "Creando..." : "Crear y entrar"} onPress={onRegister} disabled={loading} />
           </View>
@@ -131,5 +145,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     backgroundColor: palette.cream,
     color: palette.ink,
+  },
+  passwordRow: {
+    position: "relative",
+    marginBottom: 12,
+  },
+  passwordInput: {
+    marginBottom: 0,
+    paddingRight: 84,
+  },
+  passwordToggle: {
+    position: "absolute",
+    right: 12,
+    top: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  passwordToggleText: {
+    color: palette.moss,
+    fontWeight: "700",
+    fontSize: 12,
   },
 });

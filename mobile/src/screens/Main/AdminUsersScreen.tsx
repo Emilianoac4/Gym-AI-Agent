@@ -18,6 +18,7 @@ import { palette } from "../../theme/palette";
 
 type UserRole = "trainer" | "member";
 type PaymentMethod = "card" | "transfer" | "cash";
+type GenderOption = "female" | "male" | "prefer_not_to_say";
 
 interface GymUser {
   id: string;
@@ -42,12 +43,32 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: "Efectivo",
 };
 
+const GENDER_LABELS: Record<GenderOption, string> = {
+  female: "Femenino",
+  male: "Masculino",
+  prefer_not_to_say: "Prefiero no decirlo",
+};
+
+const GOAL_OPTIONS = [
+  "Aumento de masa muscular",
+  "Perdida de peso",
+  "Aumento de movilidad",
+  "Mejora de resistencia",
+  "Tonificacion general",
+  "Recomposicion corporal",
+  "Recuperacion post-lesion",
+  "Mejora de fuerza",
+  "Salud general",
+  "Rendimiento deportivo",
+];
+
 export function AdminUsersScreen() {
   const { user, token } = useAuth();
   const [users, setUsers] = useState<GymUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterRole, setFilterRole] = useState<string>("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createStep, setCreateStep] = useState<1 | 2>(1);
   const [creating, setCreating] = useState(false);
   const [showRenewModal, setShowRenewModal] = useState(false);
   const [renewingUser, setRenewingUser] = useState<GymUser | null>(null);
@@ -61,6 +82,18 @@ export function AdminUsersScreen() {
   const [membershipMonths, setMembershipMonths] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [newGender, setNewGender] = useState<GenderOption>("prefer_not_to_say");
+  const [newGoal, setNewGoal] = useState(GOAL_OPTIONS[0]);
+  const [newAvailabilityDays, setNewAvailabilityDays] = useState(3);
+  const [newLevel, setNewLevel] = useState(1);
+  const [captureMeasurements, setCaptureMeasurements] = useState(false);
+  const [measurementWeightKg, setMeasurementWeightKg] = useState("");
+  const [measurementBodyFatPct, setMeasurementBodyFatPct] = useState("");
+  const [measurementMuscleMass, setMeasurementMuscleMass] = useState("");
+  const [measurementChestCm, setMeasurementChestCm] = useState("");
+  const [measurementWaistCm, setMeasurementWaistCm] = useState("");
+  const [measurementHipCm, setMeasurementHipCm] = useState("");
+  const [measurementArmCm, setMeasurementArmCm] = useState("");
 
   const [renewMonths, setRenewMonths] = useState(1);
   const [renewPaymentMethod, setRenewPaymentMethod] = useState<PaymentMethod>("card");
@@ -105,6 +138,11 @@ export function AdminUsersScreen() {
         Alert.alert("Monto invalido", "Debes indicar un monto valido para la activacion.");
         return;
       }
+
+      if (!newGoal.trim()) {
+        Alert.alert("Objetivo requerido", "Selecciona un objetivo para el nuevo cliente.");
+        return;
+      }
     }
 
     if (!token) return;
@@ -122,6 +160,29 @@ export function AdminUsersScreen() {
               paymentAmount: Number(paymentAmount),
             }
           : {}),
+        ...(newRole === "member"
+          ? {
+              profile: {
+                gender: newGender,
+                goal: newGoal,
+                availabilityDays: newAvailabilityDays,
+                level: newLevel,
+              },
+            }
+          : {}),
+        ...(newRole === "member" && captureMeasurements
+          ? {
+              initialMeasurement: {
+                ...(measurementWeightKg ? { weightKg: Number(measurementWeightKg) } : {}),
+                ...(measurementBodyFatPct ? { bodyFatPct: Number(measurementBodyFatPct) } : {}),
+                ...(measurementMuscleMass ? { muscleMass: Number(measurementMuscleMass) } : {}),
+                ...(measurementChestCm ? { chestCm: Number(measurementChestCm) } : {}),
+                ...(measurementWaistCm ? { waistCm: Number(measurementWaistCm) } : {}),
+                ...(measurementHipCm ? { hipCm: Number(measurementHipCm) } : {}),
+                ...(measurementArmCm ? { armCm: Number(measurementArmCm) } : {}),
+              },
+            }
+          : {}),
       });
       Alert.alert(
         "Usuario creado",
@@ -134,9 +195,22 @@ export function AdminUsersScreen() {
       setNewFullName("");
       setNewPassword("");
       setNewRole("member");
+      setCreateStep(1);
       setMembershipMonths(1);
       setPaymentMethod("card");
       setPaymentAmount("");
+      setNewGender("prefer_not_to_say");
+      setNewGoal(GOAL_OPTIONS[0]);
+      setNewAvailabilityDays(3);
+      setNewLevel(1);
+      setCaptureMeasurements(false);
+      setMeasurementWeightKg("");
+      setMeasurementBodyFatPct("");
+      setMeasurementMuscleMass("");
+      setMeasurementChestCm("");
+      setMeasurementWaistCm("");
+      setMeasurementHipCm("");
+      setMeasurementArmCm("");
       void loadUsers();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error inesperado";
@@ -259,7 +333,13 @@ export function AdminUsersScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Gestión de Usuarios</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreateModal(true)}>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => {
+            setCreateStep(1);
+            setShowCreateModal(true);
+          }}
+        >
           <Text style={styles.addBtnText}>+ Nuevo</Text>
         </TouchableOpacity>
       </View>
@@ -348,6 +428,7 @@ export function AdminUsersScreen() {
                 contentContainerStyle={{ paddingBottom: 20 }}
               >
             <Text style={styles.modalTitle}>Crear usuario</Text>
+            <Text style={styles.modalSubTitle}>Paso {createStep} de 2</Text>
 
             {/* Selector de rol */}
             <View style={styles.roleSelector}>
@@ -364,7 +445,7 @@ export function AdminUsersScreen() {
               ))}
             </View>
 
-            {newRole === "member" && (
+            {newRole === "member" && createStep === 1 && (
               <View style={styles.membershipSelectorWrap}>
                 <Text style={styles.membershipLabel}>Duracion de membresia (meses)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -423,49 +504,246 @@ export function AdminUsersScreen() {
               </View>
             )}
 
-            <TextInput
-              style={styles.input}
-              placeholder="Nombre completo"
-              placeholderTextColor={palette.cocoa + "80"}
-              value={newFullName}
-              onChangeText={setNewFullName}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Correo electrónico"
-              placeholderTextColor={palette.cocoa + "80"}
-              value={newEmail}
-              onChangeText={setNewEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Contraseña temporal (mín. 8 caracteres)"
-              placeholderTextColor={palette.cocoa + "80"}
-              value={newPassword}
-              onChangeText={setNewPassword}
-              secureTextEntry
-            />
-            <Text style={styles.modalHint}>
-              Al primer ingreso, el usuario debera cambiar esta contrasena temporal por una contrasena permanente.
-            </Text>
+            {createStep === 1 ? (
+              <>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nombre completo"
+                  placeholderTextColor={palette.cocoa + "80"}
+                  value={newFullName}
+                  onChangeText={setNewFullName}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Correo electrónico"
+                  placeholderTextColor={palette.cocoa + "80"}
+                  value={newEmail}
+                  onChangeText={setNewEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Contraseña temporal (mín. 8 caracteres)"
+                  placeholderTextColor={palette.cocoa + "80"}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                />
+                <Text style={styles.modalHint}>
+                  Al primer ingreso, el usuario debera cambiar esta contrasena temporal por una contrasena permanente.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.membershipLabel}>Genero</Text>
+                <View style={styles.paymentMethodsRow}>
+                  {(["female", "male", "prefer_not_to_say"] as GenderOption[]).map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.paymentMethodChip,
+                        newGender === option && styles.paymentMethodChipActive,
+                      ]}
+                      onPress={() => setNewGender(option)}
+                    >
+                      <Text
+                        style={[
+                          styles.paymentMethodChipText,
+                          newGender === option && styles.paymentMethodChipTextActive,
+                        ]}
+                      >
+                        {GENDER_LABELS[option]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={[styles.membershipLabel, { marginTop: 12 }]}>Objetivo</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {GOAL_OPTIONS.map((goalOption) => (
+                    <TouchableOpacity
+                      key={goalOption}
+                      style={[
+                        styles.paymentMethodChip,
+                        newGoal === goalOption && styles.paymentMethodChipActive,
+                        { marginRight: 8 },
+                      ]}
+                      onPress={() => setNewGoal(goalOption)}
+                    >
+                      <Text
+                        style={[
+                          styles.paymentMethodChipText,
+                          newGoal === goalOption && styles.paymentMethodChipTextActive,
+                        ]}
+                      >
+                        {goalOption}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <Text style={[styles.membershipLabel, { marginTop: 12 }]}>Disponibilidad (dias)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {Array.from({ length: 7 }, (_, i) => i + 1).map((days) => (
+                    <TouchableOpacity
+                      key={days}
+                      style={[
+                        styles.membershipChip,
+                        newAvailabilityDays === days && styles.membershipChipActive,
+                      ]}
+                      onPress={() => setNewAvailabilityDays(days)}
+                    >
+                      <Text
+                        style={[
+                          styles.membershipChipText,
+                          newAvailabilityDays === days && styles.membershipChipTextActive,
+                        ]}
+                      >
+                        {days}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <Text style={[styles.membershipLabel, { marginTop: 12 }]}>Nivel (1 a 5)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {Array.from({ length: 5 }, (_, i) => i + 1).map((level) => (
+                    <TouchableOpacity
+                      key={level}
+                      style={[
+                        styles.membershipChip,
+                        newLevel === level && styles.membershipChipActive,
+                      ]}
+                      onPress={() => setNewLevel(level)}
+                    >
+                      <Text
+                        style={[
+                          styles.membershipChipText,
+                          newLevel === level && styles.membershipChipTextActive,
+                        ]}
+                      >
+                        {level}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <View style={{ marginTop: 14 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.paymentMethodChip,
+                      captureMeasurements && styles.paymentMethodChipActive,
+                    ]}
+                    onPress={() => setCaptureMeasurements((v) => !v)}
+                  >
+                    <Text
+                      style={[
+                        styles.paymentMethodChipText,
+                        captureMeasurements && styles.paymentMethodChipTextActive,
+                      ]}
+                    >
+                      {captureMeasurements
+                        ? "Mediciones manuales activadas"
+                        : "Agregar mediciones ahora (opcional)"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {captureMeasurements && (
+                  <>
+                    <TextInput
+                      style={[styles.input, { marginTop: 12 }]}
+                      placeholder="Peso (kg)"
+                      placeholderTextColor={palette.cocoa + "80"}
+                      keyboardType="decimal-pad"
+                      value={measurementWeightKg}
+                      onChangeText={setMeasurementWeightKg}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Grasa corporal (%)"
+                      placeholderTextColor={palette.cocoa + "80"}
+                      keyboardType="decimal-pad"
+                      value={measurementBodyFatPct}
+                      onChangeText={setMeasurementBodyFatPct}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Masa muscular"
+                      placeholderTextColor={palette.cocoa + "80"}
+                      keyboardType="decimal-pad"
+                      value={measurementMuscleMass}
+                      onChangeText={setMeasurementMuscleMass}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Pecho (cm)"
+                      placeholderTextColor={palette.cocoa + "80"}
+                      keyboardType="decimal-pad"
+                      value={measurementChestCm}
+                      onChangeText={setMeasurementChestCm}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Cintura (cm)"
+                      placeholderTextColor={palette.cocoa + "80"}
+                      keyboardType="decimal-pad"
+                      value={measurementWaistCm}
+                      onChangeText={setMeasurementWaistCm}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Cadera (cm)"
+                      placeholderTextColor={palette.cocoa + "80"}
+                      keyboardType="decimal-pad"
+                      value={measurementHipCm}
+                      onChangeText={setMeasurementHipCm}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Brazo (cm)"
+                      placeholderTextColor={palette.cocoa + "80"}
+                      keyboardType="decimal-pad"
+                      value={measurementArmCm}
+                      onChangeText={setMeasurementArmCm}
+                    />
+                  </>
+                )}
+              </>
+            )}
 
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelBtn}
-                onPress={() => setShowCreateModal(false)}
+                onPress={() => {
+                  if (createStep === 2) {
+                    setCreateStep(1);
+                  } else {
+                    setShowCreateModal(false);
+                  }
+                }}
                 disabled={creating}
               >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
+                <Text style={styles.cancelBtnText}>{createStep === 2 ? "Volver" : "Cancelar"}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={onCreateUser} disabled={creating}>
-                {creating ? (
-                  <ActivityIndicator color={palette.cream} size="small" />
-                ) : (
-                  <Text style={styles.confirmBtnText}>Crear</Text>
-                )}
-              </TouchableOpacity>
+              {createStep === 1 && newRole === "member" ? (
+                <TouchableOpacity
+                  style={styles.confirmBtn}
+                  onPress={() => setCreateStep(2)}
+                  disabled={creating}
+                >
+                  <Text style={styles.confirmBtnText}>Siguiente</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.confirmBtn} onPress={onCreateUser} disabled={creating}>
+                  {creating ? (
+                    <ActivityIndicator color={palette.cream} size="small" />
+                  ) : (
+                    <Text style={styles.confirmBtnText}>Crear</Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
               </ScrollView>
             </TouchableOpacity>

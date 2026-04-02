@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { palette } from "../../theme/palette";
@@ -8,6 +8,8 @@ export function ChangeTemporaryPasswordScreen() {
   const { completeTemporaryPasswordChange, loading } = useAuth();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const onConfirm = async () => {
     if (!newPassword || !confirmPassword) {
@@ -44,24 +46,37 @@ export function ChangeTemporaryPasswordScreen() {
         </Text>
 
         <Text style={styles.label}>Nueva contrasena</Text>
-        <TextInput
-          style={styles.input}
-          value={newPassword}
-          onChangeText={setNewPassword}
-          secureTextEntry
-          placeholder="Minimo 8 caracteres"
-          placeholderTextColor={palette.textMuted}
-        />
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            value={newPassword}
+            onChangeText={setNewPassword}
+            secureTextEntry={!showNewPassword}
+            placeholder="Minimo 8 caracteres"
+            placeholderTextColor={palette.textMuted}
+          />
+          <TouchableOpacity style={styles.passwordToggle} onPress={() => setShowNewPassword((v) => !v)}>
+            <Text style={styles.passwordToggleText}>{showNewPassword ? "Ocultar" : "Mostrar"}</Text>
+          </TouchableOpacity>
+        </View>
 
         <Text style={styles.label}>Confirmar contrasena</Text>
-        <TextInput
-          style={styles.input}
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          secureTextEntry
-          placeholder="Repite la contrasena"
-          placeholderTextColor={palette.textMuted}
-        />
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry={!showConfirmPassword}
+            placeholder="Repite la contrasena"
+            placeholderTextColor={palette.textMuted}
+          />
+          <TouchableOpacity
+            style={styles.passwordToggle}
+            onPress={() => setShowConfirmPassword((v) => !v)}
+          >
+            <Text style={styles.passwordToggleText}>{showConfirmPassword ? "Ocultar" : "Mostrar"}</Text>
+          </TouchableOpacity>
+        </View>
 
         <AppButton
           label={loading ? "Guardando..." : "Guardar contrasena"}
@@ -112,5 +127,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12,
+  },
+  passwordRow: {
+    position: "relative",
+    marginBottom: 12,
+  },
+  passwordInput: {
+    marginBottom: 0,
+    paddingRight: 84,
+  },
+  passwordToggle: {
+    position: "absolute",
+    right: 12,
+    top: 11,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  passwordToggleText: {
+    color: palette.moss,
+    fontWeight: "700",
+    fontSize: 12,
   },
 });
