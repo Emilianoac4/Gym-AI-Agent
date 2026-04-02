@@ -1,8 +1,8 @@
 # GymAI - Índice de Documentación Completa
 
 **Tabla de Contenidos Maestra**  
-**Última actualización**: Marzo 30, 2026  
-**Version**: 2.0 (Fase 1 + Fase 2 Completas)
+**Ultima actualizacion**: Abril 1, 2026  
+**Version**: 2.1 (Plan Prioritario de 3 perfiles activo)
 
 ---
 
@@ -16,9 +16,10 @@
 
 ### Para continuar con Fase 3+:
 1. Lee [Roadmap Detallado](docs/09_ROADMAP_CONTINUIDAD.md)
-2. Revisa [Funcionalidades por Rol](docs/12_FUNCIONALIDADES_POR_ROL.md)
-2. Estudia [Arquitectura General](docs/05_ARQUITECTURA_DETALLADA.md)
-3. Consulta [Decisiones Técnicas](docs/08_DECISIONES_TROUBLESHOOTING.md)
+2. Revisa [Plan Prioritario de Implementacion](docs/13_PLAN_IMPLEMENTACION_FUNCIONES.md)
+3. Revisa [Funcionalidades por Rol](docs/12_FUNCIONALIDADES_POR_ROL.md)
+4. Estudia [Arquitectura General](docs/05_ARQUITECTURA_DETALLADA.md)
+5. Consulta [Decisiones Tecnicas](docs/08_DECISIONES_TROUBLESHOOTING.md)
 
 ### Para troubleshooting:
 1. Busca error en [Troubleshooting Guide](docs/08_DECISIONES_TROUBLESHOOTING.md)
@@ -240,12 +241,12 @@
 ---
 
 ### 🧭 [13_PLAN_IMPLEMENTACION_FUNCIONES.md](docs/13_PLAN_IMPLEMENTACION_FUNCIONES.md)  📍 **NUEVO**
-**Contenido**: plan de ejecucion por fases para implementar y mejorar funciones clave  
+**Contenido**: plan prioritario de ejecucion por fases (3 perfiles) para implementar y mejorar funciones clave  
 **Para quién**: founders, product manager, backend/mobile leads  
 **Tiempo**: 10-15 min  
 **Secciones**:
 - estado actual y baseline tecnico
-- fases A-D con criterios de salida
+- fases 0-4 con criterios de salida
 - backlog tecnico priorizado
 - riesgos, metricas y sprint de 72 horas
 
@@ -253,6 +254,7 @@
 - quieres pasar de ideas a ejecucion concreta
 - necesitas priorizar por impacto y riesgo
 - quieres coordinar backend, mobile y negocio en un mismo plan
+- quieres ejecutar la estrategia de administrador/entrenador/usuario
 - bcryptjs hashing
 - OpenAI GPT-4
 - Module-per-feature architecture

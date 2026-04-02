@@ -1,14 +1,14 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 import { api } from "../services/api";
-import { AuthUser } from "../types/api";
+import { AuthUser, UserRole } from "../types/api";
 
 type AuthContextValue = {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
-  loginWithApple: (idToken: string) => Promise<void>;
+  login: (email: string, password: string, requestedRole: UserRole) => Promise<void>;
+  loginWithGoogle: (idToken: string, requestedRole: UserRole) => Promise<void>;
+  loginWithApple: (idToken: string, requestedRole: UserRole) => Promise<void>;
   registerAdmin: (input: {
     gymName: string;
     ownerName: string;
@@ -26,10 +26,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, requestedRole: UserRole) => {
     setLoading(true);
     try {
-      const data = await api.login({ email, password });
+      const data = await api.login({ email, password, requestedRole });
       setToken(data.token);
       setUser(data.user);
     } finally {
@@ -37,10 +37,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginWithGoogle = async (idToken: string) => {
+  const loginWithGoogle = async (idToken: string, requestedRole: UserRole) => {
     setLoading(true);
     try {
-      const data = await api.loginWithGoogle({ idToken });
+      const data = await api.loginWithGoogle({ idToken, requestedRole });
       setToken(data.token);
       setUser(data.user);
     } finally {
@@ -48,10 +48,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginWithApple = async (idToken: string) => {
+  const loginWithApple = async (idToken: string, requestedRole: UserRole) => {
     setLoading(true);
     try {
-      const data = await api.loginWithApple({ idToken });
+      const data = await api.loginWithApple({ idToken, requestedRole });
       setToken(data.token);
       setUser(data.user);
     } finally {
@@ -81,7 +81,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      const data = await api.login({ email: input.email, password: input.password });
+      const data = await api.login({
+        email: input.email,
+        password: input.password,
+        requestedRole: "admin",
+      });
       setToken(data.token);
       setUser(data.user);
     } finally {

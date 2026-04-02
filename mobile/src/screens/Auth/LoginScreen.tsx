@@ -10,6 +10,7 @@ import Constants from "expo-constants";
 import { useAuth } from "../../context/AuthContext";
 import { AppButton } from "../../components/AppButton";
 import { palette } from "../../theme/palette";
+import { UserRole } from "../../types/api";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -19,6 +20,7 @@ export function LoginScreen() {
 
   const [email, setEmail] = useState("admin@gymiai.com");
   const [password, setPassword] = useState("Admin123456");
+  const [selectedRole, setSelectedRole] = useState<UserRole>("member");
 
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 
@@ -41,7 +43,7 @@ export function LoginScreen() {
 
   const onLogin = async () => {
     try {
-      await login(email.trim(), password);
+      await login(email.trim(), password, selectedRole);
     } catch (error) {
       Alert.alert("No fue posible ingresar", error instanceof Error ? error.message : "Error inesperado");
     }
@@ -99,7 +101,7 @@ export function LoginScreen() {
         throw new Error("Apple no devolvio un token valido.");
       }
 
-      await loginWithApple(credential.identityToken);
+      await loginWithApple(credential.identityToken, selectedRole);
     } catch (error) {
       if (
         error instanceof Error &&
@@ -131,7 +133,7 @@ export function LoginScreen() {
       }
 
       try {
-        await loginWithGoogle(idToken);
+        await loginWithGoogle(idToken, selectedRole);
       } catch (error) {
         Alert.alert(
           "Google",
@@ -141,7 +143,13 @@ export function LoginScreen() {
     };
 
     run();
-  }, [googleResponse, loginWithGoogle]);
+  }, [googleResponse, loginWithGoogle, selectedRole]);
+
+  const roleOptions: Array<{ role: UserRole; label: string }> = [
+    { role: "member", label: "Usuario" },
+    { role: "trainer", label: "Entrenador" },
+    { role: "admin", label: "Administrador" },
+  ];
 
   return (
     <LinearGradient colors={palette.gradientHero} style={styles.container}>
@@ -149,6 +157,30 @@ export function LoginScreen() {
         <Text style={styles.eyebrow}>GymAI</Text>
         <Text style={styles.title}>Entrena con inteligencia</Text>
         <Text style={styles.subtitle}>Tu progreso, mediciones y coach IA en una sola app.</Text>
+
+        <View style={styles.roleSelector}>
+          <Text style={styles.roleSelectorTitle}>Selecciona tu acceso</Text>
+          <View style={styles.roleTabs}>
+            {roleOptions.map((option) => {
+              const isActive = selectedRole === option.role;
+              return (
+                <TouchableOpacity
+                  key={option.role}
+                  style={[styles.roleTab, isActive ? styles.roleTabActive : styles.roleTabInactive]}
+                  onPress={() => setSelectedRole(option.role)}
+                  disabled={loading}
+                >
+                  <Text style={[styles.roleTabText, isActive ? styles.roleTabTextActive : styles.roleTabTextInactive]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.roleHint}>
+            Inicia sesion con el perfil que deseas usar. Si tu cuenta no coincide, el acceso sera denegado.
+          </Text>
+        </View>
 
         <View style={styles.highlightStrip}>
           <View style={styles.highlightPill}>
@@ -238,9 +270,52 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     marginTop: 8,
-    marginBottom: 20,
+    marginBottom: 14,
     color: palette.textMuted,
     lineHeight: 20,
+  },
+  roleSelector: {
+    marginBottom: 14,
+  },
+  roleSelectorTitle: {
+    color: palette.ink,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  roleTabs: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  roleTab: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  roleTabActive: {
+    backgroundColor: palette.cocoa,
+    borderColor: palette.cocoa,
+  },
+  roleTabInactive: {
+    backgroundColor: palette.cream,
+    borderColor: palette.line,
+  },
+  roleTabText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  roleTabTextActive: {
+    color: palette.gold,
+  },
+  roleTabTextInactive: {
+    color: palette.ink,
+  },
+  roleHint: {
+    marginTop: 8,
+    color: palette.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   highlightStrip: {
     flexDirection: "row",

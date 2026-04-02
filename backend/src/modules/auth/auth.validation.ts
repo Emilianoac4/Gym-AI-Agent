@@ -13,17 +13,19 @@ export const registerSchema = z.object({
     email: z.string().email(),
     password: z.string().min(8),
     fullName: z.string().min(2),
-    role: z.enum(["admin", "member"]).default("member"),
+    role: z.enum(["admin", "trainer", "member"]).default("member"),
   }),
 });
 
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
+  requestedRole: z.enum(["admin", "trainer", "member"]),
 });
 
 export const oauthLoginSchema = z.object({
   idToken: z.string().min(20),
+  requestedRole: z.enum(["admin", "trainer", "member"]),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

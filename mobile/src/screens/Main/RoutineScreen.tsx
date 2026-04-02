@@ -104,6 +104,7 @@ export function RoutineScreen() {
   const [optionsLoadingKey, setOptionsLoadingKey] = useState<string | null>(null);
   const [manualReplacingKey, setManualReplacingKey] = useState<string | null>(null);
   const [openOptionsKey, setOpenOptionsKey] = useState<string | null>(null);
+  const [openProgressKey, setOpenProgressKey] = useState<string | null>(null);
   const [replacementOptionsByKey, setReplacementOptionsByKey] = useState<
     Record<string, RoutineExercise[]>
   >({});
@@ -777,9 +778,11 @@ export function RoutineScreen() {
                     {session.exercises.map((exercise) => {
                       const exerciseKey = normalize(exercise.name);
                       const sessionExerciseKey = `${normalize(session.day)}::${exerciseKey}`;
+                      const progressPanelKey = `${session.day}::${exercise.name}::progress`;
                       const progress = strengthMap[exerciseKey];
                       const selectedWeekEntry = getWeeklyEntry(progress, selectedWeekStart);
                       const previousWeekEntry = getWeeklyEntry(progress, previousWeekStart);
+                      const isProgressOpen = openProgressKey === progressPanelKey;
                       const isLogOpen =
                         activeLog?.sessionDay === session.day && activeLog.exerciseName === exerciseKey;
                       const isExerciseDone = completedExercisesBySelectedWeek.has(sessionExerciseKey);
@@ -803,38 +806,53 @@ export function RoutineScreen() {
                           </View>
                           {exercise.notes ? <Text style={styles.exNotes}>{exercise.notes}</Text> : null}
 
-                          <View style={styles.exerciseProgressCard}>
-                            <Text style={styles.exerciseProgressTitle}>Progreso del ejercicio</Text>
-                            <Text style={styles.exerciseProgressLine}>
-                              Semana seleccionada: {selectedWeekEntry ? `${selectedWeekEntry.latestLoadKg.toFixed(1)} kg` : "Sin registros"}
+                          <TouchableOpacity
+                            style={styles.progressToggleBtn}
+                            onPress={() =>
+                              setOpenProgressKey((prev) =>
+                                prev === progressPanelKey ? null : progressPanelKey
+                              )
+                            }
+                          >
+                            <Text style={styles.progressToggleText}>
+                              {isProgressOpen ? "Ocultar progreso del ejercicio" : "Ver progreso del ejercicio"}
                             </Text>
-                            <Text style={styles.exerciseProgressLine}>
-                              Mejor historico: {progress ? `${progress.bestLoadKg.toFixed(1)} kg` : "Sin datos"}
-                            </Text>
-                            <Text style={styles.exerciseProgressLine}>
-                              Ultima ejecucion: {progress ? formatDateTime(progress.lastPerformedAt) : "Sin datos"}
-                            </Text>
-                            {weeklyDelta !== null ? (
-                              <Text style={[styles.exerciseProgressLine, weeklyDelta >= 0 ? styles.progressUp : styles.progressDown]}>
-                                {weeklyDelta >= 0 ? "Subiste" : "Bajaste"} {Math.abs(weeklyDelta).toFixed(1)} kg vs semana anterior
-                              </Text>
-                            ) : (
-                              <Text style={styles.exerciseProgressMuted}>
-                                Registra al menos dos semanas para comparar este ejercicio.
-                              </Text>
-                            )}
+                          </TouchableOpacity>
 
-                            {recentHistory.length > 0 ? (
-                              <View style={styles.historyChips}>
-                                {recentHistory.map((item) => (
-                                  <View key={`${exercise.name}-${item.weekStart}`} style={styles.historyChip}>
-                                    <Text style={styles.historyChipWeek}>{formatWeekLabel(item.weekStart)}</Text>
-                                    <Text style={styles.historyChipValue}>{item.latestLoadKg.toFixed(1)} kg</Text>
-                                  </View>
-                                ))}
-                              </View>
-                            ) : null}
-                          </View>
+                          {isProgressOpen ? (
+                            <View style={styles.exerciseProgressCard}>
+                              <Text style={styles.exerciseProgressTitle}>Progreso del ejercicio</Text>
+                              <Text style={styles.exerciseProgressLine}>
+                                Semana seleccionada: {selectedWeekEntry ? `${selectedWeekEntry.latestLoadKg.toFixed(1)} kg` : "Sin registros"}
+                              </Text>
+                              <Text style={styles.exerciseProgressLine}>
+                                Mejor historico: {progress ? `${progress.bestLoadKg.toFixed(1)} kg` : "Sin datos"}
+                              </Text>
+                              <Text style={styles.exerciseProgressLine}>
+                                Ultima ejecucion: {progress ? formatDateTime(progress.lastPerformedAt) : "Sin datos"}
+                              </Text>
+                              {weeklyDelta !== null ? (
+                                <Text style={[styles.exerciseProgressLine, weeklyDelta >= 0 ? styles.progressUp : styles.progressDown]}>
+                                  {weeklyDelta >= 0 ? "Subiste" : "Bajaste"} {Math.abs(weeklyDelta).toFixed(1)} kg vs semana anterior
+                                </Text>
+                              ) : (
+                                <Text style={styles.exerciseProgressMuted}>
+                                  Registra al menos dos semanas para comparar este ejercicio.
+                                </Text>
+                              )}
+
+                              {recentHistory.length > 0 ? (
+                                <View style={styles.historyChips}>
+                                  {recentHistory.map((item) => (
+                                    <View key={`${exercise.name}-${item.weekStart}`} style={styles.historyChip}>
+                                      <Text style={styles.historyChipWeek}>{formatWeekLabel(item.weekStart)}</Text>
+                                      <Text style={styles.historyChipValue}>{item.latestLoadKg.toFixed(1)} kg</Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              ) : null}
+                            </View>
+                          ) : null}
 
                           <TouchableOpacity
                             style={styles.logToggleBtn}
@@ -1341,6 +1359,21 @@ const styles = StyleSheet.create({
     color: palette.textMuted,
     fontSize: 12,
     fontStyle: "italic",
+  },
+  progressToggleBtn: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: palette.card,
+  },
+  progressToggleText: {
+    color: palette.cocoa,
+    fontSize: 12,
+    fontWeight: "700",
   },
   exerciseProgressCard: {
     marginTop: 8,

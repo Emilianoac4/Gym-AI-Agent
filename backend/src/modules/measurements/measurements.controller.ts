@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
 import { CreateMeasurementInput } from "./measurements.validation";
+import { hasPermission } from "../../config/permissions";
 
 type MetricKey = "weightKg" | "bodyFatPct" | "muscleMass" | "waistCm" | "armCm";
 
@@ -12,6 +13,63 @@ type SummaryMetric = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+type AuthUserContext = {
+  id: string;
+  role: string;
+  gymId: string;
+  isActive: boolean;
+};
+
+const getAuthUserContext = async (id: string): Promise<AuthUserContext | null> => {
+  return prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      role: true,
+      gymId: true,
+      isActive: true,
+    },
+  });
+};
+
+const assertCanAccessMeasurementTarget = async (
+  req: Request,
+  targetUserId: string,
+  action: "users.measurements.read" | "users.measurements.write",
+): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (req.auth.userId === targetUserId) {
+    if (!hasPermission(req.auth.role, action)) {
+      throw new HttpError(403, "Forbidden");
+    }
+    return;
+  }
+
+  if (!hasPermission(req.auth.role, action)) {
+    throw new HttpError(403, "Forbidden");
+  }
+
+  const [requester, target] = await Promise.all([
+    getAuthUserContext(req.auth.userId),
+    getAuthUserContext(targetUserId),
+  ]);
+
+  if (!requester || !requester.isActive || !target || !target.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  if (requester.gymId !== target.gymId) {
+    throw new HttpError(403, "Forbidden");
+  }
+
+  if (requester.role === "trainer" && target.role !== "member") {
+    throw new HttpError(403, "Trainers can only access member measurements");
+  }
+};
 
 function roundMetric(value: number): number {
   return Math.round(value * 100) / 100;
@@ -125,9 +183,7 @@ export const createMeasurementForUser = async (
     throw new HttpError(401, "Unauthorized");
   }
 
-  if (req.auth.role !== "admin" && req.auth.userId !== id) {
-    throw new HttpError(403, "You can only create your own measurements");
-  }
+  await assertCanAccessMeasurementTarget(req, id, "users.measurements.write");
 
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user || !user.isActive) {
@@ -159,9 +215,7 @@ export const listMeasurementsForUser = async (req: Request<{ id: string }>, res:
     throw new HttpError(401, "Unauthorized");
   }
 
-  if (req.auth.role !== "admin" && req.auth.userId !== id) {
-    throw new HttpError(403, "You can only access your own measurements");
-  }
+  await assertCanAccessMeasurementTarget(req, id, "users.measurements.read");
 
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user || !user.isActive) {
@@ -183,9 +237,7 @@ export const getProgressSummaryForUser = async (req: Request<{ id: string }>, re
     throw new HttpError(401, "Unauthorized");
   }
 
-  if (req.auth.role !== "admin" && req.auth.userId !== id) {
-    throw new HttpError(403, "You can only access your own progress");
-  }
+  await assertCanAccessMeasurementTarget(req, id, "users.measurements.read");
 
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user || !user.isActive) {

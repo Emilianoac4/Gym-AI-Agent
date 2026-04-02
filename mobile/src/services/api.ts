@@ -9,6 +9,7 @@ import {
   RoutineExerciseCheckin,
   StrengthLog,
   StrengthProgressSummary,
+  UserRole,
 } from "../types/api";
 
 const API_BASE_URL =
@@ -76,36 +77,36 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
-  login: (payload: { email: string; password: string }) =>
-    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "member"; gymId: string } }>("/auth/login", {
+  login: (payload: { email: string; password: string; requestedRole: UserRole }) =>
+    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/login", {
       method: "POST",
       body: payload,
     }),
 
-  loginWithGoogle: (payload: { idToken: string }) =>
-    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "member"; gymId: string } }>("/auth/oauth/google", {
+  loginWithGoogle: (payload: { idToken: string; requestedRole: UserRole }) =>
+    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/oauth/google", {
       method: "POST",
       body: payload,
     }),
 
-  loginWithApple: (payload: { idToken: string }) =>
-    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "member"; gymId: string } }>("/auth/oauth/apple", {
+  loginWithApple: (payload: { idToken: string; requestedRole: UserRole }) =>
+    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/oauth/apple", {
       method: "POST",
       body: payload,
     }),
 
   register: (payload: {
     gym?: { name: string; ownerName: string; address?: string; phone?: string };
-    user: { email: string; password: string; fullName: string; role: "admin" | "member" };
+    user: { email: string; password: string; fullName: string; role: "admin" | "trainer" | "member" };
   }, token?: string) =>
-    request<{ message: string; user: { id: string; email: string; fullName: string; role: "admin" | "member"; gymId: string } }>("/auth/register", {
+    request<{ message: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/register", {
       method: "POST",
       token,
       body: payload,
     }),
 
   getProfile: (id: string, token: string) =>
-    request<{ user: { id: string; email: string; fullName: string; role: "admin" | "member"; gymId: string; createdAt: string }; profile: any }>(`/users/${id}/profile`, {
+    request<{ user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string; createdAt: string }; profile: any }>(`/users/${id}/profile`, {
       token,
     }),
 

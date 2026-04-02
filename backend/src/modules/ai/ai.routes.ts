@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { AIController } from "./ai.controller";
 import { validate } from "../../middleware/validate.middleware";
-import { authenticate } from "../../middleware/auth.middleware";
+import { authenticate, authorizeAction } from "../../middleware/auth.middleware";
 import {
   chatMessageSchema,
   exerciseCheckinSchema,
@@ -18,6 +18,7 @@ export const aiRouter = Router();
 
 // All AI routes require authentication
 aiRouter.use(authenticate);
+aiRouter.use(authorizeAction("ai.use"));
 
 // Generate personalized workout routine
 aiRouter.post("/:userId/routine", AIController.generateRoutine);

@@ -222,7 +222,7 @@ export class AIController {
     });
   }
 
-  private static async getCurrentWeekCompletionState(userId: string, since?: Date) {
+  private static async getCurrentWeekCompletionState(userId: string) {
     const weekStart = getWeekStartIso(new Date());
 
     const [dayLogs, exerciseLogs] = await Promise.all([
@@ -233,13 +233,6 @@ export class AIController {
           userMessage: {
             startsWith: `${ROUTINE_CHECKIN_PREFIX}${weekStart}::`,
           },
-          ...(since
-            ? {
-                createdAt: {
-                  gte: since,
-                },
-              }
-            : {}),
         },
       }),
       prisma.aIChatLog.findMany({
@@ -249,13 +242,6 @@ export class AIController {
           userMessage: {
             startsWith: `${EXERCISE_CHECKIN_PREFIX}${weekStart}::`,
           },
-          ...(since
-            ? {
-                createdAt: {
-                  gte: since,
-                },
-              }
-            : {}),
         },
       }),
     ]);
@@ -393,10 +379,7 @@ export class AIController {
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
-      const completionState = await AIController.getCurrentWeekCompletionState(
-        userId,
-        latest.createdAt
-      );
+      const completionState = await AIController.getCurrentWeekCompletionState(userId);
       const normalizedSession = normalizeSessionDay(sessionDay);
 
       if (completionState.completedDays.has(normalizedSession)) {
@@ -505,10 +488,7 @@ export class AIController {
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
-      const completionState = await AIController.getCurrentWeekCompletionState(
-        userId,
-        latest.createdAt
-      );
+      const completionState = await AIController.getCurrentWeekCompletionState(userId);
       const normalizedSession = normalizeSessionDay(sessionDay);
       const normalizedExercise = normalizeExerciseName(exerciseName);
 
@@ -566,10 +546,7 @@ export class AIController {
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const normalizedSession = normalizeDayName(sessionDay);
       const normalizedExercise = normalizeExerciseName(exerciseName);
-      const completionState = await AIController.getCurrentWeekCompletionState(
-        userId,
-        latest.createdAt
-      );
+      const completionState = await AIController.getCurrentWeekCompletionState(userId);
 
       if (completionState.completedDays.has(normalizedSession)) {
         throw new HttpError(409, "Este dia ya esta completado y no se puede modificar");
@@ -650,10 +627,7 @@ export class AIController {
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
-      const completionState = await AIController.getCurrentWeekCompletionState(
-        userId,
-        latest.createdAt
-      );
+      const completionState = await AIController.getCurrentWeekCompletionState(userId);
       const normalizedSession = normalizeSessionDay(sessionDay);
       const normalizedExercise = normalizeExerciseName(exerciseName);
 
@@ -720,9 +694,6 @@ export class AIController {
           userId,
           type: "CHAT",
           userMessage: marker,
-          createdAt: {
-            gte: latestRoutine.createdAt,
-          },
         },
       });
 
@@ -763,9 +734,6 @@ export class AIController {
             userMessage: {
               startsWith: `${EXERCISE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}::`,
             },
-            createdAt: {
-              gte: latestRoutine.createdAt,
-            },
           },
         });
 
@@ -788,9 +756,6 @@ export class AIController {
               userId,
               type: "CHAT",
               userMessage: dayMarker,
-              createdAt: {
-                gte: latestRoutine.createdAt,
-              },
             },
           });
 
@@ -990,9 +955,6 @@ export class AIController {
           userId,
           type: "CHAT",
           userMessage: marker,
-          createdAt: {
-            gte: latestRoutine.createdAt,
-          },
         },
       });
 
@@ -1048,10 +1010,6 @@ export class AIController {
 
       const days = req.query.days ? parseInt(req.query.days as string, 10) : 28;
       const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-      const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
-      const effectiveFromDate =
-        latestRoutine.createdAt > fromDate ? latestRoutine.createdAt : fromDate;
-
       const logs = await prisma.aIChatLog.findMany({
         where: {
           userId,
@@ -1069,7 +1027,7 @@ export class AIController {
             },
           ],
           createdAt: {
-            gte: effectiveFromDate,
+            gte: fromDate,
           },
         },
         orderBy: { createdAt: "desc" },
@@ -1161,16 +1119,102 @@ export class AIController {
       });
 
       // Parse JSON response
-      let parsedRoutine;
+      let parsedRoutine: GeneratedRoutine;
       try {
         parsedRoutine = JSON.parse(routine);
       } catch (e) {
-        parsedRoutine = { raw: routine };
+        throw new HttpError(500, "No se pudo interpretar la rutina generada");
+      }
+
+      if (!parsedRoutine || !Array.isArray(parsedRoutine.sessions)) {
+        throw new HttpError(500, "La rutina generada no tiene un formato valido");
+      }
+
+      let mergedRoutine = parsedRoutine;
+      try {
+        const latest = await AIController.getLatestRoutineSnapshot(userId);
+        const completionState = await AIController.getCurrentWeekCompletionState(userId);
+
+        const generatedByDay = new Map<string, RoutineSession>();
+        parsedRoutine.sessions.forEach((session) => {
+          generatedByDay.set(normalizeSessionDay(session.day), session);
+        });
+
+        const existingDayOrder = new Set<string>();
+        const mergedSessions = latest.routine.sessions.map((existingSession) => {
+          const dayKey = normalizeSessionDay(existingSession.day);
+          existingDayOrder.add(dayKey);
+          const generatedSession = generatedByDay.get(dayKey);
+
+          if (!generatedSession) {
+            return existingSession;
+          }
+
+          // Completed days remain immutable when regenerating the full routine.
+          if (completionState.completedDays.has(dayKey)) {
+            return existingSession;
+          }
+
+          const completedExercises =
+            completionState.completedExercisesByDay.get(dayKey) || new Set<string>();
+
+          if (completedExercises.size === 0) {
+            return generatedSession;
+          }
+
+          const lockedExercises = existingSession.exercises.filter((exercise) =>
+            completedExercises.has(normalizeExerciseName(exercise.name))
+          );
+
+          const generatedCandidates = generatedSession.exercises.filter(
+            (exercise) => !completedExercises.has(normalizeExerciseName(exercise.name))
+          );
+
+          const baselineExerciseCount = Math.max(existingSession.exercises.length, 5);
+          const desiredGeneratedCount = Math.max(
+            baselineExerciseCount - lockedExercises.length,
+            0
+          );
+
+          return {
+            ...generatedSession,
+            exercises: [
+              ...lockedExercises,
+              ...generatedCandidates.slice(0, desiredGeneratedCount),
+            ],
+          };
+        });
+
+        parsedRoutine.sessions.forEach((generatedSession) => {
+          const dayKey = normalizeSessionDay(generatedSession.day);
+          if (!existingDayOrder.has(dayKey)) {
+            mergedSessions.push(generatedSession);
+          }
+        });
+
+        mergedRoutine = {
+          ...parsedRoutine,
+          weekly_sessions: mergedSessions.length,
+          sessions: mergedSessions,
+        };
+
+        await AIController.saveRoutineSnapshot(
+          userId,
+          mergedRoutine,
+          "REGENERATE_ROUTINE::PRESERVE_PROGRESS"
+        );
+      } catch (error) {
+        if (error instanceof HttpError && error.statusCode === 404) {
+          // First generation path: aiService already stored snapshot.
+          mergedRoutine = parsedRoutine;
+        } else {
+          throw error;
+        }
       }
 
       res.json({
         message: "Routine generated successfully",
-        routine: parsedRoutine,
+        routine: mergedRoutine,
       });
     } catch (error) {
       next(error);

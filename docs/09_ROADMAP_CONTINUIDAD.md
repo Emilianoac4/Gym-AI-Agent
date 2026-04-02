@@ -1,14 +1,20 @@
 # GymAI - Roadmap Detallado & Continuidad
 
-**Versión**: 2.0  
-**Status**: Fase 1 ✅ + Fase 2 ✅ / Fase 3-5 📋  
-**Última actualización**: Marzo 30, 2026  
+**Version**: 2.1  
+**Status**: Fase 1-2 completas + Plan Prioritario 3 perfiles activo  
+**Ultima actualizacion**: Abril 1, 2026  
 
 ---
 
 ## 📅 Roadmap Completo
 
-Referencia de ejecucion actualizada: [13_PLAN_IMPLEMENTACION_FUNCIONES.md](docs/13_PLAN_IMPLEMENTACION_FUNCIONES.md)
+Referencia de ejecucion actualizada y prioritaria: [13_PLAN_IMPLEMENTACION_FUNCIONES.md](docs/13_PLAN_IMPLEMENTACION_FUNCIONES.md)
+
+## Nota de prioridad
+
+- La ejecucion vigente se rige por el plan de 3 perfiles (administrador, entrenador, usuario).
+- Las fases historicas de este documento se conservan como contexto de continuidad.
+- Para implementar nuevas funciones, priorizar primero Fase 0/Fase 1 del plan prioritario.
 
 ### ✅ Fase 1: Fundamentos (Completa)
 **Período**: Marzo 26-30, 2026 (5 días)  

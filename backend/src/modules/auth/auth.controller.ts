@@ -8,6 +8,15 @@ import { signAuthToken, verifyAuthToken } from "../../utils/jwt";
 import { LoginInput, OauthLoginInput, RegisterInput } from "./auth.validation";
 import { verifyAppleIdToken, verifyGoogleIdToken } from "./oauth.providers";
 
+const assertRequestedRole = (actualRole: UserRole, requestedRole: UserRole) => {
+  if (actualRole !== requestedRole) {
+    throw new HttpError(
+      403,
+      `Este acceso es solo para perfil ${requestedRole}. Tu cuenta pertenece al perfil ${actualRole}.`,
+    );
+  }
+};
+
 const parseAdminFromHeader = (req: Request): { userId: string; role: UserRole } | null => {
   const authHeader = req.headers.authorization;
 
@@ -68,7 +77,7 @@ export const register = async (
         email: user.email,
         passwordHash,
         fullName: user.fullName,
-        role: user.role,
+        role: user.role as UserRole,
       },
       select: {
         id: true,
@@ -80,6 +89,10 @@ export const register = async (
     });
   });
 
+  console.log(
+    `[AUDIT] ${req.requestId ?? "n/a"} action=users.create actor=${requester?.userId ?? "bootstrap"} target=${created.id}`,
+  );
+
   res.status(201).json({ message: "User created", user: created });
 };
 
@@ -87,7 +100,7 @@ export const login = async (
   req: Request<unknown, unknown, LoginInput>,
   res: Response,
 ): Promise<void> => {
-  const { email, password } = req.body;
+  const { email, password, requestedRole } = req.body;
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.isActive) {
@@ -98,6 +111,8 @@ export const login = async (
   if (!isValidPassword) {
     throw new HttpError(401, "Invalid credentials");
   }
+
+  assertRequestedRole(user.role, requestedRole as UserRole);
 
   const token = signAuthToken({ userId: user.id, role: user.role });
 
@@ -113,7 +128,11 @@ export const login = async (
   });
 };
 
-const completeOauthLogin = async (email: string, res: Response): Promise<void> => {
+const completeOauthLogin = async (
+  email: string,
+  requestedRole: UserRole,
+  res: Response,
+): Promise<void> => {
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user || !user.isActive) {
@@ -122,6 +141,8 @@ const completeOauthLogin = async (email: string, res: Response): Promise<void> =
       "No account is linked to this social email. Ask an admin to create your account first.",
     );
   }
+
+  assertRequestedRole(user.role, requestedRole);
 
   const token = signAuthToken({ userId: user.id, role: user.role });
 
@@ -147,7 +168,7 @@ export const oauthGoogle = async (
     throw new HttpError(401, "Google email is not verified");
   }
 
-  await completeOauthLogin(identity.email, res);
+  await completeOauthLogin(identity.email, req.body.requestedRole as UserRole, res);
 };
 
 export const oauthApple = async (
@@ -160,5 +181,5 @@ export const oauthApple = async (
     throw new HttpError(401, "Apple email is not verified");
   }
 
-  await completeOauthLogin(identity.email, res);
+  await completeOauthLogin(identity.email, req.body.requestedRole as UserRole, res);
 };
