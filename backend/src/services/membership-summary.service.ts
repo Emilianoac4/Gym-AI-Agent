@@ -150,6 +150,52 @@ const sendDailyMembershipSummary = async () => {
   }
 };
 
+export const forceSendDailyMembershipSummary = async (): Promise<{ gymsProcessed: number; gymsWithTransactions: number }> => {
+  const now = new Date();
+  const { start, end } = dayBoundsUtc(now);
+
+  const gyms = await prisma.gym.findMany({
+    select: { id: true, name: true },
+  });
+
+  let gymsWithTransactions = 0;
+
+  for (const gym of gyms) {
+    const rows = await prisma.membershipTransaction.findMany({
+      where: {
+        gymId: gym.id,
+        createdAt: { gte: start, lt: end },
+      },
+      select: { type: true, paymentMethod: true, amount: true },
+    });
+
+    if (rows.length === 0) continue;
+
+    gymsWithTransactions++;
+
+    const admins = await prisma.user.findMany({
+      where: { gymId: gym.id, role: "admin", isActive: true },
+      select: { email: true },
+    });
+
+    const recipients = admins.map((u) => u.email);
+    if (recipients.length === 0) continue;
+
+    const { html, text } = buildSummaryEmail(gym.name, start, rows);
+
+    for (const to of recipients) {
+      await sendPlatformEmail({
+        to,
+        subject: `[TEST] Resumen diario de transacciones - ${gym.name}`,
+        html,
+        text,
+      });
+    }
+  }
+
+  return { gymsProcessed: gyms.length, gymsWithTransactions };
+};
+
 export const startDailyMembershipSummaryJob = () => {
   if (!env.DAILY_MEMBERSHIP_SUMMARY_ENABLED) {
     return;

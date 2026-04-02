@@ -16,6 +16,7 @@ import {
   sendEmailVerification,
 } from "../../utils/email-auth";
 import { env } from "../../config/env";
+import { forceSendDailyMembershipSummary } from "../../services/membership-summary.service";
 
 type ActiveUser = {
   id: string;
@@ -711,5 +712,13 @@ export const setHealthConnectionStateByUserId = async (
   res.json({
     message: req.body.isActive ? "Conexion reactivada" : "Conexion desactivada",
     connection,
+  });
+};
+
+export const triggerDailySummary = async (_req: Request, res: Response): Promise<void> => {
+  const result = await forceSendDailyMembershipSummary();
+  res.json({
+    message: "Resumen diario enviado (modo test). Revisa el asunto: [TEST] Resumen diario...",
+    ...result,
   });
 };

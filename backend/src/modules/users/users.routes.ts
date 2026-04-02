@@ -11,6 +11,7 @@ import {
 	setHealthConnectionStateByUserId,
 	upsertHealthConnectionByUserId,
 	updateUserProfileById,
+	triggerDailySummary,
 } from "./users.controller";
 import { authenticate, authorizeAction } from "../../middleware/auth.middleware";
 import { validate } from "../../middleware/validate.middleware";
@@ -91,6 +92,13 @@ usersRouter.patch(
 	authorizeAction("users.renewMembership"),
 	validate(renewMembershipSchema),
 	renewMembershipByUserId,
+);
+
+usersRouter.post(
+	"/admin/trigger-summary",
+	authenticate,
+	authorizeAction("users.create"),
+	triggerDailySummary,
 );
 
 export { usersRouter };
