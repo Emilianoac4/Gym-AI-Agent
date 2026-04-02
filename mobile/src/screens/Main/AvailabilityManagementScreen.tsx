@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -28,8 +30,6 @@ type TemplateDraft = {
   isOpen: boolean;
   opensAt: string;
   closesAt: string;
-  slotMinutes: string;
-  capacityLabel: string;
   updatedAt: string | null;
   updatedByName: string | null;
 };
@@ -44,6 +44,39 @@ const dayLabels: Record<GymDayOfWeek, string> = {
   sunday: "Domingo",
 };
 
+const daySequence: GymDayOfWeek[] = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+];
+
+const toDayOfWeek = (date: Date): GymDayOfWeek => {
+  const value = date.getDay();
+  if (value === 0) {
+    return "sunday";
+  }
+
+  return daySequence[value - 1];
+};
+
+const buildTimeOptions = () => {
+  const result: string[] = [];
+
+  for (let hour = 0; hour < 24; hour += 1) {
+    for (let minute = 0; minute < 60; minute += 30) {
+      result.push(`${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`);
+    }
+  }
+
+  return result;
+};
+
+const timeOptions = buildTimeOptions();
+
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
 const plusDays = (amount: number) => {
@@ -57,8 +90,6 @@ const mapTemplateToDraft = (day: GymAvailabilityTemplateDay): TemplateDraft => (
   isOpen: day.isOpen,
   opensAt: day.opensAt ?? "",
   closesAt: day.closesAt ?? "",
-  slotMinutes: String(day.slotMinutes ?? 60),
-  capacityLabel: day.capacityLabel ?? "",
   updatedAt: day.updatedAt,
   updatedByName: day.updatedBy?.fullName ?? null,
 });
@@ -67,8 +98,6 @@ const emptyExceptionForm = {
   isClosed: false,
   opensAt: "06:00",
   closesAt: "22:00",
-  slotMinutes: "60",
-  capacityLabel: "alta",
   note: "",
 };
 
@@ -88,11 +117,27 @@ export function AvailabilityManagementScreen() {
   const [trainers, setTrainers] = useState<AvailabilityTrainerPermission[]>([]);
   const [selectedExceptionDate, setSelectedExceptionDate] = useState(todayKey());
   const [exceptionForm, setExceptionForm] = useState(emptyExceptionForm);
+  const [timePickerTarget, setTimePickerTarget] = useState<
+    | { kind: "template"; dayOfWeek: GymDayOfWeek; field: "opensAt" | "closesAt" }
+    | { kind: "exception"; field: "opensAt" | "closesAt" }
+    | null
+  >(null);
 
   const selectedException = useMemo(
     () => exceptions.find((item) => item.date === selectedExceptionDate) ?? null,
     [exceptions, selectedExceptionDate],
   );
+
+  const orderedTemplateDrafts = useMemo(() => {
+    const today = toDayOfWeek(new Date());
+    const startIndex = daySequence.indexOf(today);
+    const rotatedDays = [...daySequence.slice(startIndex), ...daySequence.slice(0, startIndex)];
+    const byDay = new Map(templateDrafts.map((item) => [item.dayOfWeek, item]));
+
+    return rotatedDays
+      .map((dayOfWeek) => byDay.get(dayOfWeek))
+      .filter((item): item is TemplateDraft => item !== undefined);
+  }, [templateDrafts]);
 
   useEffect(() => {
     if (!selectedException) {
@@ -104,8 +149,6 @@ export function AvailabilityManagementScreen() {
       isClosed: selectedException.isClosed,
       opensAt: selectedException.opensAt ?? "06:00",
       closesAt: selectedException.closesAt ?? "22:00",
-      slotMinutes: String(selectedException.slotMinutes ?? 60),
-      capacityLabel: selectedException.capacityLabel ?? "",
       note: selectedException.note ?? "",
     });
   }, [selectedException]);
@@ -155,20 +198,63 @@ export function AvailabilityManagementScreen() {
     );
   };
 
-  const onSaveTemplateDay = async (draft: TemplateDraft) => {
-    if (!token || !permissions.canWrite) {
+  const onToggleTemplateOpen = (draft: TemplateDraft) => {
+    if (!permissions.canWrite) {
       return;
     }
 
-    let slotMinutes: number | null = null;
     if (draft.isOpen) {
-      const parsedSlotMinutes = Number(draft.slotMinutes);
-      if (!Number.isFinite(parsedSlotMinutes) || parsedSlotMinutes <= 0) {
-        Alert.alert("Franja invalida", "Debes indicar una duracion valida en minutos.");
-        return;
-      }
+      updateTemplateDraft(draft.dayOfWeek, {
+        isOpen: false,
+      });
+      return;
+    }
 
-      slotMinutes = parsedSlotMinutes;
+    updateTemplateDraft(draft.dayOfWeek, {
+      isOpen: true,
+      opensAt: draft.opensAt || "06:00",
+      closesAt: draft.closesAt || "22:00",
+    });
+  };
+
+  const onToggleExceptionClosed = () => {
+    if (!permissions.canWrite) {
+      return;
+    }
+
+    setExceptionForm((current) => {
+      const nextClosed = !current.isClosed;
+      return {
+        ...current,
+        isClosed: nextClosed,
+        opensAt: nextClosed ? current.opensAt : current.opensAt || "06:00",
+        closesAt: nextClosed ? current.closesAt : current.closesAt || "22:00",
+      };
+    });
+  };
+
+  const applySelectedTime = (value: string) => {
+    if (!timePickerTarget) {
+      return;
+    }
+
+    if (timePickerTarget.kind === "template") {
+      updateTemplateDraft(timePickerTarget.dayOfWeek, {
+        [timePickerTarget.field]: value,
+      });
+    } else {
+      setExceptionForm((current) => ({
+        ...current,
+        [timePickerTarget.field]: value,
+      }));
+    }
+
+    setTimePickerTarget(null);
+  };
+
+  const onSaveTemplateDay = async (draft: TemplateDraft) => {
+    if (!token || !permissions.canWrite) {
+      return;
     }
 
     setSavingDay(draft.dayOfWeek);
@@ -177,8 +263,6 @@ export function AvailabilityManagementScreen() {
         isOpen: draft.isOpen,
         opensAt: draft.isOpen ? draft.opensAt : null,
         closesAt: draft.isOpen ? draft.closesAt : null,
-        slotMinutes: draft.isOpen ? slotMinutes : null,
-        capacityLabel: draft.capacityLabel.trim() || null,
       });
 
       setTemplateDrafts((current) =>
@@ -198,25 +282,12 @@ export function AvailabilityManagementScreen() {
       return;
     }
 
-    let slotMinutes: number | null = null;
-    if (!exceptionForm.isClosed) {
-      const parsedSlotMinutes = Number(exceptionForm.slotMinutes);
-      if (!Number.isFinite(parsedSlotMinutes) || parsedSlotMinutes <= 0) {
-        Alert.alert("Franja invalida", "Debes indicar una duracion valida en minutos.");
-        return;
-      }
-
-      slotMinutes = parsedSlotMinutes;
-    }
-
     setSavingException(true);
     try {
       const response = await api.saveAvailabilityException(token, selectedExceptionDate, {
         isClosed: exceptionForm.isClosed,
         opensAt: exceptionForm.isClosed ? null : exceptionForm.opensAt,
         closesAt: exceptionForm.isClosed ? null : exceptionForm.closesAt,
-        slotMinutes,
-        capacityLabel: exceptionForm.capacityLabel.trim() || null,
         note: exceptionForm.note.trim() || null,
       });
 
@@ -305,14 +376,14 @@ export function AvailabilityManagementScreen() {
         <Text style={styles.sectionTitle}>Horario estandar</Text>
         <Text style={styles.sectionCopy}>Configura el horario base de cada dia de la semana.</Text>
 
-        {templateDrafts.map((draft) => (
+        {orderedTemplateDrafts.map((draft) => (
           <View key={draft.dayOfWeek} style={styles.dayCard}>
             <View style={styles.dayHeader}>
               <Text style={styles.dayLabel}>{dayLabels[draft.dayOfWeek]}</Text>
               <TouchableOpacity
                 style={[styles.toggleChip, draft.isOpen ? styles.toggleChipOn : styles.toggleChipOff]}
                 disabled={!permissions.canWrite}
-                onPress={() => updateTemplateDraft(draft.dayOfWeek, { isOpen: !draft.isOpen })}
+                onPress={() => onToggleTemplateOpen(draft)}
               >
                 <Text style={[styles.toggleChipText, !draft.isOpen && styles.toggleChipTextOff]}>
                   {draft.isOpen ? "Abierto" : "Cerrado"}
@@ -323,51 +394,35 @@ export function AvailabilityManagementScreen() {
             <View style={styles.fieldRow}>
               <View style={styles.fieldHalf}>
                 <Text style={styles.fieldLabel}>Apertura</Text>
-                <TextInput
-                  style={styles.input}
-                  editable={permissions.canWrite && draft.isOpen}
-                  value={draft.opensAt}
-                  onChangeText={(value) => updateTemplateDraft(draft.dayOfWeek, { opensAt: value })}
-                  placeholder="06:00"
-                  placeholderTextColor={palette.textSoft}
-                />
+                <Pressable
+                  style={[styles.selectInput, (!permissions.canWrite || !draft.isOpen) && styles.selectInputDisabled]}
+                  disabled={!permissions.canWrite || !draft.isOpen}
+                  onPress={() =>
+                    setTimePickerTarget({
+                      kind: "template",
+                      dayOfWeek: draft.dayOfWeek,
+                      field: "opensAt",
+                    })
+                  }
+                >
+                  <Text style={styles.selectInputText}>{draft.opensAt || "Seleccionar"}</Text>
+                </Pressable>
               </View>
               <View style={styles.fieldHalf}>
                 <Text style={styles.fieldLabel}>Cierre</Text>
-                <TextInput
-                  style={styles.input}
-                  editable={permissions.canWrite && draft.isOpen}
-                  value={draft.closesAt}
-                  onChangeText={(value) => updateTemplateDraft(draft.dayOfWeek, { closesAt: value })}
-                  placeholder="22:00"
-                  placeholderTextColor={palette.textSoft}
-                />
-              </View>
-            </View>
-
-            <View style={styles.fieldRow}>
-              <View style={styles.fieldHalf}>
-                <Text style={styles.fieldLabel}>Franja (min)</Text>
-                <TextInput
-                  style={styles.input}
-                  editable={permissions.canWrite && draft.isOpen}
-                  keyboardType="numeric"
-                  value={draft.slotMinutes}
-                  onChangeText={(value) => updateTemplateDraft(draft.dayOfWeek, { slotMinutes: value })}
-                  placeholder="60"
-                  placeholderTextColor={palette.textSoft}
-                />
-              </View>
-              <View style={styles.fieldHalf}>
-                <Text style={styles.fieldLabel}>Capacidad</Text>
-                <TextInput
-                  style={styles.input}
-                  editable={permissions.canWrite}
-                  value={draft.capacityLabel}
-                  onChangeText={(value) => updateTemplateDraft(draft.dayOfWeek, { capacityLabel: value })}
-                  placeholder="alta / reducida"
-                  placeholderTextColor={palette.textSoft}
-                />
+                <Pressable
+                  style={[styles.selectInput, (!permissions.canWrite || !draft.isOpen) && styles.selectInputDisabled]}
+                  disabled={!permissions.canWrite || !draft.isOpen}
+                  onPress={() =>
+                    setTimePickerTarget({
+                      kind: "template",
+                      dayOfWeek: draft.dayOfWeek,
+                      field: "closesAt",
+                    })
+                  }
+                >
+                  <Text style={styles.selectInputText}>{draft.closesAt || "Seleccionar"}</Text>
+                </Pressable>
               </View>
             </View>
 
@@ -409,7 +464,7 @@ export function AvailabilityManagementScreen() {
         <TouchableOpacity
           style={[styles.toggleChip, exceptionForm.isClosed ? styles.toggleChipOff : styles.toggleChipOn]}
           disabled={!permissions.canWrite}
-          onPress={() => setExceptionForm((current) => ({ ...current, isClosed: !current.isClosed }))}
+          onPress={onToggleExceptionClosed}
         >
           <Text style={[styles.toggleChipText, exceptionForm.isClosed && styles.toggleChipTextOff]}>
             {exceptionForm.isClosed ? "Dia cerrado" : "Dia abierto"}
@@ -419,51 +474,23 @@ export function AvailabilityManagementScreen() {
         <View style={styles.fieldRow}>
           <View style={styles.fieldHalf}>
             <Text style={styles.fieldLabel}>Apertura</Text>
-            <TextInput
-              style={styles.input}
-              editable={permissions.canWrite && !exceptionForm.isClosed}
-              value={exceptionForm.opensAt}
-              onChangeText={(value) => setExceptionForm((current) => ({ ...current, opensAt: value }))}
-              placeholder="06:00"
-              placeholderTextColor={palette.textSoft}
-            />
+            <Pressable
+              style={[styles.selectInput, (!permissions.canWrite || exceptionForm.isClosed) && styles.selectInputDisabled]}
+              disabled={!permissions.canWrite || exceptionForm.isClosed}
+              onPress={() => setTimePickerTarget({ kind: "exception", field: "opensAt" })}
+            >
+              <Text style={styles.selectInputText}>{exceptionForm.opensAt || "Seleccionar"}</Text>
+            </Pressable>
           </View>
           <View style={styles.fieldHalf}>
             <Text style={styles.fieldLabel}>Cierre</Text>
-            <TextInput
-              style={styles.input}
-              editable={permissions.canWrite && !exceptionForm.isClosed}
-              value={exceptionForm.closesAt}
-              onChangeText={(value) => setExceptionForm((current) => ({ ...current, closesAt: value }))}
-              placeholder="22:00"
-              placeholderTextColor={palette.textSoft}
-            />
-          </View>
-        </View>
-
-        <View style={styles.fieldRow}>
-          <View style={styles.fieldHalf}>
-            <Text style={styles.fieldLabel}>Franja (min)</Text>
-            <TextInput
-              style={styles.input}
-              editable={permissions.canWrite && !exceptionForm.isClosed}
-              keyboardType="numeric"
-              value={exceptionForm.slotMinutes}
-              onChangeText={(value) => setExceptionForm((current) => ({ ...current, slotMinutes: value }))}
-              placeholder="60"
-              placeholderTextColor={palette.textSoft}
-            />
-          </View>
-          <View style={styles.fieldHalf}>
-            <Text style={styles.fieldLabel}>Capacidad</Text>
-            <TextInput
-              style={styles.input}
-              editable={permissions.canWrite}
-              value={exceptionForm.capacityLabel}
-              onChangeText={(value) => setExceptionForm((current) => ({ ...current, capacityLabel: value }))}
-              placeholder="alta / reducida"
-              placeholderTextColor={palette.textSoft}
-            />
+            <Pressable
+              style={[styles.selectInput, (!permissions.canWrite || exceptionForm.isClosed) && styles.selectInputDisabled]}
+              disabled={!permissions.canWrite || exceptionForm.isClosed}
+              onPress={() => setTimePickerTarget({ kind: "exception", field: "closesAt" })}
+            >
+              <Text style={styles.selectInputText}>{exceptionForm.closesAt || "Seleccionar"}</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -551,6 +578,29 @@ export function AvailabilityManagementScreen() {
           ))}
         </View>
       ) : null}
+
+      <Modal
+        visible={Boolean(timePickerTarget)}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setTimePickerTarget(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Selecciona una hora</Text>
+            <ScrollView style={styles.modalList} contentContainerStyle={styles.modalListContent}>
+              {timeOptions.map((value) => (
+                <Pressable key={value} style={styles.modalOption} onPress={() => applySelectedTime(value)}>
+                  <Text style={styles.modalOptionText}>{value}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <Pressable style={styles.modalCloseButton} onPress={() => setTimePickerTarget(null)}>
+              <Text style={styles.modalCloseButtonText}>Cancelar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -673,6 +723,21 @@ const styles = StyleSheet.create({
     backgroundColor: palette.cream,
     color: palette.ink,
   },
+  selectInput: {
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: palette.cream,
+  },
+  selectInputDisabled: {
+    opacity: 0.6,
+  },
+  selectInputText: {
+    color: palette.ink,
+    fontWeight: "700",
+  },
   textArea: {
     minHeight: 90,
     textAlignVertical: "top",
@@ -751,5 +816,58 @@ const styles = StyleSheet.create({
   },
   permissionButtonTextLight: {
     color: palette.card,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(42, 35, 28, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 360,
+    maxHeight: "80%",
+    backgroundColor: palette.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: palette.line,
+    padding: 16,
+    gap: 12,
+  },
+  modalTitle: {
+    color: palette.cocoa,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  modalList: {
+    maxHeight: 320,
+  },
+  modalListContent: {
+    gap: 8,
+  },
+  modalOption: {
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: palette.cream,
+  },
+  modalOptionText: {
+    color: palette.cocoa,
+    fontWeight: "700",
+  },
+  modalCloseButton: {
+    alignSelf: "flex-end",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  modalCloseButtonText: {
+    color: palette.cocoa,
+    fontWeight: "800",
   },
 });

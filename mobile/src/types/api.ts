@@ -179,16 +179,9 @@ export type GymDayOfWeek =
   | "saturday"
   | "sunday";
 
-export type GymAvailabilitySlotState = "high" | "limited" | "closed";
-
 export interface GymAvailabilityActor {
   userId: string;
   fullName: string;
-}
-
-export interface GymAvailabilitySlot {
-  label: string;
-  availability: GymAvailabilitySlotState;
 }
 
 export interface GymAvailabilityDay {
@@ -199,9 +192,6 @@ export interface GymAvailabilityDay {
   note: string | null;
   opensAt: string | null;
   closesAt: string | null;
-  slotMinutes: number | null;
-  capacityLabel: string | null;
-  slots: GymAvailabilitySlot[];
   updatedBy: GymAvailabilityActor | null;
   updatedAt: string | null;
 }
@@ -211,8 +201,6 @@ export interface GymAvailabilityTemplateDay {
   isOpen: boolean;
   opensAt: string | null;
   closesAt: string | null;
-  slotMinutes: number;
-  capacityLabel: string | null;
   updatedBy: GymAvailabilityActor | null;
   updatedAt: string | null;
 }
@@ -223,8 +211,6 @@ export interface GymAvailabilityExceptionDay {
   isClosed: boolean;
   opensAt: string | null;
   closesAt: string | null;
-  slotMinutes: number | null;
-  capacityLabel: string | null;
   note: string | null;
   updatedBy: GymAvailabilityActor | null;
   updatedAt: string | null;

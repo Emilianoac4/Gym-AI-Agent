@@ -4,7 +4,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
-import { GymAvailabilityDay, GymAvailabilitySlotState } from "../../types/api";
+import { GymAvailabilityDay } from "../../types/api";
 
 const dayLabels: Record<string, string> = {
   monday: "Lunes",
@@ -14,12 +14,6 @@ const dayLabels: Record<string, string> = {
   friday: "Viernes",
   saturday: "Sabado",
   sunday: "Domingo",
-};
-
-const slotLabels: Record<GymAvailabilitySlotState, string> = {
-  high: "Disponible",
-  limited: "Reducido",
-  closed: "Cerrado",
 };
 
 function formatDateLabel(value: string): string {
@@ -97,34 +91,11 @@ export function GymAvailabilityScreen() {
 
           {day.note ? <Text style={styles.note}>{day.note}</Text> : null}
 
-          <View style={styles.slotWrap}>
-            {day.slots.length > 0 ? (
-              day.slots.map((slot, index) => (
-                <View
-                  key={`${day.date}-${slot.label}-${index}`}
-                  style={[
-                    styles.slotChip,
-                    slot.availability === "high"
-                      ? styles.slotChipHigh
-                      : slot.availability === "limited"
-                        ? styles.slotChipLimited
-                        : styles.slotChipClosed,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.slotChipText,
-                      slot.availability === "limited" ? styles.slotChipTextDark : undefined,
-                    ]}
-                  >
-                    {slot.label} · {slotLabels[slot.availability]}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.emptyText}>No hay franjas publicadas para este dia.</Text>
-            )}
-          </View>
+          <Text style={styles.emptyText}>
+            {day.status === "open"
+              ? "Horario disponible para este dia."
+              : "No hay horario disponible para este dia."}
+          </Text>
         </View>
       ))}
     </ScrollView>
@@ -194,30 +165,6 @@ const styles = StyleSheet.create({
   note: {
     color: palette.textMuted,
     lineHeight: 20,
-  },
-  slotWrap: {
-    gap: 8,
-  },
-  slotChip: {
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  slotChipHigh: {
-    backgroundColor: palette.moss,
-  },
-  slotChipLimited: {
-    backgroundColor: palette.gold,
-  },
-  slotChipClosed: {
-    backgroundColor: palette.cocoa,
-  },
-  slotChipText: {
-    color: palette.card,
-    fontWeight: "700",
-  },
-  slotChipTextDark: {
-    color: palette.cocoa,
   },
   emptyText: {
     color: palette.textMuted,

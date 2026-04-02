@@ -17,8 +17,6 @@ const scheduleBaseSchema = z.object({
   isOpen: z.boolean(),
   opensAt: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
   closesAt: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
-  slotMinutes: z.number().int().min(15).max(240).optional().nullable(),
-  capacityLabel: z.string().trim().min(1).max(40).optional().nullable(),
 });
 
 const scheduleInputSchema = scheduleBaseSchema.superRefine((value, ctx) => {
@@ -39,14 +37,6 @@ const scheduleInputSchema = scheduleBaseSchema.superRefine((value, ctx) => {
       code: z.ZodIssueCode.custom,
       message: "Debes indicar la hora de cierre",
       path: ["closesAt"],
-    });
-  }
-
-  if (!value.slotMinutes) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Debes indicar la duracion de la franja",
-      path: ["slotMinutes"],
     });
   }
 
@@ -134,8 +124,6 @@ export const upsertAvailabilityExceptionSchema = z
     isClosed: z.boolean(),
     opensAt: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
     closesAt: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
-    slotMinutes: z.number().int().min(15).max(240).optional().nullable(),
-    capacityLabel: z.string().trim().min(1).max(40).optional().nullable(),
     note: z.string().trim().min(1).max(160).optional().nullable(),
   })
   .superRefine((value, ctx) => {
@@ -156,14 +144,6 @@ export const upsertAvailabilityExceptionSchema = z
         code: z.ZodIssueCode.custom,
         message: "Debes indicar la hora de cierre",
         path: ["closesAt"],
-      });
-    }
-
-    if (!value.slotMinutes) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Debes indicar la duracion de la franja",
-        path: ["slotMinutes"],
       });
     }
 

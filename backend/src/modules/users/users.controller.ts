@@ -339,11 +339,18 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
   }
 
   const role = (req.query.role as string) ?? undefined;
+  const requesterRole = req.auth.role as UserRole;
+
+  const effectiveRoleFilter = requesterRole === UserRole.trainer
+    ? { role: UserRole.member }
+    : role
+      ? { role: role as UserRole }
+      : {};
 
   const users = await prisma.user.findMany({
     where: {
       gymId: requester.gymId,
-      ...(role ? { role: role as UserRole } : {}),
+      ...effectiveRoleFilter,
     },
     select: {
       id: true,

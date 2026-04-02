@@ -515,8 +515,6 @@ export const api = {
       isOpen: boolean;
       opensAt?: string | null;
       closesAt?: string | null;
-      slotMinutes?: number | null;
-      capacityLabel?: string | null;
     },
   ) =>
     request<{ message: string; day: GymAvailabilityTemplateDay }>(`/availability/template/${dayOfWeek}`, {
@@ -532,8 +530,6 @@ export const api = {
       isClosed: boolean;
       opensAt?: string | null;
       closesAt?: string | null;
-      slotMinutes?: number | null;
-      capacityLabel?: string | null;
       note?: string | null;
     },
   ) =>

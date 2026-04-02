@@ -22,8 +22,6 @@ type Requester = {
   isActive: boolean;
 };
 
-type AvailabilitySlotState = "high" | "limited" | "closed";
-
 export type AvailabilityDay = {
   date: string;
   dayOfWeek: DayOfWeek;
@@ -32,12 +30,6 @@ export type AvailabilityDay = {
   note: string | null;
   opensAt: string | null;
   closesAt: string | null;
-  slotMinutes: number | null;
-  capacityLabel: string | null;
-  slots: Array<{
-    label: string;
-    availability: AvailabilitySlotState;
-  }>;
   updatedBy: {
     userId: string;
     fullName: string;
@@ -50,8 +42,6 @@ export type AvailabilityTemplateDay = {
   isOpen: boolean;
   opensAt: string | null;
   closesAt: string | null;
-  slotMinutes: number;
-  capacityLabel: string | null;
   updatedBy: {
     userId: string;
     fullName: string;
@@ -65,8 +55,6 @@ export type AvailabilityExceptionDay = {
   isClosed: boolean;
   opensAt: string | null;
   closesAt: string | null;
-  slotMinutes: number | null;
-  capacityLabel: string | null;
   note: string | null;
   updatedBy: {
     userId: string;
@@ -133,82 +121,6 @@ const addDays = (date: Date, amount: number): Date => {
 
 const getDayOfWeek = (date: Date): DayOfWeek => DAY_OF_WEEK_BY_INDEX[date.getUTCDay()];
 
-const getMinutes = (value: string): number => {
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours * 60 + minutes;
-};
-
-const toTimeString = (minutes: number): string => {
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return `${hours.toString().padStart(2, "0")}:${remainder.toString().padStart(2, "0")}`;
-};
-
-const resolveSlotAvailability = (
-  capacityLabel: string | null | undefined,
-  isOpen: boolean,
-): AvailabilitySlotState => {
-  if (!isOpen) {
-    return "closed";
-  }
-
-  const normalized = capacityLabel?.trim().toLowerCase();
-  if (!normalized) {
-    return "high";
-  }
-
-  if (
-    normalized.includes("closed") ||
-    normalized.includes("cerrad") ||
-    normalized.includes("no disponible")
-  ) {
-    return "closed";
-  }
-
-  if (
-    normalized.includes("limit") ||
-    normalized.includes("reduc") ||
-    normalized.includes("baja") ||
-    normalized.includes("low")
-  ) {
-    return "limited";
-  }
-
-  return "high";
-};
-
-const buildSlots = (
-  opensAt: string | null,
-  closesAt: string | null,
-  slotMinutes: number | null,
-  capacityLabel: string | null,
-  isOpen: boolean,
-): AvailabilityDay["slots"] => {
-  if (!isOpen || !opensAt || !closesAt || !slotMinutes) {
-    return [];
-  }
-
-  const startMinutes = getMinutes(opensAt);
-  const endMinutes = getMinutes(closesAt);
-  if (endMinutes <= startMinutes) {
-    return [];
-  }
-
-  const slots: AvailabilityDay["slots"] = [];
-  let cursor = startMinutes;
-
-  while (cursor < endMinutes) {
-    const nextCursor = Math.min(cursor + slotMinutes, endMinutes);
-    slots.push({
-      label: `${toTimeString(cursor)} - ${toTimeString(nextCursor)}`,
-      availability: resolveSlotAvailability(capacityLabel, isOpen),
-    });
-    cursor = nextCursor;
-  }
-
-  return slots;
-};
-
 const getUpdaterMap = async (
   userIds: string[],
 ): Promise<Map<string, { userId: string; fullName: string }>> => {
@@ -237,8 +149,6 @@ const toTemplateResponse = (
         isOpen: boolean;
         opensAt: string | null;
         closesAt: string | null;
-        slotMinutes: number;
-        capacityLabel: string | null;
         updatedByUserId: string;
         updatedAt: Date;
       }
@@ -249,8 +159,6 @@ const toTemplateResponse = (
   isOpen: template?.isOpen ?? false,
   opensAt: template?.opensAt ?? null,
   closesAt: template?.closesAt ?? null,
-  slotMinutes: template?.slotMinutes ?? 60,
-  capacityLabel: template?.capacityLabel ?? null,
   updatedBy: template ? updaters.get(template.updatedByUserId) ?? null : null,
   updatedAt: template?.updatedAt.toISOString() ?? null,
 });
@@ -261,8 +169,6 @@ const toExceptionResponse = (
     isClosed: boolean;
     opensAt: string | null;
     closesAt: string | null;
-    slotMinutes: number | null;
-    capacityLabel: string | null;
     note: string | null;
     updatedByUserId: string;
     updatedAt: Date;
@@ -274,8 +180,6 @@ const toExceptionResponse = (
   isClosed: exception.isClosed,
   opensAt: exception.opensAt,
   closesAt: exception.closesAt,
-  slotMinutes: exception.slotMinutes,
-  capacityLabel: exception.capacityLabel,
   note: exception.note,
   updatedBy: updaters.get(exception.updatedByUserId) ?? null,
   updatedAt: exception.updatedAt.toISOString(),
@@ -288,8 +192,6 @@ const resolveAvailabilityDay = (
         isOpen: boolean;
         opensAt: string | null;
         closesAt: string | null;
-        slotMinutes: number;
-        capacityLabel: string | null;
         updatedByUserId: string;
         updatedAt: Date;
       }
@@ -299,8 +201,6 @@ const resolveAvailabilityDay = (
         isClosed: boolean;
         opensAt: string | null;
         closesAt: string | null;
-        slotMinutes: number | null;
-        capacityLabel: string | null;
         note: string | null;
         updatedByUserId: string;
         updatedAt: Date;
@@ -318,15 +218,6 @@ const resolveAvailabilityDay = (
       note: exception.note,
       opensAt: isOpen ? exception.opensAt : null,
       closesAt: isOpen ? exception.closesAt : null,
-      slotMinutes: isOpen ? exception.slotMinutes : null,
-      capacityLabel: exception.capacityLabel,
-      slots: buildSlots(
-        isOpen ? exception.opensAt : null,
-        isOpen ? exception.closesAt : null,
-        isOpen ? exception.slotMinutes : null,
-        exception.capacityLabel,
-        isOpen,
-      ),
       updatedBy: updaters.get(exception.updatedByUserId) ?? null,
       updatedAt: exception.updatedAt.toISOString(),
     };
@@ -341,15 +232,6 @@ const resolveAvailabilityDay = (
       note: null,
       opensAt: template.opensAt,
       closesAt: template.closesAt,
-      slotMinutes: template.slotMinutes,
-      capacityLabel: template.capacityLabel,
-      slots: buildSlots(
-        template.opensAt,
-        template.closesAt,
-        template.slotMinutes,
-        template.capacityLabel,
-        true,
-      ),
       updatedBy: updaters.get(template.updatedByUserId) ?? null,
       updatedAt: template.updatedAt.toISOString(),
     };
@@ -364,9 +246,6 @@ const resolveAvailabilityDay = (
       note: null,
       opensAt: null,
       closesAt: null,
-      slotMinutes: null,
-      capacityLabel: template.capacityLabel,
-      slots: [],
       updatedBy: updaters.get(template.updatedByUserId) ?? null,
       updatedAt: template.updatedAt.toISOString(),
     };
@@ -380,9 +259,6 @@ const resolveAvailabilityDay = (
     note: null,
     opensAt: null,
     closesAt: null,
-    slotMinutes: null,
-    capacityLabel: null,
-    slots: [],
     updatedBy: null,
     updatedAt: null,
   };
@@ -405,8 +281,6 @@ export const getAvailabilityToday = async (auth: AuthContext) => {
         isOpen: true,
         opensAt: true,
         closesAt: true,
-        slotMinutes: true,
-        capacityLabel: true,
         updatedByUserId: true,
         updatedAt: true,
       },
@@ -422,8 +296,6 @@ export const getAvailabilityToday = async (auth: AuthContext) => {
         isClosed: true,
         opensAt: true,
         closesAt: true,
-        slotMinutes: true,
-        capacityLabel: true,
         note: true,
         updatedByUserId: true,
         updatedAt: true,
@@ -455,8 +327,6 @@ export const getAvailabilityNext7Days = async (auth: AuthContext) => {
         isOpen: true,
         opensAt: true,
         closesAt: true,
-        slotMinutes: true,
-        capacityLabel: true,
         updatedByUserId: true,
         updatedAt: true,
       },
@@ -474,8 +344,6 @@ export const getAvailabilityNext7Days = async (auth: AuthContext) => {
         isClosed: true,
         opensAt: true,
         closesAt: true,
-        slotMinutes: true,
-        capacityLabel: true,
         note: true,
         updatedByUserId: true,
         updatedAt: true,
@@ -512,8 +380,6 @@ export const getAvailabilityTemplate = async (auth: AuthContext) => {
         isOpen: true,
         opensAt: true,
         closesAt: true,
-        slotMinutes: true,
-        capacityLabel: true,
         updatedByUserId: true,
         updatedAt: true,
       },
@@ -562,8 +428,6 @@ export const listAvailabilityExceptions = async (
       isClosed: true,
       opensAt: true,
       closesAt: true,
-      slotMinutes: true,
-      capacityLabel: true,
       note: true,
       updatedByUserId: true,
       updatedAt: true,
@@ -596,8 +460,8 @@ export const saveAvailabilityTemplateDay = async (
       isOpen: input.isOpen,
       opensAt: input.isOpen ? input.opensAt ?? null : null,
       closesAt: input.isOpen ? input.closesAt ?? null : null,
-      slotMinutes: input.isOpen ? input.slotMinutes ?? 60 : 60,
-      capacityLabel: input.capacityLabel ?? null,
+      slotMinutes: 60,
+      capacityLabel: null,
       createdByUserId: requester.id,
       updatedByUserId: requester.id,
     },
@@ -605,8 +469,8 @@ export const saveAvailabilityTemplateDay = async (
       isOpen: input.isOpen,
       opensAt: input.isOpen ? input.opensAt ?? null : null,
       closesAt: input.isOpen ? input.closesAt ?? null : null,
-      slotMinutes: input.isOpen ? input.slotMinutes ?? 60 : 60,
-      capacityLabel: input.capacityLabel ?? null,
+      slotMinutes: 60,
+      capacityLabel: null,
       updatedByUserId: requester.id,
     },
     select: {
@@ -614,8 +478,6 @@ export const saveAvailabilityTemplateDay = async (
       isOpen: true,
       opensAt: true,
       closesAt: true,
-      slotMinutes: true,
-      capacityLabel: true,
       updatedByUserId: true,
       updatedAt: true,
     },
@@ -648,8 +510,8 @@ export const saveAvailabilityTemplateWeek = async (
           isOpen: day.isOpen,
           opensAt: day.isOpen ? day.opensAt ?? null : null,
           closesAt: day.isOpen ? day.closesAt ?? null : null,
-          slotMinutes: day.isOpen ? day.slotMinutes ?? 60 : 60,
-          capacityLabel: day.capacityLabel ?? null,
+          slotMinutes: 60,
+          capacityLabel: null,
           createdByUserId: requester.id,
           updatedByUserId: requester.id,
         },
@@ -657,8 +519,8 @@ export const saveAvailabilityTemplateWeek = async (
           isOpen: day.isOpen,
           opensAt: day.isOpen ? day.opensAt ?? null : null,
           closesAt: day.isOpen ? day.closesAt ?? null : null,
-          slotMinutes: day.isOpen ? day.slotMinutes ?? 60 : 60,
-          capacityLabel: day.capacityLabel ?? null,
+          slotMinutes: 60,
+          capacityLabel: null,
           updatedByUserId: requester.id,
         },
       }),
@@ -688,8 +550,8 @@ export const saveAvailabilityException = async (
       isClosed: input.isClosed,
       opensAt: input.isClosed ? null : input.opensAt ?? null,
       closesAt: input.isClosed ? null : input.closesAt ?? null,
-      slotMinutes: input.isClosed ? null : input.slotMinutes ?? null,
-      capacityLabel: input.capacityLabel ?? null,
+      slotMinutes: null,
+      capacityLabel: null,
       note: input.note ?? null,
       createdByUserId: requester.id,
       updatedByUserId: requester.id,
@@ -698,8 +560,8 @@ export const saveAvailabilityException = async (
       isClosed: input.isClosed,
       opensAt: input.isClosed ? null : input.opensAt ?? null,
       closesAt: input.isClosed ? null : input.closesAt ?? null,
-      slotMinutes: input.isClosed ? null : input.slotMinutes ?? null,
-      capacityLabel: input.capacityLabel ?? null,
+      slotMinutes: null,
+      capacityLabel: null,
       note: input.note ?? null,
       updatedByUserId: requester.id,
     },
@@ -708,8 +570,6 @@ export const saveAvailabilityException = async (
       isClosed: true,
       opensAt: true,
       closesAt: true,
-      slotMinutes: true,
-      capacityLabel: true,
       note: true,
       updatedByUserId: true,
       updatedAt: true,

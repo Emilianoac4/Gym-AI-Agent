@@ -48,12 +48,6 @@ const adminHighlights = [
   "Satisfaccion del servicio de coach",
 ];
 
-const slotStateLabel: Record<string, string> = {
-  high: "Disponible",
-  limited: "Reducido",
-  closed: "Cerrado",
-};
-
 function formatAvailabilityWindow(day: GymAvailabilityDay | null): string {
   if (!day) {
     return "Sin horario publicado para hoy";
@@ -188,15 +182,6 @@ export function HomeScreen() {
           <Text style={styles.sectionTitle}>Hoy</Text>
           <Text style={styles.featureDetail}>{formatAvailabilityWindow(todayAvailability)}</Text>
           {todayAvailability?.note ? <Text style={styles.availabilityNote}>{todayAvailability.note}</Text> : null}
-          <View style={styles.availabilityChipsRow}>
-            {(todayAvailability?.slots.length ? todayAvailability.slots.slice(0, 3) : [{ label: "Estado", availability: todayAvailability?.status === "open" ? "high" : "closed" }]).map((slot, index) => (
-              <View key={`${slot.label}-${index}`} style={[styles.availabilityChip, (styles as Record<string, object>)[`availabilityChip_${slot.availability}`] ?? styles.availabilityChip_high]}>
-                <Text style={[styles.availabilityChipText, slot.availability === "limited" && styles.availabilityChipTextDark]}>
-                  {slot.label === "Estado" ? slotStateLabel[slot.availability] : slot.label}
-                </Text>
-              </View>
-            ))}
-          </View>
           <View style={styles.inlineActionsRow}>
             <Pressable style={styles.inlineActionPrimary} onPress={() => navigation.navigate("GymAvailability")}>
               <Text style={styles.inlineActionPrimaryText}>Ver proximos 7 dias</Text>
@@ -434,34 +419,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     color: palette.textMuted,
     lineHeight: 20,
-  },
-  availabilityChipsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 14,
-  },
-  availabilityChip: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  availabilityChip_high: {
-    backgroundColor: palette.moss,
-  },
-  availabilityChip_limited: {
-    backgroundColor: palette.gold,
-  },
-  availabilityChip_closed: {
-    backgroundColor: palette.cocoa,
-  },
-  availabilityChipText: {
-    color: palette.card,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  availabilityChipTextDark: {
-    color: palette.cocoa,
   },
   inlineActionsRow: {
     flexDirection: "row",

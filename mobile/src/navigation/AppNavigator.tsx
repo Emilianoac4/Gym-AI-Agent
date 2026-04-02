@@ -16,6 +16,7 @@ import { ChatScreen } from "../screens/Main/ChatScreen";
 import { MeasurementsScreen } from "../screens/Main/MeasurementsScreen";
 import { AdminUsersScreen } from "../screens/Main/AdminUsersScreen";
 import { AdminProfileScreen } from "../screens/Main/AdminProfileScreen";
+import { TrainerProfileScreen } from "../screens/Main/TrainerProfileScreen";
 import { GymAvailabilityScreen } from "../screens/Main/GymAvailabilityScreen";
 import { AvailabilityManagementScreen } from "../screens/Main/AvailabilityManagementScreen";
 
@@ -87,7 +88,6 @@ function TrainerTabs() {
       <Tab.Screen name="Inicio" component={HomeScreen} />
       <Tab.Screen name="Usuarios" component={AdminUsersScreen} />
       <Tab.Screen name="Horarios" component={AvailabilityManagementScreen} />
-      <Tab.Screen name="Rutina" component={RoutineScreen} />
       <Tab.Screen
         name="Asistencia"
         children={() => (
@@ -97,7 +97,7 @@ function TrainerTabs() {
           />
         )}
       />
-      <Tab.Screen name="Perfil" component={ProfileScreen} />
+      <Tab.Screen name="Perfil" component={TrainerProfileScreen} />
     </Tab.Navigator>
   );
 }

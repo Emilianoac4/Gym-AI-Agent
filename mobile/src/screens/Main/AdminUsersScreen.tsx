@@ -64,6 +64,7 @@ const GOAL_OPTIONS = [
 
 export function AdminUsersScreen() {
   const { user, token } = useAuth();
+  const isTrainer = user?.role === "trainer";
   const [users, setUsers] = useState<GymUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterRole, setFilterRole] = useState<string>("all");
@@ -330,7 +331,18 @@ export function AdminUsersScreen() {
     }
   };
 
-  const filteredUsers = users.filter((u) => u.id !== user?.id);
+  const visibleRoleFilters = isTrainer ? ["all", "member"] : ["all", "trainer", "member"];
+
+  const filteredUsers = users.filter((u) => {
+    if (u.id === user?.id) {
+      return false;
+    }
+    // Defensive UI filter: trainers should never see admin accounts.
+    if (isTrainer && u.role === "admin") {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <View style={styles.container}>
@@ -350,7 +362,7 @@ export function AdminUsersScreen() {
 
       {/* Filtro por rol */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-        {["all", "trainer", "member"].map((r) => (
+        {visibleRoleFilters.map((r) => (
           <TouchableOpacity
             key={r}
             style={[styles.filterChip, filterRole === r && styles.filterChipActive]}
@@ -436,7 +448,7 @@ export function AdminUsersScreen() {
 
             {/* Selector de rol */}
             <View style={styles.roleSelector}>
-              {(["member", "trainer"] as UserRole[]).map((r) => (
+              {((isTrainer ? ["member"] : ["member", "trainer"]) as UserRole[]).map((r) => (
                 <TouchableOpacity
                   key={r}
                   style={[styles.rolePill, newRole === r && styles.rolePillActive]}
