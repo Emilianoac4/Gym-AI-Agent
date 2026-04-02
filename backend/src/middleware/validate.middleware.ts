@@ -9,22 +9,7 @@ export const validate = <T>(schema: ZodSchema<T>) => {
       ...(req.body ?? {}),
     };
 
-    const parsed = schema.parse(payload) as Record<string, unknown>;
-
-    req.params = {
-      ...(req.params ?? {}),
-      ...parsed,
-    } as Request["params"];
-
-    req.query = {
-      ...(req.query ?? {}),
-      ...parsed,
-    } as Request["query"];
-
-    req.body = {
-      ...(req.body ?? {}),
-      ...parsed,
-    } as Request["body"];
+    schema.parse(payload);
 
     next();
   };
