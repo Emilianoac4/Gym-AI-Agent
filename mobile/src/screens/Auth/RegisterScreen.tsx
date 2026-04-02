@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { palette } from "../../theme/palette";
@@ -69,7 +70,11 @@ export function RegisterScreen() {
                 onChangeText={setPassword}
               />
               <TouchableOpacity style={styles.passwordToggle} onPress={() => setShowPassword((v) => !v)}>
-                <Text style={styles.passwordToggleText}>{showPassword ? "Ocultar" : "Mostrar"}</Text>
+                <MaterialCommunityIcons
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={20}
+                  color={palette.moss}
+                />
               </TouchableOpacity>
             </View>
 
@@ -160,10 +165,5 @@ const styles = StyleSheet.create({
     top: 12,
     paddingHorizontal: 6,
     paddingVertical: 4,
-  },
-  passwordToggleText: {
-    color: palette.moss,
-    fontWeight: "700",
-    fontSize: 12,
   },
 });

@@ -25,7 +25,7 @@ interface RequestOptions {
 
 const REQUEST_TIMEOUT_MS = 15000;
 const AI_TIMEOUT_MS = 60000;
-const AUTH_TIMEOUT_MS = 30000; // longer for cold starts on Render free tier
+const AUTH_TIMEOUT_MS = 90000; // longer for cold starts on Render free tier
 
 async function requestWithRetry<T>(path: string, options: RequestOptions = {}, retries = 1): Promise<T> {
   try {
@@ -95,6 +95,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
+  ping: () =>
+    request<unknown>("/health", { timeoutMs: 90000 }).catch(() => null),
+
   login: (payload: { email: string; password: string; requestedRole: UserRole }) =>
     requestWithRetry<{
       token: string;
@@ -181,10 +184,11 @@ export const api = {
     gym?: { name: string; ownerName: string; address?: string; phone?: string };
     user: { email: string; password: string; fullName: string; role: "admin" | "trainer" | "member" };
   }, token?: string) =>
-    request<{ message: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/register", {
+    requestWithRetry<{ message: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/register", {
       method: "POST",
       token,
       body: payload,
+      timeoutMs: AUTH_TIMEOUT_MS,
     }),
 
   getProfile: (id: string, token: string) =>

@@ -117,6 +117,30 @@ export function AdminUsersScreen() {
     void loadUsers();
   }, [loadUsers]);
 
+  const resetCreateForm = useCallback(() => {
+    setShowCreateModal(false);
+    setCreateStep(1);
+    setNewEmail("");
+    setNewFullName("");
+    setNewPassword("");
+    setNewRole("member");
+    setMembershipMonths(1);
+    setPaymentMethod("card");
+    setPaymentAmount("");
+    setNewGender("prefer_not_to_say");
+    setNewGoal(GOAL_OPTIONS[0]);
+    setNewAvailabilityDays(3);
+    setNewLevel(1);
+    setCaptureMeasurements(false);
+    setMeasurementWeightKg("");
+    setMeasurementBodyFatPct("");
+    setMeasurementMuscleMass("");
+    setMeasurementChestCm("");
+    setMeasurementWaistCm("");
+    setMeasurementHipCm("");
+    setMeasurementArmCm("");
+  }, []);
+
   const onCreateUser = async () => {
     if (!newEmail || !newFullName || !newPassword) {
       Alert.alert("Campos requeridos", "Todos los campos son obligatorios.");
@@ -190,27 +214,7 @@ export function AdminUsersScreen() {
           data.devVerificationToken ? `\n\nToken verificacion (dev): ${data.devVerificationToken}` : ""
         }`,
       );
-      setShowCreateModal(false);
-      setNewEmail("");
-      setNewFullName("");
-      setNewPassword("");
-      setNewRole("member");
-      setCreateStep(1);
-      setMembershipMonths(1);
-      setPaymentMethod("card");
-      setPaymentAmount("");
-      setNewGender("prefer_not_to_say");
-      setNewGoal(GOAL_OPTIONS[0]);
-      setNewAvailabilityDays(3);
-      setNewLevel(1);
-      setCaptureMeasurements(false);
-      setMeasurementWeightKg("");
-      setMeasurementBodyFatPct("");
-      setMeasurementMuscleMass("");
-      setMeasurementChestCm("");
-      setMeasurementWaistCm("");
-      setMeasurementHipCm("");
-      setMeasurementArmCm("");
+      resetCreateForm();
       void loadUsers();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error inesperado";
@@ -414,12 +418,12 @@ export function AdminUsersScreen() {
       )}
 
       {/* Modal crear usuario */}
-      <Modal visible={showCreateModal} animationType="slide" transparent onRequestClose={() => setShowCreateModal(false)}>
+      <Modal visible={showCreateModal} animationType="slide" transparent onRequestClose={resetCreateForm}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowCreateModal(false)}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={resetCreateForm}>
             <TouchableOpacity activeOpacity={1} onPress={() => {}}>
               <ScrollView
                 style={styles.modalCard}
@@ -720,7 +724,7 @@ export function AdminUsersScreen() {
                   if (createStep === 2) {
                     setCreateStep(1);
                   } else {
-                    setShowCreateModal(false);
+                    resetCreateForm();
                   }
                 }}
                 disabled={creating}

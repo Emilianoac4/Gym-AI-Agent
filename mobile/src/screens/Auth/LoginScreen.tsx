@@ -17,6 +17,7 @@ import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import * as AppleAuthentication from "expo-apple-authentication";
 import Constants from "expo-constants";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
 import { AppButton } from "../../components/AppButton";
 import { palette } from "../../theme/palette";
@@ -292,7 +293,11 @@ export function LoginScreen() {
             onChangeText={setPassword}
           />
           <TouchableOpacity style={styles.passwordToggle} onPress={() => setShowPassword((v) => !v)}>
-            <Text style={styles.passwordToggleText}>{showPassword ? "Ocultar" : "Mostrar"}</Text>
+            <MaterialCommunityIcons
+              name={showPassword ? "eye-off" : "eye"}
+              size={20}
+              color={palette.moss}
+            />
           </TouchableOpacity>
         </View>
 

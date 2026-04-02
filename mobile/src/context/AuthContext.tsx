@@ -86,6 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }) => {
     setLoading(true);
     try {
+      // Wake up the server if it's sleeping (Render free tier cold start)
+      await api.ping();
+
       await api.register({
         gym: {
           name: input.gymName,

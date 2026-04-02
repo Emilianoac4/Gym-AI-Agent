@@ -137,7 +137,7 @@ export function MeasurementsScreen() {
         <Text style={styles.subtitle}>Registra tus metricas para seguir tu progreso semanal.</Text>
       </View>
 
-      {progressSummary ? (
+      {progressSummary && progressSummary.measurementsCount > 0 ? (
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Resumen de progreso</Text>
           <Text style={styles.summaryHint}>{progressSummary.nextAction}</Text>

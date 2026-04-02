@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { palette } from "../../theme/palette";
@@ -56,7 +57,11 @@ export function ChangeTemporaryPasswordScreen() {
             placeholderTextColor={palette.textMuted}
           />
           <TouchableOpacity style={styles.passwordToggle} onPress={() => setShowNewPassword((v) => !v)}>
-            <Text style={styles.passwordToggleText}>{showNewPassword ? "Ocultar" : "Mostrar"}</Text>
+            <MaterialCommunityIcons
+              name={showNewPassword ? "eye-off" : "eye"}
+              size={20}
+              color={palette.moss}
+            />
           </TouchableOpacity>
         </View>
 
@@ -70,7 +75,11 @@ export function ChangeTemporaryPasswordScreen() {
             placeholder="Repite la contrasena"
             placeholderTextColor={palette.textMuted}
           />
-          <TouchableOpacity
+          <ToMaterialCommunityIcons
+              name={showConfirmPassword ? "eye-off" : "eye"}
+              size={20}
+              color={palette.moss}
+            /
             style={styles.passwordToggle}
             onPress={() => setShowConfirmPassword((v) => !v)}
           >
