@@ -259,6 +259,26 @@
 - OpenAI GPT-4
 - Module-per-feature architecture
 
+---
+
+### 🕒 [14_PLAN_DISPONIBILIDAD_HORARIA.md](docs/14_PLAN_DISPONIBILIDAD_HORARIA.md)  📍 **NUEVO**
+**Contenido**: plan funcional y tecnico para mostrar y gestionar disponibilidad horaria del gimnasio  
+**Para quién**: product, backend, mobile, operaciones  
+**Tiempo**: 12-15 min  
+**Secciones**:
+- alcance de la feature y reglas de negocio
+- modelo de datos para horario semanal y excepciones
+- permisos para entrenadores autorizados
+- endpoints backend recomendados
+- pantallas mobile y orden de implementacion
+- resumen corto para retomar la conversacion
+
+**Cuándo consultar**:
+- quieres implementar la disponibilidad del gimnasio sin mezclar reservas
+- necesitas decidir como modelar horario estandar y dias especiales
+- necesitas habilitar edicion solo a admins y trainers autorizados
+- quieres saber que construir despues de esta capacidad
+
 **Parte 2 - Troubleshooting (Indexed)**:
 - 15+ errores comunes
 - Causas raíz

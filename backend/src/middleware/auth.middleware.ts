@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { UserRole } from "@prisma/client";
 import { HttpError } from "../utils/http-error";
 import { verifyAuthToken } from "../utils/jwt";
-import { hasPermission, PermissionAction } from "../config/permissions";
+import { hasPermissionForUser, PermissionAction } from "../config/permissions";
 
 export const authenticate = (req: Request, _res: Response, next: NextFunction): void => {
   const authHeader = req.headers.authorization;
@@ -40,18 +40,23 @@ export const authorize = (...roles: UserRole[]) => {
 };
 
 export const authorizeAction = (...actions: PermissionAction[]) => {
-  return (req: Request, _res: Response, next: NextFunction): void => {
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     if (!req.auth) {
       next(new HttpError(401, "Unauthorized"));
       return;
     }
 
-    const allowed = actions.some((action) => hasPermission(req.auth!.role, action));
-    if (!allowed) {
+    for (const action of actions) {
+      const allowed = await hasPermissionForUser(req.auth.userId, req.auth.role, action);
+      if (allowed) {
+        next();
+        return;
+      }
+    }
+
+    if (actions.length > 0) {
       next(new HttpError(403, "Forbidden"));
       return;
     }
-
-    next();
   };
 };

@@ -170,6 +170,80 @@ export interface StrengthProgressSummary {
   improvingExercises: number;
 }
 
+export type GymDayOfWeek =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
+
+export type GymAvailabilitySlotState = "high" | "limited" | "closed";
+
+export interface GymAvailabilityActor {
+  userId: string;
+  fullName: string;
+}
+
+export interface GymAvailabilitySlot {
+  label: string;
+  availability: GymAvailabilitySlotState;
+}
+
+export interface GymAvailabilityDay {
+  date: string;
+  dayOfWeek: GymDayOfWeek;
+  status: "open" | "closed";
+  source: "template" | "exception" | "default_closed";
+  note: string | null;
+  opensAt: string | null;
+  closesAt: string | null;
+  slotMinutes: number | null;
+  capacityLabel: string | null;
+  slots: GymAvailabilitySlot[];
+  updatedBy: GymAvailabilityActor | null;
+  updatedAt: string | null;
+}
+
+export interface GymAvailabilityTemplateDay {
+  dayOfWeek: GymDayOfWeek;
+  isOpen: boolean;
+  opensAt: string | null;
+  closesAt: string | null;
+  slotMinutes: number;
+  capacityLabel: string | null;
+  updatedBy: GymAvailabilityActor | null;
+  updatedAt: string | null;
+}
+
+export interface GymAvailabilityExceptionDay {
+  date: string;
+  dayOfWeek: GymDayOfWeek;
+  isClosed: boolean;
+  opensAt: string | null;
+  closesAt: string | null;
+  slotMinutes: number | null;
+  capacityLabel: string | null;
+  note: string | null;
+  updatedBy: GymAvailabilityActor | null;
+  updatedAt: string | null;
+}
+
+export interface GymAvailabilityPermissions {
+  canWrite: boolean;
+  canGrant: boolean;
+}
+
+export interface AvailabilityTrainerPermission {
+  id: string;
+  fullName: string;
+  email: string;
+  hasAvailabilityWrite: boolean;
+  grantedAt: string | null;
+  grantedBy: GymAvailabilityActor | null;
+}
+
 export type AIChatLogType = "CHAT" | "ROUTINE_GENERATION" | "NUTRITION_GENERATION" | "DAILY_TIP";
 
 export interface AIChatLog {

@@ -16,6 +16,8 @@ import { ChatScreen } from "../screens/Main/ChatScreen";
 import { MeasurementsScreen } from "../screens/Main/MeasurementsScreen";
 import { AdminUsersScreen } from "../screens/Main/AdminUsersScreen";
 import { AdminProfileScreen } from "../screens/Main/AdminProfileScreen";
+import { GymAvailabilityScreen } from "../screens/Main/GymAvailabilityScreen";
+import { AvailabilityManagementScreen } from "../screens/Main/AvailabilityManagementScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -84,6 +86,7 @@ function TrainerTabs() {
     >
       <Tab.Screen name="Inicio" component={HomeScreen} />
       <Tab.Screen name="Usuarios" component={AdminUsersScreen} />
+      <Tab.Screen name="Horarios" component={AvailabilityManagementScreen} />
       <Tab.Screen name="Rutina" component={RoutineScreen} />
       <Tab.Screen
         name="Asistencia"
@@ -122,15 +125,7 @@ function AdminTabs() {
     >
       <Tab.Screen name="Panel" component={HomeScreen} />
       <Tab.Screen name="Usuarios" component={AdminUsersScreen} />
-      <Tab.Screen
-        name="Operacion"
-        children={() => (
-          <PlaceholderScreen
-            title="Operacion del gimnasio"
-            description="Aqui veras entrenadores activos, usuarios activos y alertas de retencion."
-          />
-        )}
-      />
+      <Tab.Screen name="Operacion" component={AvailabilityManagementScreen} />
       <Tab.Screen name="Perfil" component={AdminProfileScreen} />
     </Tab.Navigator>
   );
@@ -174,7 +169,29 @@ export function AppNavigator() {
           user?.mustChangePassword ? (
             <Stack.Screen name="ChangeTemporaryPassword" component={ChangeTemporaryPasswordScreen} />
           ) : (
-            <Stack.Screen name="Main" component={MainNavigator} />
+            <>
+              <Stack.Screen name="Main" component={MainNavigator} />
+              <Stack.Screen
+                name="GymAvailability"
+                component={GymAvailabilityScreen}
+                options={{
+                  headerShown: true,
+                  title: "Disponibilidad",
+                  headerStyle: { backgroundColor: palette.card },
+                  headerTintColor: palette.cocoa,
+                }}
+              />
+              <Stack.Screen
+                name="AvailabilityManagement"
+                component={AvailabilityManagementScreen}
+                options={{
+                  headerShown: true,
+                  title: "Gestion de horarios",
+                  headerStyle: { backgroundColor: palette.card },
+                  headerTintColor: palette.cocoa,
+                }}
+              />
+            </>
           )
         ) : (
           <>

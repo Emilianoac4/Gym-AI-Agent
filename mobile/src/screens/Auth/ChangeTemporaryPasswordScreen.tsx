@@ -75,15 +75,12 @@ export function ChangeTemporaryPasswordScreen() {
             placeholder="Repite la contrasena"
             placeholderTextColor={palette.textMuted}
           />
-          <ToMaterialCommunityIcons
+          <TouchableOpacity style={styles.passwordToggle} onPress={() => setShowConfirmPassword((v) => !v)}>
+            <MaterialCommunityIcons
               name={showConfirmPassword ? "eye-off" : "eye"}
               size={20}
               color={palette.moss}
-            /
-            style={styles.passwordToggle}
-            onPress={() => setShowConfirmPassword((v) => !v)}
-          >
-            <Text style={styles.passwordToggleText}>{showConfirmPassword ? "Ocultar" : "Mostrar"}</Text>
+            />
           </TouchableOpacity>
         </View>
 
@@ -151,10 +148,5 @@ const styles = StyleSheet.create({
     top: 11,
     paddingHorizontal: 6,
     paddingVertical: 4,
-  },
-  passwordToggleText: {
-    color: palette.moss,
-    fontWeight: "700",
-    fontSize: 12,
   },
 });

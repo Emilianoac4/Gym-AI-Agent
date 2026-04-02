@@ -1,12 +1,13 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
 import {
+  GymAvailabilityDay,
   GeneratedRoutine,
   ProgressSummary,
   RoutineCheckin,
@@ -47,15 +48,40 @@ const adminHighlights = [
   "Satisfaccion del servicio de coach",
 ];
 
+const slotStateLabel: Record<string, string> = {
+  high: "Disponible",
+  limited: "Reducido",
+  closed: "Cerrado",
+};
+
+function formatAvailabilityWindow(day: GymAvailabilityDay | null): string {
+  if (!day) {
+    return "Sin horario publicado para hoy";
+  }
+
+  if (day.status === "closed") {
+    return day.source === "default_closed" ? "Sin horario publicado para hoy" : "Gimnasio cerrado hoy";
+  }
+
+  if (day.opensAt && day.closesAt) {
+    return `${day.opensAt} - ${day.closesAt}`;
+  }
+
+  return "Horario publicado para hoy";
+}
+
 export function HomeScreen() {
   const { user, token, logout } = useAuth();
+  const navigation = useNavigation<any>();
   const isAdmin = user?.role === "admin";
+  const canManageAvailability = user?.role === "admin" || user?.role === "trainer";
   const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
 
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
   const [strengthSummary, setStrengthSummary] = useState<StrengthProgressSummary | null>(null);
   const [routine, setRoutine] = useState<GeneratedRoutine | null>(null);
   const [checkins, setCheckins] = useState<RoutineCheckin[]>([]);
+  const [todayAvailability, setTodayAvailability] = useState<GymAvailabilityDay | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -66,18 +92,24 @@ export function HomeScreen() {
       let cancelled = false;
 
       const load = async () => {
+        const availabilityPromise = api.getAvailabilityToday(token).catch(() => null);
+
         if (isAdmin) {
+          const availabilityData = await availabilityPromise;
+
           if (!cancelled) {
             setSummary(null);
             setStrengthSummary(null);
             setRoutine(null);
             setCheckins([]);
+            setTodayAvailability(availabilityData?.availability ?? null);
           }
           return;
         }
 
         try {
-          const [progress, strength, latestRoutine, checkinData] = await Promise.all([
+          const [availabilityData, progress, strength, latestRoutine, checkinData] = await Promise.all([
+            availabilityPromise,
             api.getProgressSummary(user.id, token),
             api.getStrengthProgress(user.id, token, 120),
             api.getLatestRoutine(user.id, token).catch(() => null),
@@ -88,12 +120,14 @@ export function HomeScreen() {
             return;
           }
 
+          setTodayAvailability(availabilityData?.availability ?? null);
           setSummary(progress.summary);
           setStrengthSummary(strength.summary);
           setRoutine(latestRoutine?.routine ?? null);
           setCheckins(checkinData.checkins);
         } catch {
           if (!cancelled) {
+            setTodayAvailability(null);
             setSummary(null);
             setStrengthSummary(null);
             setRoutine(null);
@@ -147,6 +181,35 @@ export function HomeScreen() {
               ? "Revisa el estado operativo del gimnasio y las prioridades del negocio."
               : "Consulta tu progreso semanal, la siguiente sesion y el avance real de tus cargas."}
           </Text>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionEyebrow}>Disponibilidad del gimnasio</Text>
+          <Text style={styles.sectionTitle}>Hoy</Text>
+          <Text style={styles.featureDetail}>{formatAvailabilityWindow(todayAvailability)}</Text>
+          {todayAvailability?.note ? <Text style={styles.availabilityNote}>{todayAvailability.note}</Text> : null}
+          <View style={styles.availabilityChipsRow}>
+            {(todayAvailability?.slots.length ? todayAvailability.slots.slice(0, 3) : [{ label: "Estado", availability: todayAvailability?.status === "open" ? "high" : "closed" }]).map((slot, index) => (
+              <View key={`${slot.label}-${index}`} style={[styles.availabilityChip, (styles as Record<string, object>)[`availabilityChip_${slot.availability}`] ?? styles.availabilityChip_high]}>
+                <Text style={[styles.availabilityChipText, slot.availability === "limited" && styles.availabilityChipTextDark]}>
+                  {slot.label === "Estado" ? slotStateLabel[slot.availability] : slot.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <View style={styles.inlineActionsRow}>
+            <Pressable style={styles.inlineActionPrimary} onPress={() => navigation.navigate("GymAvailability")}>
+              <Text style={styles.inlineActionPrimaryText}>Ver proximos 7 dias</Text>
+            </Pressable>
+            {canManageAvailability ? (
+              <Pressable
+                style={styles.inlineActionSecondary}
+                onPress={() => navigation.navigate("AvailabilityManagement")}
+              >
+                <Text style={styles.inlineActionSecondaryText}>Gestionar horarios</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         {isAdmin ? (
@@ -366,6 +429,67 @@ const styles = StyleSheet.create({
     color: "#6B5B4B",
     marginTop: 4,
     lineHeight: 20,
+  },
+  availabilityNote: {
+    marginTop: 8,
+    color: palette.textMuted,
+    lineHeight: 20,
+  },
+  availabilityChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14,
+  },
+  availabilityChip: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  availabilityChip_high: {
+    backgroundColor: palette.moss,
+  },
+  availabilityChip_limited: {
+    backgroundColor: palette.gold,
+  },
+  availabilityChip_closed: {
+    backgroundColor: palette.cocoa,
+  },
+  availabilityChipText: {
+    color: palette.card,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  availabilityChipTextDark: {
+    color: palette.cocoa,
+  },
+  inlineActionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 16,
+  },
+  inlineActionPrimary: {
+    backgroundColor: palette.cocoa,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  inlineActionPrimaryText: {
+    color: palette.gold,
+    fontWeight: "800",
+  },
+  inlineActionSecondary: {
+    backgroundColor: palette.sand,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  inlineActionSecondaryText: {
+    color: palette.cocoa,
+    fontWeight: "800",
   },
   twoColumnRow: {
     flexDirection: "row",

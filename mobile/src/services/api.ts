@@ -1,7 +1,12 @@
 import {
   AIChatLog,
+  AvailabilityTrainerPermission,
   CreateMeasurementPayload,
   GeneratedRoutine,
+  GymAvailabilityDay,
+  GymAvailabilityExceptionDay,
+  GymAvailabilityPermissions,
+  GymAvailabilityTemplateDay,
   ExerciseStrengthProgress,
   Measurement,
   ProgressSummary,
@@ -476,4 +481,97 @@ export const api = {
       method: "DELETE",
       token,
     }),
+
+  getAvailabilityToday: (token: string) =>
+    request<{ availability: GymAvailabilityDay }>("/availability/today", {
+      token,
+    }),
+
+  getAvailabilityNext7Days: (token: string) =>
+    request<{ days: GymAvailabilityDay[] }>("/availability/next-7-days", {
+      token,
+    }),
+
+  getAvailabilityTemplate: (token: string) =>
+    request<{ template: GymAvailabilityTemplateDay[]; permissions: GymAvailabilityPermissions }>(
+      "/availability/template",
+      {
+        token,
+      },
+    ),
+
+  getAvailabilityExceptions: (token: string, from: string, to: string) =>
+    request<{ exceptions: GymAvailabilityExceptionDay[] }>(
+      `/availability/exceptions?from=${from}&to=${to}`,
+      {
+        token,
+      },
+    ),
+
+  saveAvailabilityTemplateDay: (
+    token: string,
+    dayOfWeek: GymAvailabilityTemplateDay["dayOfWeek"],
+    body: {
+      isOpen: boolean;
+      opensAt?: string | null;
+      closesAt?: string | null;
+      slotMinutes?: number | null;
+      capacityLabel?: string | null;
+    },
+  ) =>
+    request<{ message: string; day: GymAvailabilityTemplateDay }>(`/availability/template/${dayOfWeek}`, {
+      method: "PUT",
+      token,
+      body,
+    }),
+
+  saveAvailabilityException: (
+    token: string,
+    date: string,
+    body: {
+      isClosed: boolean;
+      opensAt?: string | null;
+      closesAt?: string | null;
+      slotMinutes?: number | null;
+      capacityLabel?: string | null;
+      note?: string | null;
+    },
+  ) =>
+    request<{ message: string; exception: GymAvailabilityExceptionDay }>(
+      `/availability/exceptions/${date}`,
+      {
+        method: "PUT",
+        token,
+        body,
+      },
+    ),
+
+  deleteAvailabilityException: (token: string, date: string) =>
+    request<{ message: string }>(`/availability/exceptions/${date}`, {
+      method: "DELETE",
+      token,
+    }),
+
+  listAvailabilityPermissionTrainers: (token: string) =>
+    request<{ trainers: AvailabilityTrainerPermission[] }>("/availability/permissions/trainers", {
+      token,
+    }),
+
+  grantAvailabilityWrite: (token: string, userId: string) =>
+    request<{ message: string; trainer: AvailabilityTrainerPermission }>(
+      `/availability/permissions/${userId}/grant`,
+      {
+        method: "POST",
+        token,
+      },
+    ),
+
+  revokeAvailabilityWrite: (token: string, userId: string) =>
+    request<{ message: string; trainer: AvailabilityTrainerPermission }>(
+      `/availability/permissions/${userId}/grant`,
+      {
+        method: "DELETE",
+        token,
+      },
+    ),
 };

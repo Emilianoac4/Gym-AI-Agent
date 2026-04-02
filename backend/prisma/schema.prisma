@@ -18,6 +18,20 @@ enum UserRole {
   member
 }
 
+enum DayOfWeek {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+}
+
+enum PermissionGrantAction {
+  availability_write
+}
+
 model Gym {
   id        String   @id @default(uuid())
   name      String
@@ -174,4 +188,52 @@ model MembershipDailySummaryDispatch {
 
   @@unique([gymId, summaryDay])
   @@map("membership_daily_summary_dispatches")
+}
+
+model GymScheduleTemplate {
+  id              String    @id @default(uuid())
+  gymId           String    @map("gym_id")
+  dayOfWeek       DayOfWeek @map("day_of_week")
+  isOpen          Boolean   @default(true) @map("is_open")
+  opensAt         String?   @map("opens_at")
+  closesAt        String?   @map("closes_at")
+  slotMinutes     Int       @default(60) @map("slot_minutes")
+  capacityLabel   String?   @map("capacity_label")
+  createdByUserId String    @map("created_by_user_id")
+  updatedByUserId String    @map("updated_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@unique([gymId, dayOfWeek])
+  @@map("gym_schedule_templates")
+}
+
+model GymScheduleException {
+  id              String   @id @default(uuid())
+  gymId           String   @map("gym_id")
+  date            DateTime @map("date")
+  isClosed        Boolean  @default(false) @map("is_closed")
+  opensAt         String?  @map("opens_at")
+  closesAt        String?  @map("closes_at")
+  slotMinutes     Int?     @map("slot_minutes")
+  capacityLabel   String?  @map("capacity_label")
+  note            String?
+  createdByUserId String   @map("created_by_user_id")
+  updatedByUserId String   @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([gymId, date])
+  @@map("gym_schedule_exceptions")
+}
+
+model UserPermissionGrant {
+  id               String                @id @default(uuid())
+  userId           String                @map("user_id")
+  permissionAction PermissionGrantAction @map("permission_action")
+  grantedByUserId  String                @map("granted_by_user_id")
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  @@unique([userId, permissionAction])
+  @@map("user_permission_grants")
 }
