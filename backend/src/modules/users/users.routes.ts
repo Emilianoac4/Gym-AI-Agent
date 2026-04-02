@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
 	deactivateUserById,
+	renewMembershipByUserId,
 	reactivateUserById,
 	deleteUserById,
 	getUserProfileById,
@@ -16,6 +17,7 @@ import { validate } from "../../middleware/validate.middleware";
 import {
 	createUserSchema,
 	setHealthConnectionStateSchema,
+	renewMembershipSchema,
 	updateProfileSchema,
 	upsertHealthConnectionSchema,
 } from "./users.validation";
@@ -81,6 +83,14 @@ usersRouter.patch(
 	authenticate,
 	authorizeAction("users.reactivate"),
 	reactivateUserById,
+);
+
+usersRouter.patch(
+	"/:id/renew-membership",
+	authenticate,
+	authorizeAction("users.renewMembership"),
+	validate(renewMembershipSchema),
+	renewMembershipByUserId,
 );
 
 export { usersRouter };

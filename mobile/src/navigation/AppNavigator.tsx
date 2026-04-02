@@ -83,6 +83,7 @@ function TrainerTabs() {
       }}
     >
       <Tab.Screen name="Inicio" component={HomeScreen} />
+      <Tab.Screen name="Usuarios" component={AdminUsersScreen} />
       <Tab.Screen name="Rutina" component={RoutineScreen} />
       <Tab.Screen
         name="Asistencia"

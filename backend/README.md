@@ -37,6 +37,11 @@ PORT=3000
 GOOGLE_OAUTH_CLIENT_IDS="google-client-id-1,google-client-id-2"
 APPLE_OAUTH_AUDIENCES="com.gymai.mobile"
 AUTH_ALLOW_UNVERIFIED_SOCIAL_EMAIL="false"
+APP_BASE_URL="https://tu-backend.onrender.com"
+RESEND_API_KEY="re_xxx"
+EMAIL_FROM="no-reply@tucofitness.com"
+DAILY_MEMBERSHIP_SUMMARY_ENABLED="true"
+DAILY_MEMBERSHIP_SUMMARY_HOUR_UTC="23"
 ```
 
 ### 3. Crear tablas en Supabase
@@ -83,6 +88,7 @@ npm run dev
 ### Usuarios (Fase 1)
 - `GET /users/:id/profile` - Obtener perfil
 - `PUT /users/:id/profile` - Actualizar perfil
+- `PATCH /users/:id/renew-membership` - Renovar membresia (admin/trainer)
 
 ### Mediciones (Fase 1)
 - `POST /users/:id/measurements` - Crear medición

@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
-import { HealthProvider, UserRole } from "@prisma/client";
+import { HealthProvider, MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
 import {
   CreateUserInput,
+  RenewMembershipInput,
   SetHealthConnectionStateInput,
   UpdateProfileInput,
   UpsertHealthConnectionInput,
@@ -433,6 +434,22 @@ export const createUser = async (
     },
   });
 
+  if (isMemberRole && membershipStartAt && membershipEndAt && req.body.paymentMethod && req.body.paymentAmount) {
+    await prisma.membershipTransaction.create({
+      data: {
+        gymId: requester.gymId,
+        userId: created.id,
+        actorUserId: req.auth.userId,
+        type: MembershipTransactionType.activation,
+        paymentMethod: req.body.paymentMethod as PaymentMethod,
+        amount: req.body.paymentAmount,
+        membershipMonths: req.body.membershipMonths ?? 1,
+        membershipStartAt,
+        membershipEndAt,
+      },
+    });
+  }
+
   console.log(
     `[AUDIT] action=users.create actor=${req.auth.userId} target=${created.id} role=${created.role}`,
   );
@@ -454,6 +471,101 @@ export const createUser = async (
     user: created,
     ...(verificationWarning ? { warning: verificationWarning } : {}),
     ...(env.NODE_ENV !== "production" ? { devVerificationToken: token } : {}),
+  });
+};
+
+export const renewMembershipByUserId = async (
+  req: Request<{ id: string }, unknown, RenewMembershipInput>,
+  res: Response,
+): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (!hasPermission(req.auth.role, "users.renewMembership")) {
+    throw new HttpError(403, "Forbidden");
+  }
+
+  const requester = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: { gymId: true, isActive: true, role: true },
+  });
+
+  if (!requester || !requester.isActive) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      gymId: true,
+      role: true,
+      isActive: true,
+      membershipEndAt: true,
+      fullName: true,
+      email: true,
+    },
+  });
+
+  if (!targetUser) {
+    throw new HttpError(404, "User not found");
+  }
+
+  if (targetUser.gymId !== requester.gymId) {
+    throw new HttpError(403, "Forbidden");
+  }
+
+  if (targetUser.role !== "member") {
+    throw new HttpError(400, "Solo se pueden renovar membresias de usuarios miembro");
+  }
+
+  const membershipStartAt =
+    targetUser.membershipEndAt && targetUser.membershipEndAt > new Date()
+      ? targetUser.membershipEndAt
+      : new Date();
+  const membershipEndAt = new Date(membershipStartAt);
+  membershipEndAt.setMonth(membershipEndAt.getMonth() + req.body.membershipMonths);
+
+  const updated = await prisma.user.update({
+    where: { id: targetUser.id },
+    data: {
+      membershipStartAt,
+      membershipEndAt,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      role: true,
+      isActive: true,
+      membershipStartAt: true,
+      membershipEndAt: true,
+    },
+  });
+
+  await prisma.membershipTransaction.create({
+    data: {
+      gymId: requester.gymId,
+      userId: targetUser.id,
+      actorUserId: req.auth.userId,
+      type: MembershipTransactionType.renewal,
+      paymentMethod: req.body.paymentMethod as PaymentMethod,
+      amount: req.body.paymentAmount,
+      membershipMonths: req.body.membershipMonths,
+      membershipStartAt,
+      membershipEndAt,
+    },
+  });
+
+  console.log(
+    `[AUDIT] ${req.requestId ?? "n/a"} action=users.renewMembership actor=${req.auth.userId} target=${targetUser.id}`,
+  );
+
+  res.json({
+    message: "Membresia renovada correctamente",
+    user: updated,
   });
 };
 

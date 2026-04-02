@@ -17,6 +17,7 @@ import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
 
 type UserRole = "trainer" | "member";
+type PaymentMethod = "card" | "transfer" | "cash";
 
 interface GymUser {
   id: string;
@@ -35,6 +36,12 @@ const ROLE_LABELS: Record<string, string> = {
   member: "Usuario",
 };
 
+const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  card: "Tarjeta",
+  transfer: "Transferencia",
+  cash: "Efectivo",
+};
+
 export function AdminUsersScreen() {
   const { user, token } = useAuth();
   const [users, setUsers] = useState<GymUser[]>([]);
@@ -42,6 +49,9 @@ export function AdminUsersScreen() {
   const [filterRole, setFilterRole] = useState<string>("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [showRenewModal, setShowRenewModal] = useState(false);
+  const [renewingUser, setRenewingUser] = useState<GymUser | null>(null);
+  const [renewing, setRenewing] = useState(false);
 
   // Form state
   const [newEmail, setNewEmail] = useState("");
@@ -49,6 +59,12 @@ export function AdminUsersScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<UserRole>("member");
   const [membershipMonths, setMembershipMonths] = useState(1);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
+  const [paymentAmount, setPaymentAmount] = useState("");
+
+  const [renewMonths, setRenewMonths] = useState(1);
+  const [renewPaymentMethod, setRenewPaymentMethod] = useState<PaymentMethod>("card");
+  const [renewPaymentAmount, setRenewPaymentAmount] = useState("");
 
   const loadUsers = useCallback(async () => {
     if (!token) return;
@@ -82,6 +98,15 @@ export function AdminUsersScreen() {
       Alert.alert("Contraseña débil", "La contraseña debe tener al menos 8 caracteres.");
       return;
     }
+
+    if (newRole === "member") {
+      const amount = Number(paymentAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        Alert.alert("Monto invalido", "Debes indicar un monto valido para la activacion.");
+        return;
+      }
+    }
+
     if (!token) return;
     setCreating(true);
     try {
@@ -91,6 +116,12 @@ export function AdminUsersScreen() {
         password: newPassword,
         role: newRole,
         ...(newRole === "member" ? { membershipMonths } : {}),
+        ...(newRole === "member"
+          ? {
+              paymentMethod,
+              paymentAmount: Number(paymentAmount),
+            }
+          : {}),
       });
       Alert.alert(
         "Usuario creado",
@@ -104,6 +135,8 @@ export function AdminUsersScreen() {
       setNewPassword("");
       setNewRole("member");
       setMembershipMonths(1);
+      setPaymentMethod("card");
+      setPaymentAmount("");
       void loadUsers();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error inesperado";
@@ -185,6 +218,40 @@ export function AdminUsersScreen() {
     );
   };
 
+  const onOpenRenewModal = (target: GymUser) => {
+    setRenewingUser(target);
+    setRenewMonths(1);
+    setRenewPaymentMethod("card");
+    setRenewPaymentAmount("");
+    setShowRenewModal(true);
+  };
+
+  const onRenewMembership = async () => {
+    if (!token || !renewingUser) return;
+    const amount = Number(renewPaymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert("Monto invalido", "Debes indicar un monto valido para la renovacion.");
+      return;
+    }
+
+    setRenewing(true);
+    try {
+      await api.renewMembership(renewingUser.id, token, {
+        membershipMonths: renewMonths,
+        paymentMethod: renewPaymentMethod,
+        paymentAmount: amount,
+      });
+      Alert.alert("Renovacion realizada", "La membresia fue renovada correctamente.");
+      setShowRenewModal(false);
+      setRenewingUser(null);
+      void loadUsers();
+    } catch (e) {
+      Alert.alert("Error al renovar", e instanceof Error ? e.message : "No se pudo renovar la membresia");
+    } finally {
+      setRenewing(false);
+    }
+  };
+
   const filteredUsers = users.filter((u) => u.id !== user?.id);
 
   return (
@@ -240,6 +307,11 @@ export function AdminUsersScreen() {
                   )}
                 </View>
                 <View style={styles.userActions}>
+                  {u.role === "member" && (
+                    <TouchableOpacity style={styles.renewBtn} onPress={() => onOpenRenewModal(u)}>
+                      <Text style={styles.renewBtnText}>Renovar</Text>
+                    </TouchableOpacity>
+                  )}
                   {u.isActive ? (
                     <TouchableOpacity style={styles.deactivateBtn} onPress={() => onDeactivate(u)}>
                       <Text style={styles.deactivateBtnText}>Desactivar</Text>
@@ -279,38 +351,6 @@ export function AdminUsersScreen() {
 
             {/* Selector de rol */}
             <View style={styles.roleSelector}>
-
-                          {newRole === "member" && (
-                            <View style={styles.membershipSelectorWrap}>
-                              <Text style={styles.membershipLabel}>Duracion de membresia (meses)</Text>
-                              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                {Array.from({ length: 12 }, (_, i) => i + 1).map((months) => (
-                                  <TouchableOpacity
-                                    key={months}
-                                    style={[
-                                      styles.membershipChip,
-                                      membershipMonths === months && styles.membershipChipActive,
-                                    ]}
-                                    onPress={() => setMembershipMonths(months)}
-                                  >
-                                    <Text
-                                      style={[
-                                        styles.membershipChipText,
-                                        membershipMonths === months && styles.membershipChipTextActive,
-                                      ]}
-                                    >
-                                      {months}
-                                    </Text>
-                                  </TouchableOpacity>
-                                ))}
-                              </ScrollView>
-                            </View>
-                          )}
-                membershipText: {
-                  marginTop: 6,
-                  fontSize: 12,
-                  color: palette.cocoa + "B0",
-                },
               {(["member", "trainer"] as UserRole[]).map((r) => (
                 <TouchableOpacity
                   key={r}
@@ -323,6 +363,65 @@ export function AdminUsersScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {newRole === "member" && (
+              <View style={styles.membershipSelectorWrap}>
+                <Text style={styles.membershipLabel}>Duracion de membresia (meses)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((months) => (
+                    <TouchableOpacity
+                      key={months}
+                      style={[
+                        styles.membershipChip,
+                        membershipMonths === months && styles.membershipChipActive,
+                      ]}
+                      onPress={() => setMembershipMonths(months)}
+                    >
+                      <Text
+                        style={[
+                          styles.membershipChipText,
+                          membershipMonths === months && styles.membershipChipTextActive,
+                        ]}
+                      >
+                        {months}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <Text style={[styles.membershipLabel, { marginTop: 12 }]}>Metodo de pago</Text>
+                <View style={styles.paymentMethodsRow}>
+                  {(["card", "transfer", "cash"] as PaymentMethod[]).map((method) => (
+                    <TouchableOpacity
+                      key={method}
+                      style={[
+                        styles.paymentMethodChip,
+                        paymentMethod === method && styles.paymentMethodChipActive,
+                      ]}
+                      onPress={() => setPaymentMethod(method)}
+                    >
+                      <Text
+                        style={[
+                          styles.paymentMethodChipText,
+                          paymentMethod === method && styles.paymentMethodChipTextActive,
+                        ]}
+                      >
+                        {PAYMENT_METHOD_LABELS[method]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TextInput
+                  style={[styles.input, { marginTop: 12, marginBottom: 0 }]}
+                  placeholder="Monto pagado"
+                  placeholderTextColor={palette.cocoa + "80"}
+                  keyboardType="decimal-pad"
+                  value={paymentAmount}
+                  onChangeText={setPaymentAmount}
+                />
+              </View>
+            )}
 
             <TextInput
               style={styles.input}
@@ -369,6 +468,94 @@ export function AdminUsersScreen() {
               </TouchableOpacity>
             </View>
               </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={showRenewModal} animationType="slide" transparent onRequestClose={() => setShowRenewModal(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowRenewModal(false)}>
+            <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+              <View style={styles.modalCard}>
+                <Text style={styles.modalTitle}>Renovar membresia</Text>
+                <Text style={styles.modalSubTitle}>{renewingUser?.fullName ?? ""}</Text>
+
+                <Text style={styles.membershipLabel}>Duracion de renovacion (meses)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((months) => (
+                    <TouchableOpacity
+                      key={months}
+                      style={[
+                        styles.membershipChip,
+                        renewMonths === months && styles.membershipChipActive,
+                      ]}
+                      onPress={() => setRenewMonths(months)}
+                    >
+                      <Text
+                        style={[
+                          styles.membershipChipText,
+                          renewMonths === months && styles.membershipChipTextActive,
+                        ]}
+                      >
+                        {months}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <Text style={[styles.membershipLabel, { marginTop: 12 }]}>Metodo de pago</Text>
+                <View style={styles.paymentMethodsRow}>
+                  {(["card", "transfer", "cash"] as PaymentMethod[]).map((method) => (
+                    <TouchableOpacity
+                      key={method}
+                      style={[
+                        styles.paymentMethodChip,
+                        renewPaymentMethod === method && styles.paymentMethodChipActive,
+                      ]}
+                      onPress={() => setRenewPaymentMethod(method)}
+                    >
+                      <Text
+                        style={[
+                          styles.paymentMethodChipText,
+                          renewPaymentMethod === method && styles.paymentMethodChipTextActive,
+                        ]}
+                      >
+                        {PAYMENT_METHOD_LABELS[method]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TextInput
+                  style={[styles.input, { marginTop: 12 }]}
+                  placeholder="Monto pagado"
+                  placeholderTextColor={palette.cocoa + "80"}
+                  keyboardType="decimal-pad"
+                  value={renewPaymentAmount}
+                  onChangeText={setRenewPaymentAmount}
+                />
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => setShowRenewModal(false)}
+                    disabled={renewing}
+                  >
+                    <Text style={styles.cancelBtnText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.confirmBtn} onPress={onRenewMembership} disabled={renewing}>
+                    {renewing ? (
+                      <ActivityIndicator color={palette.cream} size="small" />
+                    ) : (
+                      <Text style={styles.confirmBtnText}>Renovar</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
             </TouchableOpacity>
           </TouchableOpacity>
         </KeyboardAvoidingView>
@@ -453,6 +640,20 @@ const styles = StyleSheet.create({
   statusActive: { backgroundColor: palette.moss + "20" },
   statusInactive: { backgroundColor: palette.coral + "25" },
   statusBadgeText: { fontSize: 12, fontWeight: "600", color: palette.cocoa },
+  renewBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: palette.gold,
+    marginBottom: 8,
+  },
+  renewBtnText: { color: palette.cocoa, fontWeight: "700", fontSize: 12 },
+  membershipText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: palette.cocoa + "B0",
+  },
   deactivateBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -495,6 +696,7 @@ const styles = StyleSheet.create({
     maxHeight: "90%",
   },
   modalTitle: { fontSize: 20, fontWeight: "700", color: palette.cocoa, marginBottom: 20, textAlign: "center" },
+  modalSubTitle: { fontSize: 14, color: palette.cocoa + "B0", marginBottom: 14, textAlign: "center" },
   roleSelector: { flexDirection: "row", marginBottom: 20, gap: 12 },
   rolePill: {
     flex: 1,
@@ -507,38 +709,63 @@ const styles = StyleSheet.create({
   rolePillActive: { backgroundColor: palette.moss },
   rolePillText: { color: palette.moss, fontWeight: "600", fontSize: 14 },
   rolePillTextActive: { color: palette.cream },
-    membershipSelectorWrap: {
-      marginBottom: 12,
-    },
-    membershipLabel: {
-      fontSize: 13,
-      color: palette.cocoa + "CC",
-      marginBottom: 8,
-      fontWeight: "600",
-    },
-    membershipChip: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      borderWidth: 1,
-      borderColor: palette.cocoa + "40",
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: 8,
-      backgroundColor: palette.cream,
-    },
-    membershipChipActive: {
-      backgroundColor: palette.coral,
-      borderColor: palette.coral,
-    },
-    membershipChipText: {
-      color: palette.cocoa,
-      fontWeight: "700",
-      fontSize: 13,
-    },
-    membershipChipTextActive: {
-      color: palette.cream,
-    },
+  membershipSelectorWrap: {
+    marginBottom: 12,
+  },
+  membershipLabel: {
+    fontSize: 13,
+    color: palette.cocoa + "CC",
+    marginBottom: 8,
+    fontWeight: "600",
+  },
+  membershipChip: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: palette.cocoa + "40",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+    backgroundColor: palette.cream,
+  },
+  membershipChipActive: {
+    backgroundColor: palette.coral,
+    borderColor: palette.coral,
+  },
+  membershipChipText: {
+    color: palette.cocoa,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  membershipChipTextActive: {
+    color: palette.cream,
+  },
+  paymentMethodsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  paymentMethodChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.cocoa + "40",
+    backgroundColor: palette.cream,
+  },
+  paymentMethodChipActive: {
+    backgroundColor: palette.moss,
+    borderColor: palette.moss,
+  },
+  paymentMethodChipText: {
+    color: palette.cocoa,
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  paymentMethodChipTextActive: {
+    color: palette.cream,
+  },
   modalHint: {
     marginTop: -4,
     marginBottom: 12,

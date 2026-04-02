@@ -6,6 +6,8 @@ export const createUserSchema = z.object({
   fullName: z.string().min(2, "Nombre requerido"),
   role: z.enum(["trainer", "member"]),
   membershipMonths: z.number().int().min(1).max(12).optional(),
+  paymentMethod: z.enum(["card", "transfer", "cash"]).optional(),
+  paymentAmount: z.number().positive().optional(),
 }).superRefine((value, ctx) => {
   if (value.role === "member" && !value.membershipMonths) {
     ctx.addIssue({
@@ -14,9 +16,33 @@ export const createUserSchema = z.object({
       path: ["membershipMonths"],
     });
   }
+
+  if (value.role === "member" && !value.paymentMethod) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debes seleccionar el metodo de pago",
+      path: ["paymentMethod"],
+    });
+  }
+
+  if (value.role === "member" && !value.paymentAmount) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debes indicar el monto pagado",
+      path: ["paymentAmount"],
+    });
+  }
 });
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;
+
+export const renewMembershipSchema = z.object({
+  membershipMonths: z.number().int().min(1).max(12),
+  paymentMethod: z.enum(["card", "transfer", "cash"]),
+  paymentAmount: z.number().positive(),
+});
+
+export type RenewMembershipInput = z.infer<typeof renewMembershipSchema>;
 
 export const updateProfileSchema = z.object({
   birthDate: z.string().datetime().optional(),

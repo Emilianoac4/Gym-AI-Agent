@@ -109,6 +109,17 @@ enum HealthProvider {
   health_connect
 }
 
+enum MembershipTransactionType {
+  activation
+  renewal
+}
+
+enum PaymentMethod {
+  card
+  transfer
+  cash
+}
+
 model UserHealthConnection {
   id                      String         @id @default(uuid())
   userId                  String         @map("user_id")
@@ -135,4 +146,31 @@ model AIChatLog {
   createdAt   DateTime      @default(now()) @map("created_at")
 
   @@map("ai_chat_logs")
+}
+
+model MembershipTransaction {
+  id                String                    @id @default(uuid())
+  gymId             String                    @map("gym_id")
+  userId            String                    @map("user_id")
+  actorUserId       String                    @map("actor_user_id")
+  type              MembershipTransactionType
+  paymentMethod     PaymentMethod             @map("payment_method")
+  amount            Float
+  currency          String                    @default("USD")
+  membershipMonths  Int                       @map("membership_months")
+  membershipStartAt DateTime                  @map("membership_start_at")
+  membershipEndAt   DateTime                  @map("membership_end_at")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+
+  @@map("membership_transactions")
+}
+
+model MembershipDailySummaryDispatch {
+  id         String   @id @default(uuid())
+  gymId      String   @map("gym_id")
+  summaryDay DateTime @map("summary_day")
+  sentAt     DateTime @default(now()) @map("sent_at")
+
+  @@unique([gymId, summaryDay])
+  @@map("membership_daily_summary_dispatches")
 }

@@ -21,6 +21,11 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().email().optional(),
   EMAIL_VERIFICATION_TOKEN_TTL_MINUTES: z.coerce.number().default(60),
   PASSWORD_RESET_TOKEN_TTL_MINUTES: z.coerce.number().default(30),
+  DAILY_MEMBERSHIP_SUMMARY_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value === "true"),
+  DAILY_MEMBERSHIP_SUMMARY_HOUR_UTC: z.coerce.number().min(0).max(23).default(23),
 });
 
 const parsed = envSchema.safeParse(process.env);

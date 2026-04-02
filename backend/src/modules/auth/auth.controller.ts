@@ -32,6 +32,24 @@ const isTemporaryPasswordHash = (value: string) => value.startsWith(TEMP_PASSWOR
 const getComparablePasswordHash = (value: string) =>
   isTemporaryPasswordHash(value) ? value.slice(TEMP_PASSWORD_PREFIX.length) : value;
 
+const ensureMembershipActive = async (user: {
+  id: string;
+  role: UserRole;
+  membershipEndAt: Date | null;
+}) => {
+  if (user.role !== UserRole.member || !user.membershipEndAt) {
+    return;
+  }
+
+  if (user.membershipEndAt.getTime() <= Date.now()) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isActive: false },
+    });
+    throw new HttpError(403, "Tu membresia vencio. Solicita renovacion con tu gimnasio.");
+  }
+};
+
 const assertRequestedRole = (actualRole: UserRole, requestedRole: UserRole) => {
   if (actualRole !== requestedRole) {
     throw new HttpError(
@@ -219,13 +237,7 @@ export const login = async (
 
   assertRequestedRole(user.role, requestedRole as UserRole);
 
-  if (user.role === UserRole.member && user.membershipEndAt && user.membershipEndAt.getTime() <= Date.now()) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { isActive: false },
-    });
-    throw new HttpError(403, "Tu membresia vencio. Solicita renovacion con tu gimnasio.");
-  }
+  await ensureMembershipActive(user);
 
   if (!user.emailVerifiedAt) {
     throw new HttpError(403, "Debes verificar tu correo antes de ingresar");
@@ -259,6 +271,8 @@ const completeOauthLogin = async (
       "No account is linked to this social email. Ask an admin to create your account first.",
     );
   }
+
+  await ensureMembershipActive(user);
 
   if (!user.emailVerifiedAt) {
     await prisma.user.update({

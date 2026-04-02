@@ -407,6 +407,8 @@ export const api = {
       fullName: string;
       role: "trainer" | "member";
       membershipMonths?: number;
+      paymentMethod?: "card" | "transfer" | "cash";
+      paymentAmount?: number;
     }
   ) =>
     request<{
@@ -431,6 +433,24 @@ export const api = {
       method: "PATCH",
       token,
     }),
+
+  renewMembership: (
+    id: string,
+    token: string,
+    body: {
+      membershipMonths: number;
+      paymentMethod: "card" | "transfer" | "cash";
+      paymentAmount: number;
+    }
+  ) =>
+    request<{ message: string; user: { id: string; membershipStartAt: string; membershipEndAt: string } }>(
+      `/users/${id}/renew-membership`,
+      {
+        method: "PATCH",
+        token,
+        body,
+      }
+    ),
 
   deleteUser: (id: string, token: string) =>
     request<{ message: string; user: { id: string; role: string } }>(`/users/${id}`, {

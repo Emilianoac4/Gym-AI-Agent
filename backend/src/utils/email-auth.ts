@@ -27,9 +27,10 @@ type SendMailParams = {
   to: string;
   subject: string;
   html: string;
+  text?: string;
 };
 
-const sendWithResend = async ({ to, subject, html }: SendMailParams) => {
+const sendWithResend = async ({ to, subject, html, text }: SendMailParams) => {
   if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
     return false;
   }
@@ -45,6 +46,7 @@ const sendWithResend = async ({ to, subject, html }: SendMailParams) => {
       to,
       subject,
       html,
+      ...(text ? { text } : {}),
     }),
   });
 
@@ -54,6 +56,13 @@ const sendWithResend = async ({ to, subject, html }: SendMailParams) => {
   }
 
   return true;
+};
+
+export const sendPlatformEmail = async (params: SendMailParams) => {
+  const sent = await sendWithResend(params);
+  if (!sent) {
+    console.log(`[MAIL:DEV] generic-email to=${params.to} subject=${params.subject}`);
+  }
 };
 
 const getAppBaseUrl = () => env.APP_BASE_URL?.replace(/\/$/, "") ?? "";

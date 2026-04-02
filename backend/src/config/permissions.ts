@@ -5,6 +5,7 @@ export type PermissionAction =
   | "users.profile.update"
   | "users.deactivate"
   | "users.reactivate"
+  | "users.renewMembership"
   | "users.delete"
   | "users.measurements.read"
   | "users.measurements.write"
@@ -20,6 +21,7 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
     "users.profile.update",
     "users.deactivate",
     "users.reactivate",
+    "users.renewMembership",
     "users.delete",
     "users.measurements.read",
     "users.measurements.write",
@@ -32,6 +34,7 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
     "users.profile.update",
     "users.deactivate",
     "users.reactivate",
+    "users.renewMembership",
     "users.measurements.read",
     "users.measurements.write",
     "ai.use",
