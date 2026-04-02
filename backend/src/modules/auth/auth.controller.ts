@@ -25,6 +25,7 @@ import {
 } from "../../utils/email-auth";
 
 const TEMP_PASSWORD_PREFIX = "TEMP$";
+const EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
 
 const isTemporaryPasswordHash = (value: string) => value.startsWith(TEMP_PASSWORD_PREFIX);
 
@@ -52,6 +53,85 @@ const parseAdminFromHeader = (req: Request): { userId: string; role: UserRole } 
   } catch {
     return null;
   }
+};
+
+const renderVerificationHtml = (
+  status: "success" | "error",
+  title: string,
+  message: string,
+) => {
+  const accent = status === "success" ? "#ABC270" : "#C65A4A";
+  const icon = status === "success" ? "✓" : "!";
+
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tuco | Verificacion de correo</title>
+    <style>
+      :root {
+        --bg: #f8f5ee;
+        --card: #fffdf9;
+        --text: #463c33;
+        --muted: #6f6256;
+        --accent: ${accent};
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at top, #ffe7bc 0%, var(--bg) 45%);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .card {
+        width: min(92vw, 520px);
+        background: var(--card);
+        border: 1px solid #ecdcc2;
+        border-radius: 16px;
+        padding: 28px 24px;
+        box-shadow: 0 12px 30px rgba(70, 60, 51, 0.1);
+        text-align: center;
+      }
+      .badge {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 14px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: color-mix(in srgb, var(--accent) 16%, white);
+        color: var(--accent);
+        font-size: 28px;
+        font-weight: 700;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 24px;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .footer {
+        margin-top: 18px;
+        font-size: 13px;
+        color: #8b7d70;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="main">
+      <div class="badge">${icon}</div>
+      <h1>${title}</h1>
+      <p>${message}</p>
+      <p class="footer">Ya puedes volver a la app y continuar con Tuco.</p>
+    </main>
+  </body>
+</html>`;
 };
 
 export const register = async (
@@ -138,6 +218,14 @@ export const login = async (
   }
 
   assertRequestedRole(user.role, requestedRole as UserRole);
+
+  if (user.role === UserRole.member && user.membershipEndAt && user.membershipEndAt.getTime() <= Date.now()) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isActive: false },
+    });
+    throw new HttpError(403, "Tu membresia vencio. Solicita renovacion con tu gimnasio.");
+  }
 
   if (!user.emailVerifiedAt) {
     throw new HttpError(403, "Debes verificar tu correo antes de ingresar");
@@ -279,12 +367,26 @@ export const requestEmailVerification = async (
     return;
   }
 
+  if (user.emailVerificationLastSentAt) {
+    const elapsedSeconds = Math.floor(
+      (Date.now() - user.emailVerificationLastSentAt.getTime()) / 1000,
+    );
+    if (elapsedSeconds < EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS) {
+      const remaining = EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS - elapsedSeconds;
+      throw new HttpError(
+        429,
+        `Debes esperar ${remaining} segundos antes de reenviar otro correo de verificacion`,
+      );
+    }
+  }
+
   const { token, tokenHash } = createTokenPair();
   const expiresAt = getFutureDateMinutes(env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES);
 
   await prisma.user.update({
     where: { id: user.id },
     data: {
+      emailVerificationLastSentAt: new Date(),
       emailVerificationTokenHash: tokenHash,
       emailVerificationTokenExpiresAt: expiresAt,
     },
@@ -336,7 +438,17 @@ export const verifyEmailFromQuery = async (
   const token = typeof req.query.token === "string" ? req.query.token : "";
 
   if (!token || token.length < 16) {
-    throw new HttpError(400, "Token de verificacion invalido");
+    res
+      .status(400)
+      .type("html")
+      .send(
+        renderVerificationHtml(
+          "error",
+          "Enlace invalido",
+          "El enlace de verificacion no es valido. Solicita uno nuevo desde la app.",
+        ),
+      );
+    return;
   }
 
   const tokenHash = hashOpaqueToken(token);
@@ -351,7 +463,17 @@ export const verifyEmailFromQuery = async (
   });
 
   if (!user) {
-    throw new HttpError(400, "Token de verificacion invalido o expirado");
+    res
+      .status(400)
+      .type("html")
+      .send(
+        renderVerificationHtml(
+          "error",
+          "Enlace expirado",
+          "Este enlace ya expiro o no es valido. Pide un nuevo correo de verificacion e intenta otra vez.",
+        ),
+      );
+    return;
   }
 
   await prisma.user.update({
@@ -363,7 +485,16 @@ export const verifyEmailFromQuery = async (
     },
   });
 
-  res.json({ message: "Correo verificado correctamente" });
+  res
+    .status(200)
+    .type("html")
+    .send(
+      renderVerificationHtml(
+        "success",
+        "Correo verificado",
+        "Tu cuenta fue verificada correctamente.",
+      ),
+    );
 };
 
 export const forgotPassword = async (

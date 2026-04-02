@@ -5,6 +5,15 @@ export const createUserSchema = z.object({
   password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
   fullName: z.string().min(2, "Nombre requerido"),
   role: z.enum(["trainer", "member"]),
+  membershipMonths: z.number().int().min(1).max(12).optional(),
+}).superRefine((value, ctx) => {
+  if (value.role === "member" && !value.membershipMonths) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debes seleccionar una membresia entre 1 y 12 meses",
+      path: ["membershipMonths"],
+    });
+  }
 });
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;

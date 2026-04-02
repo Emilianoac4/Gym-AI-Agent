@@ -71,15 +71,15 @@ export const buildPasswordResetLink = (token: string) => {
 export const sendEmailVerification = async (email: string, token: string) => {
   const verificationLink = buildEmailVerificationLink(token);
   const html = `
-    <h2>Verifica tu correo</h2>
-    <p>Haz clic en el siguiente enlace para verificar tu cuenta:</p>
+    <h2>Verifica tu correo en Tuco</h2>
+    <p>Haz clic en el siguiente enlace para activar tu cuenta:</p>
     <p><a href="${verificationLink}">${verificationLink}</a></p>
     <p>Si no solicitaste este correo, ignora este mensaje.</p>
   `;
 
   const sent = await sendWithResend({
     to: email,
-    subject: "Verifica tu cuenta en GymIAI",
+    subject: "Verifica tu cuenta en Tuco",
     html,
   });
 
@@ -91,7 +91,7 @@ export const sendEmailVerification = async (email: string, token: string) => {
 export const sendPasswordReset = async (email: string, token: string) => {
   const resetLink = buildPasswordResetLink(token);
   const html = `
-    <h2>Restablece tu contrasena</h2>
+    <h2>Restablece tu contrasena en Tuco</h2>
     <p>Haz clic en el siguiente enlace para cambiar tu contrasena:</p>
     <p><a href="${resetLink}">${resetLink}</a></p>
     <p>Si no solicitaste este cambio, ignora este mensaje.</p>
@@ -99,7 +99,7 @@ export const sendPasswordReset = async (email: string, token: string) => {
 
   const sent = await sendWithResend({
     to: email,
-    subject: "Recuperacion de contrasena - GymIAI",
+    subject: "Recuperacion de contrasena - Tuco",
     html,
   });
 

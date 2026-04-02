@@ -1,5 +1,14 @@
 import React, { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
@@ -24,32 +33,45 @@ export function RegisterScreen() {
 
   return (
     <LinearGradient colors={palette.gradientHero} style={styles.shell}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.card}>
-          <Text style={styles.eyebrow}>Setup inicial</Text>
-          <Text style={styles.title}>Primer setup del gimnasio</Text>
-          <Text style={styles.subtitle}>Crea el usuario administrador inicial para tu app.</Text>
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.card}>
+            <Text style={styles.eyebrow}>Setup inicial</Text>
+            <Text style={styles.title}>Primer setup del gimnasio</Text>
+            <Text style={styles.subtitle}>Crea el usuario administrador inicial para tu app.</Text>
 
-          <View style={styles.banner}>
-            <Text style={styles.bannerTitle}>Listo para probar la nueva identidad</Text>
-            <Text style={styles.bannerText}>Esta configuracion deja activa la experiencia visual base para Expo.</Text>
+            <View style={styles.banner}>
+              <Text style={styles.bannerTitle}>Listo para probar la nueva identidad</Text>
+              <Text style={styles.bannerText}>Esta configuracion deja activa la experiencia visual base para Expo.</Text>
+            </View>
+
+            <TextInput style={styles.input} placeholder="Nombre del gimnasio" placeholderTextColor={palette.textSoft} value={gymName} onChangeText={setGymName} />
+            <TextInput style={styles.input} placeholder="Nombre del propietario" placeholderTextColor={palette.textSoft} value={ownerName} onChangeText={setOwnerName} />
+            <TextInput style={styles.input} placeholder="Nombre completo admin" placeholderTextColor={palette.textSoft} value={fullName} onChangeText={setFullName} />
+            <TextInput style={styles.input} placeholder="Email" placeholderTextColor={palette.textSoft} autoCapitalize="none" value={email} onChangeText={setEmail} />
+            <TextInput style={styles.input} placeholder="Contrasena" placeholderTextColor={palette.textSoft} secureTextEntry value={password} onChangeText={setPassword} />
+
+            <AppButton label={loading ? "Creando..." : "Crear y entrar"} onPress={onRegister} disabled={loading} />
           </View>
-
-          <TextInput style={styles.input} placeholder="Nombre del gimnasio" placeholderTextColor={palette.textSoft} value={gymName} onChangeText={setGymName} />
-          <TextInput style={styles.input} placeholder="Nombre del propietario" placeholderTextColor={palette.textSoft} value={ownerName} onChangeText={setOwnerName} />
-          <TextInput style={styles.input} placeholder="Nombre completo admin" placeholderTextColor={palette.textSoft} value={fullName} onChangeText={setFullName} />
-          <TextInput style={styles.input} placeholder="Email" placeholderTextColor={palette.textSoft} autoCapitalize="none" value={email} onChangeText={setEmail} />
-          <TextInput style={styles.input} placeholder="Contrasena" placeholderTextColor={palette.textSoft} secureTextEntry value={password} onChangeText={setPassword} />
-
-          <AppButton label={loading ? "Creando..." : "Crear y entrar"} onPress={onRegister} disabled={loading} />
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   shell: {
+    flex: 1,
+  },
+  keyboardContainer: {
     flex: 1,
   },
   container: {

@@ -25,6 +25,8 @@ interface GymUser {
   role: string;
   createdAt: string;
   isActive: boolean;
+  membershipStartAt?: string | null;
+  membershipEndAt?: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -46,6 +48,7 @@ export function AdminUsersScreen() {
   const [newFullName, setNewFullName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<UserRole>("member");
+  const [membershipMonths, setMembershipMonths] = useState(1);
 
   const loadUsers = useCallback(async () => {
     if (!token) return;
@@ -87,6 +90,7 @@ export function AdminUsersScreen() {
         fullName: newFullName.trim(),
         password: newPassword,
         role: newRole,
+        ...(newRole === "member" ? { membershipMonths } : {}),
       });
       Alert.alert(
         "Usuario creado",
@@ -99,6 +103,7 @@ export function AdminUsersScreen() {
       setNewFullName("");
       setNewPassword("");
       setNewRole("member");
+      setMembershipMonths(1);
       void loadUsers();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error inesperado";
@@ -228,6 +233,11 @@ export function AdminUsersScreen() {
                   <View style={[styles.statusBadge, u.isActive ? styles.statusActive : styles.statusInactive]}>
                     <Text style={styles.statusBadgeText}>{u.isActive ? "Activo" : "Desactivado"}</Text>
                   </View>
+                  {u.role === "member" && u.membershipEndAt && (
+                    <Text style={styles.membershipText}>
+                      Membresia hasta: {new Date(u.membershipEndAt).toLocaleDateString()}
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.userActions}>
                   {u.isActive ? (
@@ -269,6 +279,38 @@ export function AdminUsersScreen() {
 
             {/* Selector de rol */}
             <View style={styles.roleSelector}>
+
+                          {newRole === "member" && (
+                            <View style={styles.membershipSelectorWrap}>
+                              <Text style={styles.membershipLabel}>Duracion de membresia (meses)</Text>
+                              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                {Array.from({ length: 12 }, (_, i) => i + 1).map((months) => (
+                                  <TouchableOpacity
+                                    key={months}
+                                    style={[
+                                      styles.membershipChip,
+                                      membershipMonths === months && styles.membershipChipActive,
+                                    ]}
+                                    onPress={() => setMembershipMonths(months)}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.membershipChipText,
+                                        membershipMonths === months && styles.membershipChipTextActive,
+                                      ]}
+                                    >
+                                      {months}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </ScrollView>
+                            </View>
+                          )}
+                membershipText: {
+                  marginTop: 6,
+                  fontSize: 12,
+                  color: palette.cocoa + "B0",
+                },
               {(["member", "trainer"] as UserRole[]).map((r) => (
                 <TouchableOpacity
                   key={r}
@@ -465,6 +507,38 @@ const styles = StyleSheet.create({
   rolePillActive: { backgroundColor: palette.moss },
   rolePillText: { color: palette.moss, fontWeight: "600", fontSize: 14 },
   rolePillTextActive: { color: palette.cream },
+    membershipSelectorWrap: {
+      marginBottom: 12,
+    },
+    membershipLabel: {
+      fontSize: 13,
+      color: palette.cocoa + "CC",
+      marginBottom: 8,
+      fontWeight: "600",
+    },
+    membershipChip: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      borderWidth: 1,
+      borderColor: palette.cocoa + "40",
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 8,
+      backgroundColor: palette.cream,
+    },
+    membershipChipActive: {
+      backgroundColor: palette.coral,
+      borderColor: palette.coral,
+    },
+    membershipChipText: {
+      color: palette.cocoa,
+      fontWeight: "700",
+      fontSize: 13,
+    },
+    membershipChipTextActive: {
+      color: palette.cream,
+    },
   modalHint: {
     marginTop: -4,
     marginBottom: 12,

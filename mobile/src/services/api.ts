@@ -392,6 +392,8 @@ export const api = {
         role: string;
         createdAt: string;
         isActive: boolean;
+        membershipStartAt?: string | null;
+        membershipEndAt?: string | null;
       }>;
     }>(`/users${role ? `?role=${role}` : ""}`, {
       token,
@@ -399,7 +401,13 @@ export const api = {
 
   createUser: (
     token: string,
-    body: { email: string; password: string; fullName: string; role: "trainer" | "member" }
+    body: {
+      email: string;
+      password: string;
+      fullName: string;
+      role: "trainer" | "member";
+      membershipMonths?: number;
+    }
   ) =>
     request<{
       message: string;

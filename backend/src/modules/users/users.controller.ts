@@ -346,6 +346,8 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
       role: true,
       createdAt: true,
       isActive: true,
+      membershipStartAt: true,
+      membershipEndAt: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -393,6 +395,17 @@ export const createUser = async (
   const passwordHash = `TEMP$${await bcrypt.hash(req.body.password, 12)}`;
   const { token, tokenHash } = createTokenPair();
   const tokenExpiresAt = getFutureDateMinutes(env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES);
+  const verificationSentAt = new Date();
+
+  const isMemberRole = req.body.role === "member";
+  const membershipStartAt = isMemberRole ? new Date() : null;
+  const membershipEndAt = isMemberRole
+    ? (() => {
+        const end = new Date();
+        end.setMonth(end.getMonth() + (req.body.membershipMonths ?? 1));
+        return end;
+      })()
+    : null;
 
   const created = await prisma.user.create({
     data: {
@@ -400,10 +413,13 @@ export const createUser = async (
       email: req.body.email,
       passwordHash,
       emailVerifiedAt: null,
+      emailVerificationLastSentAt: verificationSentAt,
       emailVerificationTokenHash: tokenHash,
       emailVerificationTokenExpiresAt: tokenExpiresAt,
       fullName: req.body.fullName,
       role: req.body.role as UserRole,
+      membershipStartAt,
+      membershipEndAt,
       isActive: true,
     },
     select: {
@@ -412,6 +428,8 @@ export const createUser = async (
       fullName: true,
       role: true,
       createdAt: true,
+      membershipStartAt: true,
+      membershipEndAt: true,
     },
   });
 

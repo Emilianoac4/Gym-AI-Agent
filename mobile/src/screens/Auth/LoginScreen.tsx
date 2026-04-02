@@ -1,5 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import * as WebBrowser from "expo-web-browser";
@@ -202,6 +212,16 @@ export function LoginScreen() {
 
   return (
     <LinearGradient colors={palette.gradientHero} style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
+      >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.card}>
         <Text style={styles.eyebrow}>GymAI</Text>
         <Text style={styles.title}>Entrena con inteligencia</Text>
@@ -304,6 +324,8 @@ export function LoginScreen() {
           </TouchableOpacity>
         ) : null}
       </View>
+      </ScrollView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
@@ -311,8 +333,14 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
     padding: 20,
+  },
+  keyboardContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
   },
   card: {
     backgroundColor: palette.card,
