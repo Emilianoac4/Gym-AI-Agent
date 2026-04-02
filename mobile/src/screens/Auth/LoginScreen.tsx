@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
@@ -16,11 +16,20 @@ WebBrowser.maybeCompleteAuthSession();
 
 export function LoginScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { login, loginWithGoogle, loginWithApple, loading } = useAuth();
 
   const [email, setEmail] = useState("admin@gymiai.com");
   const [password, setPassword] = useState("Admin123456");
-  const [selectedRole, setSelectedRole] = useState<UserRole>("member");
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const selectedRole: UserRole = route.params?.role ?? "member";
+
+  const roleLabels: Record<UserRole, string> = {
+    admin: "Administrador",
+    trainer: "Entrenador",
+    member: "Usuario",
+  };
 
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 
@@ -43,9 +52,10 @@ export function LoginScreen() {
 
   const onLogin = async () => {
     try {
+      setAuthError(null);
       await login(email.trim(), password, selectedRole);
     } catch (error) {
-      Alert.alert("No fue posible ingresar", error instanceof Error ? error.message : "Error inesperado");
+      setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesion.");
     }
   };
 
@@ -133,23 +143,15 @@ export function LoginScreen() {
       }
 
       try {
+        setAuthError(null);
         await loginWithGoogle(idToken, selectedRole);
       } catch (error) {
-        Alert.alert(
-          "Google",
-          error instanceof Error ? error.message : "No fue posible iniciar sesion con Google.",
-        );
+        setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesion con Google.");
       }
     };
 
     run();
   }, [googleResponse, loginWithGoogle, selectedRole]);
-
-  const roleOptions: Array<{ role: UserRole; label: string }> = [
-    { role: "member", label: "Usuario" },
-    { role: "trainer", label: "Entrenador" },
-    { role: "admin", label: "Administrador" },
-  ];
 
   return (
     <LinearGradient colors={palette.gradientHero} style={styles.container}>
@@ -159,27 +161,33 @@ export function LoginScreen() {
         <Text style={styles.subtitle}>Tu progreso, mediciones y coach IA en una sola app.</Text>
 
         <View style={styles.roleSelector}>
-          <Text style={styles.roleSelectorTitle}>Selecciona tu acceso</Text>
-          <View style={styles.roleTabs}>
-            {roleOptions.map((option) => {
-              const isActive = selectedRole === option.role;
-              return (
-                <TouchableOpacity
-                  key={option.role}
-                  style={[styles.roleTab, isActive ? styles.roleTabActive : styles.roleTabInactive]}
-                  onPress={() => setSelectedRole(option.role)}
-                  disabled={loading}
-                >
-                  <Text style={[styles.roleTabText, isActive ? styles.roleTabTextActive : styles.roleTabTextInactive]}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          <Text style={styles.roleSelectorTitle}>Acceso seleccionado</Text>
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleBadgeText}>{roleLabels[selectedRole]}</Text>
           </View>
           <Text style={styles.roleHint}>
-            Inicia sesion con el perfil que deseas usar. Si tu cuenta no coincide, el acceso sera denegado.
+            Ingresa tus credenciales para este perfil. Si tu cuenta no coincide, el acceso sera denegado.
           </Text>
+          <TouchableOpacity
+            disabled={loading}
+            onPress={() => {
+              setAuthError(null);
+              navigation.navigate("RoleSelect");
+            }}
+          >
+            <Text style={styles.changeRoleLink}>Cambiar tipo de acceso</Text>
+          </TouchableOpacity>
+
+          {authError ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBadge}>Acceso</Text>
+              <Text style={styles.errorTitle}>No fue posible ingresar con este perfil</Text>
+              <Text style={styles.errorText}>{authError}</Text>
+              <TouchableOpacity onPress={() => setAuthError(null)} style={styles.errorDismissButton}>
+                <Text style={styles.errorDismissText}>Entendido</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.highlightStrip}>
@@ -232,9 +240,11 @@ export function LoginScreen() {
           ) : null}
         </View>
 
-        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-          <Text style={styles.link}>Crear cuenta inicial de gimnasio</Text>
-        </TouchableOpacity>
+        {selectedRole === "admin" ? (
+          <TouchableOpacity onPress={() => navigation.navigate("Register")}> 
+            <Text style={styles.link}>Crear cuenta inicial de gimnasio</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </LinearGradient>
   );
@@ -282,40 +292,72 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 8,
   },
-  roleTabs: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  roleTab: {
+  roleBadge: {
+    alignSelf: "flex-start",
     borderRadius: 999,
+    backgroundColor: palette.cocoa,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderWidth: 1,
   },
-  roleTabActive: {
-    backgroundColor: palette.cocoa,
-    borderColor: palette.cocoa,
-  },
-  roleTabInactive: {
-    backgroundColor: palette.cream,
-    borderColor: palette.line,
-  },
-  roleTabText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  roleTabTextActive: {
+  roleBadgeText: {
     color: palette.gold,
-  },
-  roleTabTextInactive: {
-    color: palette.ink,
+    fontWeight: "800",
+    fontSize: 12,
   },
   roleHint: {
     marginTop: 8,
     color: palette.textMuted,
     fontSize: 12,
     lineHeight: 18,
+  },
+  changeRoleLink: {
+    marginTop: 6,
+    color: palette.cocoa,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
+  errorBanner: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#D97B53",
+    backgroundColor: "#FFF0E8",
+    padding: 12,
+    gap: 4,
+  },
+  errorBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: palette.coral,
+    color: "#FFF7EF",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  errorTitle: {
+    marginTop: 4,
+    color: palette.cocoa,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  errorText: {
+    color: palette.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  errorDismissButton: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    backgroundColor: palette.cocoa,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  errorDismissText: {
+    color: palette.gold,
+    fontSize: 11,
+    fontWeight: "800",
   },
   highlightStrip: {
     flexDirection: "row",

@@ -1,9 +1,11 @@
 import React from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useAuth } from "../context/AuthContext";
 import { palette } from "../theme/palette";
+import { RoleSelectScreen } from "../screens/Auth/RoleSelectScreen";
 import { LoginScreen } from "../screens/Auth/LoginScreen";
 import { RegisterScreen } from "../screens/Auth/RegisterScreen";
 import { HomeScreen } from "../screens/Main/HomeScreen";
@@ -15,7 +17,18 @@ import { MeasurementsScreen } from "../screens/Main/MeasurementsScreen";
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function MainTabs() {
+function PlaceholderScreen({ title, description }: { title: string; description: string }) {
+  return (
+    <View style={styles.placeholderShell}>
+      <View style={styles.placeholderCard}>
+        <Text style={styles.placeholderTitle}>{title}</Text>
+        <Text style={styles.placeholderDescription}>{description}</Text>
+      </View>
+    </View>
+  );
+}
+
+function MemberTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
@@ -38,9 +51,91 @@ function MainTabs() {
     >
       <Tab.Screen name="Inicio" component={HomeScreen} />
       <Tab.Screen name="Medidas" component={MeasurementsScreen} />
-      <Tab.Screen name="Perfil" component={ProfileScreen} />
       <Tab.Screen name="Rutina" component={RoutineScreen} />
       <Tab.Screen name="Coach" component={ChatScreen} />
+      <Tab.Screen name="Perfil" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+}
+
+function TrainerTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: palette.cocoa,
+        tabBarInactiveTintColor: palette.tabInactive,
+        tabBarStyle: {
+          height: 72,
+          paddingBottom: 10,
+          paddingTop: 10,
+          backgroundColor: palette.card,
+          borderTopColor: palette.line,
+          borderTopWidth: 1,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "700",
+        },
+      }}
+    >
+      <Tab.Screen name="Inicio" component={HomeScreen} />
+      <Tab.Screen name="Rutina" component={RoutineScreen} />
+      <Tab.Screen
+        name="Asistencia"
+        children={() => (
+          <PlaceholderScreen
+            title="Asistencia de usuarios"
+            description="Aqui recibiras solicitudes de ayuda de usuarios activos y podras gestionarlas en tiempo real."
+          />
+        )}
+      />
+      <Tab.Screen name="Perfil" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+}
+
+function AdminTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: palette.cocoa,
+        tabBarInactiveTintColor: palette.tabInactive,
+        tabBarStyle: {
+          height: 72,
+          paddingBottom: 10,
+          paddingTop: 10,
+          backgroundColor: palette.card,
+          borderTopColor: palette.line,
+          borderTopWidth: 1,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "700",
+        },
+      }}
+    >
+      <Tab.Screen name="Panel" component={HomeScreen} />
+      <Tab.Screen
+        name="Usuarios"
+        children={() => (
+          <PlaceholderScreen
+            title="Gestion de usuarios"
+            description="Aqui podras crear, renovar y desactivar usuarios, ademas de revisar pagos y metodos de cobro."
+          />
+        )}
+      />
+      <Tab.Screen
+        name="Operacion"
+        children={() => (
+          <PlaceholderScreen
+            title="Operacion del gimnasio"
+            description="Aqui veras entrenadores activos, usuarios activos y alertas de retencion."
+          />
+        )}
+      />
+      <Tab.Screen name="Perfil" component={ProfileScreen} />
     </Tab.Navigator>
   );
 }
@@ -58,15 +153,32 @@ const navTheme = {
 };
 
 export function AppNavigator() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+
+  const role = user?.role;
+
+  const getMainNavigator = () => {
+    if (role === "admin") {
+      return AdminTabs;
+    }
+
+    if (role === "trainer") {
+      return TrainerTabs;
+    }
+
+    return MemberTabs;
+  };
+
+  const MainNavigator = getMainNavigator();
 
   return (
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {token ? (
-          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="Main" component={MainNavigator} />
         ) : (
           <>
+            <Stack.Screen name="RoleSelect" component={RoleSelectScreen} />
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
           </>
@@ -75,3 +187,29 @@ export function AppNavigator() {
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  placeholderShell: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: palette.background,
+  },
+  placeholderCard: {
+    backgroundColor: palette.card,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  placeholderTitle: {
+    color: palette.cocoa,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  placeholderDescription: {
+    marginTop: 8,
+    color: palette.textMuted,
+    lineHeight: 20,
+  },
+});
