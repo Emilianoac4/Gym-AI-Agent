@@ -8,6 +8,7 @@ import { palette } from "../theme/palette";
 import { RoleSelectScreen } from "../screens/Auth/RoleSelectScreen";
 import { LoginScreen } from "../screens/Auth/LoginScreen";
 import { RegisterScreen } from "../screens/Auth/RegisterScreen";
+import { ChangeTemporaryPasswordScreen } from "../screens/Auth/ChangeTemporaryPasswordScreen";
 import { HomeScreen } from "../screens/Main/HomeScreen";
 import { ProfileScreen } from "../screens/Main/ProfileScreen";
 import { RoutineScreen } from "../screens/Main/RoutineScreen";
@@ -169,7 +170,11 @@ export function AppNavigator() {
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {token ? (
-          <Stack.Screen name="Main" component={MainNavigator} />
+          user?.mustChangePassword ? (
+            <Stack.Screen name="ChangeTemporaryPassword" component={ChangeTemporaryPasswordScreen} />
+          ) : (
+            <Stack.Screen name="Main" component={MainNavigator} />
+          )
         ) : (
           <>
             <Stack.Screen name="RoleSelect" component={RoleSelectScreen} />

@@ -96,24 +96,85 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   login: (payload: { email: string; password: string; requestedRole: UserRole }) =>
-    requestWithRetry<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/login", {
+    requestWithRetry<{
+      token: string;
+      user: {
+        id: string;
+        email: string;
+        fullName: string;
+        role: "admin" | "trainer" | "member";
+        gymId: string;
+        mustChangePassword?: boolean;
+      };
+    }>("/auth/login", {
       method: "POST",
       body: payload,
       timeoutMs: AUTH_TIMEOUT_MS,
     }),
 
   loginWithGoogle: (payload: { idToken: string; requestedRole: UserRole }) =>
-    requestWithRetry<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/oauth/google", {
+    requestWithRetry<{
+      token: string;
+      user: {
+        id: string;
+        email: string;
+        fullName: string;
+        role: "admin" | "trainer" | "member";
+        gymId: string;
+        mustChangePassword?: boolean;
+      };
+    }>("/auth/oauth/google", {
       method: "POST",
       body: payload,
       timeoutMs: AUTH_TIMEOUT_MS,
     }),
 
   loginWithApple: (payload: { idToken: string; requestedRole: UserRole }) =>
-    requestWithRetry<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/oauth/apple", {
+    requestWithRetry<{
+      token: string;
+      user: {
+        id: string;
+        email: string;
+        fullName: string;
+        role: "admin" | "trainer" | "member";
+        gymId: string;
+        mustChangePassword?: boolean;
+      };
+    }>("/auth/oauth/apple", {
       method: "POST",
       body: payload,
       timeoutMs: AUTH_TIMEOUT_MS,
+    }),
+
+  changeTemporaryPassword: (token: string, payload: { newPassword: string }) =>
+    request<{ message: string }>("/auth/change-temporary-password", {
+      method: "POST",
+      token,
+      body: payload,
+    }),
+
+  requestEmailVerification: (payload: { email: string }) =>
+    request<{ message: string; devToken?: string }>("/auth/request-email-verification", {
+      method: "POST",
+      body: payload,
+    }),
+
+  verifyEmail: (payload: { token: string }) =>
+    request<{ message: string }>("/auth/verify-email", {
+      method: "POST",
+      body: payload,
+    }),
+
+  forgotPassword: (payload: { email: string }) =>
+    request<{ message: string; devToken?: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: payload,
+    }),
+
+  resetPassword: (payload: { token: string; newPassword: string }) =>
+    request<{ message: string }>("/auth/reset-password", {
+      method: "POST",
+      body: payload,
     }),
 
   register: (payload: {
@@ -343,6 +404,8 @@ export const api = {
     request<{
       message: string;
       user: { id: string; email: string; fullName: string; role: string; createdAt: string };
+      warning?: string;
+      devVerificationToken?: string;
     }>("/users", {
       method: "POST",
       token,
@@ -351,6 +414,12 @@ export const api = {
 
   deactivateUser: (id: string, token: string) =>
     request<{ message: string; user: { id: string; isActive: boolean } }>(`/users/${id}/deactivate`, {
+      method: "PATCH",
+      token,
+    }),
+
+  reactivateUser: (id: string, token: string) =>
+    request<{ message: string; user: { id: string; isActive: boolean } }>(`/users/${id}/reactivate`, {
       method: "PATCH",
       token,
     }),

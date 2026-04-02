@@ -82,13 +82,18 @@ export function AdminUsersScreen() {
     if (!token) return;
     setCreating(true);
     try {
-      await api.createUser(token, {
+      const data = await api.createUser(token, {
         email: newEmail.trim().toLowerCase(),
         fullName: newFullName.trim(),
         password: newPassword,
         role: newRole,
       });
-      Alert.alert("Usuario creado", `${ROLE_LABELS[newRole]} registrado correctamente.`);
+      Alert.alert(
+        "Usuario creado",
+        `${data.message}${data.warning ? `\n\n${data.warning}` : ""}${
+          data.devVerificationToken ? `\n\nToken verificacion (dev): ${data.devVerificationToken}` : ""
+        }`,
+      );
       setShowCreateModal(false);
       setNewEmail("");
       setNewFullName("");
@@ -123,6 +128,28 @@ export function AdminUsersScreen() {
               void loadUsers();
             } catch (e) {
               Alert.alert("Error", e instanceof Error ? e.message : "No se pudo desactivar");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const onReactivate = (target: GymUser) => {
+    Alert.alert(
+      "Reactivar usuario",
+      `¿Deseas reactivar a ${target.fullName}?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Reactivar",
+          onPress: async () => {
+            if (!token) return;
+            try {
+              await api.reactivateUser(target.id, token);
+              void loadUsers();
+            } catch (e) {
+              Alert.alert("Error", e instanceof Error ? e.message : "No se pudo reactivar");
             }
           },
         },
@@ -198,11 +225,20 @@ export function AdminUsersScreen() {
                   <View style={[styles.roleBadge, (styles as Record<string, object>)[`role_${u.role}`] ?? styles.role_member]}>
                     <Text style={styles.roleBadgeText}>{ROLE_LABELS[u.role] ?? u.role}</Text>
                   </View>
+                  <View style={[styles.statusBadge, u.isActive ? styles.statusActive : styles.statusInactive]}>
+                    <Text style={styles.statusBadgeText}>{u.isActive ? "Activo" : "Desactivado"}</Text>
+                  </View>
                 </View>
                 <View style={styles.userActions}>
-                  <TouchableOpacity style={styles.deactivateBtn} onPress={() => onDeactivate(u)}>
-                    <Text style={styles.deactivateBtnText}>Desactivar</Text>
-                  </TouchableOpacity>
+                  {u.isActive ? (
+                    <TouchableOpacity style={styles.deactivateBtn} onPress={() => onDeactivate(u)}>
+                      <Text style={styles.deactivateBtnText}>Desactivar</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={styles.reactivateBtn} onPress={() => onReactivate(u)}>
+                      <Text style={styles.reactivateBtnText}>Reactivar</Text>
+                    </TouchableOpacity>
+                  )}
                   {user?.role === "admin" && (
                     <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(u)}>
                       <Text style={styles.deleteBtnText}>Eliminar</Text>
@@ -270,6 +306,9 @@ export function AdminUsersScreen() {
               onChangeText={setNewPassword}
               secureTextEntry
             />
+            <Text style={styles.modalHint}>
+              Al primer ingreso, el usuario debera cambiar esta contrasena temporal por una contrasena permanente.
+            </Text>
 
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -362,6 +401,16 @@ const styles = StyleSheet.create({
   role_trainer: { backgroundColor: palette.gold + "30" },
   role_admin: { backgroundColor: palette.coral + "30" },
   roleBadgeText: { fontSize: 12, fontWeight: "600", color: palette.cocoa },
+  statusBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  statusActive: { backgroundColor: palette.moss + "20" },
+  statusInactive: { backgroundColor: palette.coral + "25" },
+  statusBadgeText: { fontSize: 12, fontWeight: "600", color: palette.cocoa },
   deactivateBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -371,6 +420,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   deactivateBtnText: { color: palette.coral, fontWeight: "600", fontSize: 12 },
+  reactivateBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: palette.moss,
+    marginBottom: 8,
+  },
+  reactivateBtnText: { color: palette.moss, fontWeight: "700", fontSize: 12 },
   userActions: {
     alignItems: "flex-end",
   },
@@ -407,6 +465,12 @@ const styles = StyleSheet.create({
   rolePillActive: { backgroundColor: palette.moss },
   rolePillText: { color: palette.moss, fontWeight: "600", fontSize: 14 },
   rolePillTextActive: { color: palette.cream },
+  modalHint: {
+    marginTop: -4,
+    marginBottom: 12,
+    color: palette.textMuted,
+    lineHeight: 18,
+  },
   input: {
     backgroundColor: "#fff",
     borderRadius: 12,

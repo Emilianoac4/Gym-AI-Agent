@@ -5,8 +5,31 @@ import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
 import { HttpError } from "../../utils/http-error";
 import { signAuthToken, verifyAuthToken } from "../../utils/jwt";
-import { LoginInput, OauthLoginInput, RegisterInput } from "./auth.validation";
+import {
+  ChangeTemporaryPasswordInput,
+  ForgotPasswordInput,
+  LoginInput,
+  OauthLoginInput,
+  RequestEmailVerificationInput,
+  RegisterInput,
+  ResetPasswordInput,
+  VerifyEmailInput,
+} from "./auth.validation";
 import { verifyAppleIdToken, verifyGoogleIdToken } from "./oauth.providers";
+import {
+  createTokenPair,
+  getFutureDateMinutes,
+  hashOpaqueToken,
+  sendEmailVerification,
+  sendPasswordReset,
+} from "../../utils/email-auth";
+
+const TEMP_PASSWORD_PREFIX = "TEMP$";
+
+const isTemporaryPasswordHash = (value: string) => value.startsWith(TEMP_PASSWORD_PREFIX);
+
+const getComparablePasswordHash = (value: string) =>
+  isTemporaryPasswordHash(value) ? value.slice(TEMP_PASSWORD_PREFIX.length) : value;
 
 const assertRequestedRole = (actualRole: UserRole, requestedRole: UserRole) => {
   if (actualRole !== requestedRole) {
@@ -76,6 +99,7 @@ export const register = async (
         gymId,
         email: user.email,
         passwordHash,
+        emailVerifiedAt: usersCount === 0 ? new Date() : null,
         fullName: user.fullName,
         role: user.role as UserRole,
       },
@@ -107,12 +131,17 @@ export const login = async (
     throw new HttpError(401, "Invalid credentials");
   }
 
-  const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+  const comparableHash = getComparablePasswordHash(user.passwordHash);
+  const isValidPassword = await bcrypt.compare(password, comparableHash);
   if (!isValidPassword) {
     throw new HttpError(401, "Invalid credentials");
   }
 
   assertRequestedRole(user.role, requestedRole as UserRole);
+
+  if (!user.emailVerifiedAt) {
+    throw new HttpError(403, "Debes verificar tu correo antes de ingresar");
+  }
 
   const token = signAuthToken({ userId: user.id, role: user.role });
 
@@ -124,6 +153,7 @@ export const login = async (
       fullName: user.fullName,
       role: user.role,
       gymId: user.gymId,
+      mustChangePassword: isTemporaryPasswordHash(user.passwordHash),
     },
   });
 };
@@ -142,6 +172,13 @@ const completeOauthLogin = async (
     );
   }
 
+  if (!user.emailVerifiedAt) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date() },
+    });
+  }
+
   assertRequestedRole(user.role, requestedRole);
 
   const token = signAuthToken({ userId: user.id, role: user.role });
@@ -154,8 +191,50 @@ const completeOauthLogin = async (
       fullName: user.fullName,
       role: user.role,
       gymId: user.gymId,
+      mustChangePassword: false,
     },
   });
+};
+
+export const changeTemporaryPassword = async (
+  req: Request<unknown, unknown, ChangeTemporaryPasswordInput>,
+  res: Response,
+): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: {
+      id: true,
+      passwordHash: true,
+      isActive: true,
+    },
+  });
+
+  if (!user || !user.isActive) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (!isTemporaryPasswordHash(user.passwordHash)) {
+    throw new HttpError(400, "Este usuario no tiene una contraseña temporal pendiente");
+  }
+
+  const newPasswordHash = await bcrypt.hash(req.body.newPassword, 12);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: newPasswordHash,
+    },
+  });
+
+  console.log(
+    `[AUDIT] ${req.requestId ?? "n/a"} action=auth.changeTemporaryPassword actor=${req.auth.userId}`,
+  );
+
+  res.json({ message: "Contrasena actualizada correctamente" });
 };
 
 export const oauthGoogle = async (
@@ -182,4 +261,170 @@ export const oauthApple = async (
   }
 
   await completeOauthLogin(identity.email, req.body.requestedRole as UserRole, res);
+};
+
+export const requestEmailVerification = async (
+  req: Request<unknown, unknown, RequestEmailVerificationInput>,
+  res: Response,
+): Promise<void> => {
+  const user = await prisma.user.findUnique({ where: { email: req.body.email } });
+
+  if (!user || !user.isActive) {
+    res.json({ message: "Si el correo existe, se envio un enlace de verificacion" });
+    return;
+  }
+
+  if (user.emailVerifiedAt) {
+    res.json({ message: "Este correo ya esta verificado" });
+    return;
+  }
+
+  const { token, tokenHash } = createTokenPair();
+  const expiresAt = getFutureDateMinutes(env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationTokenExpiresAt: expiresAt,
+    },
+  });
+
+  await sendEmailVerification(user.email, token);
+
+  res.json({
+    message: "Si el correo existe, se envio un enlace de verificacion",
+    ...(env.NODE_ENV !== "production" ? { devToken: token } : {}),
+  });
+};
+
+export const verifyEmail = async (
+  req: Request<unknown, unknown, VerifyEmailInput>,
+  res: Response,
+): Promise<void> => {
+  const tokenHash = hashOpaqueToken(req.body.token);
+
+  const user = await prisma.user.findFirst({
+    where: {
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationTokenExpiresAt: { gt: new Date() },
+      isActive: true,
+    },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new HttpError(400, "Token de verificacion invalido o expirado");
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerifiedAt: new Date(),
+      emailVerificationTokenHash: null,
+      emailVerificationTokenExpiresAt: null,
+    },
+  });
+
+  res.json({ message: "Correo verificado correctamente" });
+};
+
+export const verifyEmailFromQuery = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+
+  if (!token || token.length < 16) {
+    throw new HttpError(400, "Token de verificacion invalido");
+  }
+
+  const tokenHash = hashOpaqueToken(token);
+
+  const user = await prisma.user.findFirst({
+    where: {
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationTokenExpiresAt: { gt: new Date() },
+      isActive: true,
+    },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new HttpError(400, "Token de verificacion invalido o expirado");
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerifiedAt: new Date(),
+      emailVerificationTokenHash: null,
+      emailVerificationTokenExpiresAt: null,
+    },
+  });
+
+  res.json({ message: "Correo verificado correctamente" });
+};
+
+export const forgotPassword = async (
+  req: Request<unknown, unknown, ForgotPasswordInput>,
+  res: Response,
+): Promise<void> => {
+  const user = await prisma.user.findUnique({ where: { email: req.body.email } });
+
+  if (!user || !user.isActive) {
+    res.json({ message: "Si el correo existe, se envio un enlace de recuperacion" });
+    return;
+  }
+
+  const { token, tokenHash } = createTokenPair();
+  const expiresAt = getFutureDateMinutes(env.PASSWORD_RESET_TOKEN_TTL_MINUTES);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetTokenHash: tokenHash,
+      passwordResetTokenExpiresAt: expiresAt,
+    },
+  });
+
+  await sendPasswordReset(user.email, token);
+
+  res.json({
+    message: "Si el correo existe, se envio un enlace de recuperacion",
+    ...(env.NODE_ENV !== "production" ? { devToken: token } : {}),
+  });
+};
+
+export const resetPassword = async (
+  req: Request<unknown, unknown, ResetPasswordInput>,
+  res: Response,
+): Promise<void> => {
+  const tokenHash = hashOpaqueToken(req.body.token);
+
+  const user = await prisma.user.findFirst({
+    where: {
+      passwordResetTokenHash: tokenHash,
+      passwordResetTokenExpiresAt: { gt: new Date() },
+      isActive: true,
+    },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new HttpError(400, "Token de recuperacion invalido o expirado");
+  }
+
+  const newPasswordHash = await bcrypt.hash(req.body.newPassword, 12);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: newPasswordHash,
+      passwordResetTokenHash: null,
+      passwordResetTokenExpiresAt: null,
+    },
+  });
+
+  res.json({ message: "Contrasena actualizada correctamente" });
 };

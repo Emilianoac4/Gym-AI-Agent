@@ -11,6 +11,7 @@ import { useAuth } from "../../context/AuthContext";
 import { AppButton } from "../../components/AppButton";
 import { palette } from "../../theme/palette";
 import { UserRole } from "../../types/api";
+import { api } from "../../services/api";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -22,6 +23,7 @@ export function LoginScreen() {
   const [email, setEmail] = useState("admin@gymiai.com");
   const [password, setPassword] = useState("Admin123456");
   const [authError, setAuthError] = useState<string | null>(null);
+  const [sendingRecovery, setSendingRecovery] = useState(false);
 
   const selectedRole: UserRole = route.params?.role ?? "member";
 
@@ -56,6 +58,51 @@ export function LoginScreen() {
       await login(email.trim(), password, selectedRole);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesion.");
+    }
+  };
+
+  const onResendVerification = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      Alert.alert("Correo requerido", "Ingresa tu correo para reenviar la verificacion.");
+      return;
+    }
+
+    try {
+      const data = await api.requestEmailVerification({ email: normalizedEmail });
+      Alert.alert(
+        "Verificacion enviada",
+        `${data.message}${data.devToken ? `\n\nToken (dev): ${data.devToken}` : ""}`,
+      );
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        error instanceof Error ? error.message : "No se pudo reenviar la verificacion.",
+      );
+    }
+  };
+
+  const onForgotPassword = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      Alert.alert("Correo requerido", "Ingresa tu correo para recuperar la contrasena.");
+      return;
+    }
+
+    try {
+      setSendingRecovery(true);
+      const data = await api.forgotPassword({ email: normalizedEmail });
+      Alert.alert(
+        "Recuperacion enviada",
+        `${data.message}${data.devToken ? `\n\nToken (dev): ${data.devToken}` : ""}`,
+      );
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        error instanceof Error ? error.message : "No se pudo iniciar la recuperacion de contrasena.",
+      );
+    } finally {
+      setSendingRecovery(false);
     }
   };
 
@@ -183,6 +230,11 @@ export function LoginScreen() {
               <Text style={styles.errorBadge}>Acceso</Text>
               <Text style={styles.errorTitle}>No fue posible ingresar con este perfil</Text>
               <Text style={styles.errorText}>{authError}</Text>
+              {authError.toLowerCase().includes("verificar tu correo") ? (
+                <TouchableOpacity onPress={onResendVerification} style={styles.errorActionButton}>
+                  <Text style={styles.errorActionText}>Reenviar verificacion</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity onPress={() => setAuthError(null)} style={styles.errorDismissButton}>
                 <Text style={styles.errorDismissText}>Entendido</Text>
               </TouchableOpacity>
@@ -219,6 +271,12 @@ export function LoginScreen() {
         />
 
         <AppButton label={loading ? "Ingresando..." : "Iniciar sesion"} onPress={onLogin} disabled={loading} />
+
+        <TouchableOpacity disabled={sendingRecovery} onPress={onForgotPassword}>
+          <Text style={styles.recoveryLink}>
+            {sendingRecovery ? "Enviando recuperacion..." : "Olvide mi contrasena"}
+          </Text>
+        </TouchableOpacity>
 
         <View style={styles.socialGroup}>
           <TouchableOpacity
@@ -358,6 +416,26 @@ const styles = StyleSheet.create({
     color: palette.gold,
     fontSize: 11,
     fontWeight: "800",
+  },
+  errorActionButton: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    backgroundColor: palette.moss,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  errorActionText: {
+    color: palette.cream,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  recoveryLink: {
+    marginTop: 10,
+    color: palette.cocoa,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+    textAlign: "center",
   },
   highlightStrip: {
     flexDirection: "row",

@@ -36,6 +36,11 @@ model User {
   gymId        String      @map("gym_id")
   email        String      @unique
   passwordHash String      @map("password_hash")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  emailVerificationTokenHash String? @map("email_verification_token_hash")
+  emailVerificationTokenExpiresAt DateTime? @map("email_verification_token_expires_at")
+  passwordResetTokenHash String? @map("password_reset_token_hash")
+  passwordResetTokenExpiresAt DateTime? @map("password_reset_token_expires_at")
   fullName     String      @map("full_name")
   role         UserRole    @default(member)
   createdAt    DateTime    @default(now()) @map("created_at")
@@ -45,6 +50,7 @@ model User {
   gym          Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
   profile      UserProfile?
   measurements Measurement[]
+  healthConnections UserHealthConnection[]
 
   @@map("users")
 }
@@ -92,6 +98,29 @@ enum AIChatLogType {
   ROUTINE_GENERATION
   NUTRITION_GENERATION
   DAILY_TIP
+}
+
+enum HealthProvider {
+  apple_health
+  google_fit
+  health_connect
+}
+
+model UserHealthConnection {
+  id                      String         @id @default(uuid())
+  userId                  String         @map("user_id")
+  provider                HealthProvider
+  externalEmail           String?        @map("external_email")
+  externalSubject         String?        @map("external_subject")
+  metadata                String?
+  isActive                Boolean        @default(true) @map("is_active")
+  linkedAt                DateTime       @default(now()) @map("linked_at")
+  updatedAt               DateTime       @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@map("user_health_connections")
 }
 
 model AIChatLog {

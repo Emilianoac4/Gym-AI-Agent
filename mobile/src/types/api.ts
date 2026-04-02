@@ -6,6 +6,7 @@ export interface AuthUser {
   fullName: string;
   role: UserRole;
   gymId: string;
+  mustChangePassword?: boolean;
 }
 
 export interface LoginResponse {

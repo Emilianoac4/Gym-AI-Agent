@@ -1,10 +1,20 @@
 import { Request, Response } from "express";
-import { UserRole } from "@prisma/client";
+import { HealthProvider, UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
-import { UpdateProfileInput } from "./users.validation";
-import { CreateUserInput } from "./users.validation";
+import {
+  CreateUserInput,
+  SetHealthConnectionStateInput,
+  UpdateProfileInput,
+  UpsertHealthConnectionInput,
+} from "./users.validation";
 import { PermissionAction, hasPermission } from "../../config/permissions";
+import {
+  createTokenPair,
+  getFutureDateMinutes,
+  sendEmailVerification,
+} from "../../utils/email-auth";
+import { env } from "../../config/env";
 
 type ActiveUser = {
   id: string;
@@ -201,6 +211,58 @@ export const deactivateUserById = async (req: Request<{ id: string }>, res: Resp
   });
 };
 
+export const reactivateUserById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (req.auth.userId === req.params.id) {
+    throw new HttpError(400, "You cannot reactivate your own account from this endpoint");
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      role: true,
+      gymId: true,
+      isActive: true,
+      fullName: true,
+      email: true,
+    },
+  });
+
+  if (!targetUser) {
+    throw new HttpError(404, "User not found");
+  }
+
+  await assertCanAccessTargetUser(req.auth, targetUser, "users.reactivate");
+
+  if (targetUser.role === "admin") {
+    throw new HttpError(403, "Admin accounts cannot be reactivated from this endpoint");
+  }
+
+  await prisma.user.update({
+    where: { id: targetUser.id },
+    data: { isActive: true },
+  });
+
+  console.log(
+    `[AUDIT] ${req.requestId ?? "n/a"} action=users.reactivate actor=${req.auth.userId} target=${targetUser.id}`,
+  );
+
+  res.json({
+    message: "User reactivated",
+    user: {
+      id: targetUser.id,
+      email: targetUser.email,
+      fullName: targetUser.fullName,
+      role: targetUser.role,
+      isActive: true,
+    },
+  });
+};
+
 export const deleteUserById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   if (!req.auth) {
     throw new HttpError(401, "Unauthorized");
@@ -275,7 +337,6 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
   const users = await prisma.user.findMany({
     where: {
       gymId: requester.gymId,
-      isActive: true,
       ...(role ? { role: role as UserRole } : {}),
     },
     select: {
@@ -329,13 +390,18 @@ export const createUser = async (
   }
 
   const bcrypt = await import("bcryptjs");
-  const passwordHash = await bcrypt.hash(req.body.password, 12);
+  const passwordHash = `TEMP$${await bcrypt.hash(req.body.password, 12)}`;
+  const { token, tokenHash } = createTokenPair();
+  const tokenExpiresAt = getFutureDateMinutes(env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES);
 
   const created = await prisma.user.create({
     data: {
       gymId: requester.gymId,
       email: req.body.email,
       passwordHash,
+      emailVerifiedAt: null,
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationTokenExpiresAt: tokenExpiresAt,
       fullName: req.body.fullName,
       role: req.body.role as UserRole,
       isActive: true,
@@ -353,5 +419,167 @@ export const createUser = async (
     `[AUDIT] action=users.create actor=${req.auth.userId} target=${created.id} role=${created.role}`,
   );
 
-  res.status(201).json({ message: "Usuario creado correctamente", user: created });
+  let verificationWarning: string | undefined;
+  try {
+    await sendEmailVerification(created.email, token);
+  } catch (error) {
+    verificationWarning =
+      error instanceof Error
+        ? `No se pudo enviar correo de verificacion: ${error.message}`
+        : "No se pudo enviar correo de verificacion";
+  }
+
+  res.status(201).json({
+    message: verificationWarning
+      ? "Usuario creado correctamente. El correo de verificacion no pudo enviarse en este momento."
+      : "Usuario creado correctamente. Se envio enlace de verificacion al correo.",
+    user: created,
+    ...(verificationWarning ? { warning: verificationWarning } : {}),
+    ...(env.NODE_ENV !== "production" ? { devVerificationToken: token } : {}),
+  });
+};
+
+export const listHealthConnectionsByUserId = async (
+  req: Request<{ id: string }>,
+  res: Response,
+): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      role: true,
+      gymId: true,
+      isActive: true,
+    },
+  });
+
+  if (!targetUser || !targetUser.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  await assertCanAccessTargetUser(req.auth, targetUser, "users.profile.read");
+
+  const connections = await prisma.userHealthConnection.findMany({
+    where: { userId: targetUser.id },
+    orderBy: { linkedAt: "desc" },
+  });
+
+  res.json({ connections });
+};
+
+export const upsertHealthConnectionByUserId = async (
+  req: Request<{ id: string }, unknown, UpsertHealthConnectionInput>,
+  res: Response,
+): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      role: true,
+      gymId: true,
+      isActive: true,
+    },
+  });
+
+  if (!targetUser || !targetUser.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  await assertCanAccessTargetUser(req.auth, targetUser, "users.profile.update");
+
+  const connection = await prisma.userHealthConnection.upsert({
+    where: {
+      userId_provider: {
+        userId: targetUser.id,
+        provider: req.body.provider as HealthProvider,
+      },
+    },
+    create: {
+      userId: targetUser.id,
+      provider: req.body.provider as HealthProvider,
+      externalEmail: req.body.externalEmail,
+      externalSubject: req.body.externalSubject,
+      metadata: req.body.metadata,
+      isActive: true,
+    },
+    update: {
+      externalEmail: req.body.externalEmail,
+      externalSubject: req.body.externalSubject,
+      metadata: req.body.metadata,
+      isActive: true,
+    },
+  });
+
+  res.json({
+    message: "Conexion de salud actualizada",
+    connection,
+  });
+};
+
+export const setHealthConnectionStateByUserId = async (
+  req: Request<{ id: string; provider: string }, unknown, SetHealthConnectionStateInput>,
+  res: Response,
+): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      role: true,
+      gymId: true,
+      isActive: true,
+    },
+  });
+
+  if (!targetUser || !targetUser.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  await assertCanAccessTargetUser(req.auth, targetUser, "users.profile.update");
+
+  const provider = req.params.provider as HealthProvider;
+  if (!["apple_health", "google_fit", "health_connect"].includes(provider)) {
+    throw new HttpError(400, "Proveedor de salud invalido");
+  }
+
+  const existing = await prisma.userHealthConnection.findUnique({
+    where: {
+      userId_provider: {
+        userId: targetUser.id,
+        provider,
+      },
+    },
+  });
+
+  if (!existing) {
+    throw new HttpError(404, "No existe una conexion para ese proveedor");
+  }
+
+  const connection = await prisma.userHealthConnection.update({
+    where: {
+      userId_provider: {
+        userId: targetUser.id,
+        provider,
+      },
+    },
+    data: {
+      isActive: req.body.isActive,
+    },
+  });
+
+  res.json({
+    message: req.body.isActive ? "Conexion reactivada" : "Conexion desactivada",
+    connection,
+  });
 };

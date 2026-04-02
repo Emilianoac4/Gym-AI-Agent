@@ -21,3 +21,17 @@ export const updateProfileSchema = z.object({
 });
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
+export const upsertHealthConnectionSchema = z.object({
+  provider: z.enum(["apple_health", "google_fit", "health_connect"]),
+  externalEmail: z.string().email().optional(),
+  externalSubject: z.string().min(3).optional(),
+  metadata: z.string().max(2000).optional(),
+});
+
+export const setHealthConnectionStateSchema = z.object({
+  isActive: z.boolean(),
+});
+
+export type UpsertHealthConnectionInput = z.infer<typeof upsertHealthConnectionSchema>;
+export type SetHealthConnectionStateInput = z.infer<typeof setHealthConnectionStateSchema>;

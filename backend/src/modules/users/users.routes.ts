@@ -1,15 +1,24 @@
 import { Router } from "express";
 import {
 	deactivateUserById,
+	reactivateUserById,
 	deleteUserById,
 	getUserProfileById,
+	listHealthConnectionsByUserId,
 	listUsers,
 	createUser,
+	setHealthConnectionStateByUserId,
+	upsertHealthConnectionByUserId,
 	updateUserProfileById,
 } from "./users.controller";
 import { authenticate, authorizeAction } from "../../middleware/auth.middleware";
 import { validate } from "../../middleware/validate.middleware";
-import { updateProfileSchema, createUserSchema } from "./users.validation";
+import {
+	createUserSchema,
+	setHealthConnectionStateSchema,
+	updateProfileSchema,
+	upsertHealthConnectionSchema,
+} from "./users.validation";
 
 const usersRouter = Router();
 
@@ -34,6 +43,25 @@ usersRouter.put(
 	validate(updateProfileSchema),
 	updateUserProfileById,
 );
+usersRouter.get(
+	"/:id/health-connections",
+	authenticate,
+	listHealthConnectionsByUserId,
+);
+usersRouter.post(
+	"/:id/health-connections",
+	authenticate,
+	authorizeAction("users.profile.update"),
+	validate(upsertHealthConnectionSchema),
+	upsertHealthConnectionByUserId,
+);
+usersRouter.patch(
+	"/:id/health-connections/:provider",
+	authenticate,
+	authorizeAction("users.profile.update"),
+	validate(setHealthConnectionStateSchema),
+	setHealthConnectionStateByUserId,
+);
 usersRouter.delete(
 	"/:id",
 	authenticate,
@@ -46,6 +74,13 @@ usersRouter.patch(
 	authenticate,
 	authorizeAction("users.deactivate"),
 	deactivateUserById,
+);
+
+usersRouter.patch(
+	"/:id/reactivate",
+	authenticate,
+	authorizeAction("users.reactivate"),
+	reactivateUserById,
 );
 
 export { usersRouter };

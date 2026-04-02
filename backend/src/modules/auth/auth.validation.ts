@@ -28,6 +28,32 @@ export const oauthLoginSchema = z.object({
   requestedRole: z.enum(["admin", "trainer", "member"]),
 });
 
+export const changeTemporaryPasswordSchema = z.object({
+  newPassword: z.string().min(8),
+});
+
+export const requestEmailVerificationSchema = z.object({
+  email: z.string().email(),
+});
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(16),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(16),
+  newPassword: z.string().min(8),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type OauthLoginInput = z.infer<typeof oauthLoginSchema>;
+export type ChangeTemporaryPasswordInput = z.infer<typeof changeTemporaryPasswordSchema>;
+export type RequestEmailVerificationInput = z.infer<typeof requestEmailVerificationSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

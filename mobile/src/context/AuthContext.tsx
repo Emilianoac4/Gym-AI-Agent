@@ -9,6 +9,7 @@ type AuthContextValue = {
   login: (email: string, password: string, requestedRole: UserRole) => Promise<void>;
   loginWithGoogle: (idToken: string, requestedRole: UserRole) => Promise<void>;
   loginWithApple: (idToken: string, requestedRole: UserRole) => Promise<void>;
+  completeTemporaryPasswordChange: (newPassword: string) => Promise<void>;
   registerAdmin: (input: {
     gymName: string;
     ownerName: string;
@@ -59,6 +60,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const completeTemporaryPasswordChange = async (newPassword: string) => {
+    if (!token || !user) {
+      throw new Error("Sesion no valida");
+    }
+
+    setLoading(true);
+    try {
+      await api.changeTemporaryPassword(token, { newPassword });
+      setUser({
+        ...user,
+        mustChangePassword: false,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const registerAdmin = async (input: {
     gymName: string;
     ownerName: string;
@@ -99,7 +117,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const value = useMemo(
-    () => ({ user, token, loading, login, loginWithGoogle, loginWithApple, registerAdmin, logout }),
+    () => ({
+      user,
+      token,
+      loading,
+      login,
+      loginWithGoogle,
+      loginWithApple,
+      completeTemporaryPasswordChange,
+      registerAdmin,
+      logout,
+    }),
     [user, token, loading],
   );
 

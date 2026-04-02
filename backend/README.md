@@ -73,6 +73,12 @@ npm run dev
 - `POST /auth/login` - Login y generar JWT
 - `POST /auth/oauth/google` - Login con Google (requiere cuenta existente por email)
 - `POST /auth/oauth/apple` - Login con Apple (requiere cuenta existente por email)
+- `POST /auth/request-email-verification` - Solicitar verificacion de correo
+- `GET /auth/verify-email?token=...` - Verificar correo desde enlace
+- `POST /auth/verify-email` - Verificar correo por token en body
+- `POST /auth/forgot-password` - Solicitar recuperacion de contrasena
+- `POST /auth/reset-password` - Restablecer contrasena con token
+- `POST /auth/change-temporary-password` - Cambiar contrasena temporal obligatoria
 
 ### Usuarios (Fase 1)
 - `GET /users/:id/profile` - Obtener perfil

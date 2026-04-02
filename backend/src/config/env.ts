@@ -16,6 +16,11 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value === "true"),
+  APP_BASE_URL: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().email().optional(),
+  EMAIL_VERIFICATION_TOKEN_TTL_MINUTES: z.coerce.number().default(60),
+  PASSWORD_RESET_TOKEN_TTL_MINUTES: z.coerce.number().default(30),
 });
 
 const parsed = envSchema.safeParse(process.env);
