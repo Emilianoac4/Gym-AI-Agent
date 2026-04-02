@@ -13,6 +13,8 @@ import { ProfileScreen } from "../screens/Main/ProfileScreen";
 import { RoutineScreen } from "../screens/Main/RoutineScreen";
 import { ChatScreen } from "../screens/Main/ChatScreen";
 import { MeasurementsScreen } from "../screens/Main/MeasurementsScreen";
+import { AdminUsersScreen } from "../screens/Main/AdminUsersScreen";
+import { AdminProfileScreen } from "../screens/Main/AdminProfileScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -117,15 +119,7 @@ function AdminTabs() {
       }}
     >
       <Tab.Screen name="Panel" component={HomeScreen} />
-      <Tab.Screen
-        name="Usuarios"
-        children={() => (
-          <PlaceholderScreen
-            title="Gestion de usuarios"
-            description="Aqui podras crear, renovar y desactivar usuarios, ademas de revisar pagos y metodos de cobro."
-          />
-        )}
-      />
+      <Tab.Screen name="Usuarios" component={AdminUsersScreen} />
       <Tab.Screen
         name="Operacion"
         children={() => (
@@ -135,7 +129,7 @@ function AdminTabs() {
           />
         )}
       />
-      <Tab.Screen name="Perfil" component={ProfileScreen} />
+      <Tab.Screen name="Perfil" component={AdminProfileScreen} />
     </Tab.Navigator>
   );
 }

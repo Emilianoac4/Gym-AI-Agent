@@ -300,4 +300,37 @@ export const api = {
       token,
       body,
     }),
+
+  listUsers: (token: string, role?: string) =>
+    request<{
+      users: Array<{
+        id: string;
+        email: string;
+        fullName: string;
+        role: string;
+        createdAt: string;
+        isActive: boolean;
+      }>;
+    }>(`/users${role ? `?role=${role}` : ""}`, {
+      token,
+    }),
+
+  createUser: (
+    token: string,
+    body: { email: string; password: string; fullName: string; role: "trainer" | "member" }
+  ) =>
+    request<{
+      message: string;
+      user: { id: string; email: string; fullName: string; role: string; createdAt: string };
+    }>("/users", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  deactivateUser: (id: string, token: string) =>
+    request<{ message: string; user: { id: string; isActive: boolean } }>(`/users/${id}`, {
+      method: "DELETE",
+      token,
+    }),
 };

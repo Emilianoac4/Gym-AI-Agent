@@ -1,4 +1,6 @@
 export type PermissionAction =
+  | "users.list"
+  | "users.create"
   | "users.profile.read"
   | "users.profile.update"
   | "users.deactivate"
@@ -10,6 +12,8 @@ type AppRole = "admin" | "trainer" | "member";
 
 const rolePermissions: Record<AppRole, PermissionAction[]> = {
   admin: [
+    "users.list",
+    "users.create",
     "users.profile.read",
     "users.profile.update",
     "users.deactivate",
@@ -18,6 +22,8 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
     "ai.use",
   ],
   trainer: [
+    "users.list",
+    "users.create",
     "users.profile.read",
     "users.profile.update",
     "users.deactivate",

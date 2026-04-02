@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
+import { UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
 import { UpdateProfileInput } from "./users.validation";
+import { CreateUserInput } from "./users.validation";
 import { PermissionAction, hasPermission } from "../../config/permissions";
 
 type ActiveUser = {
@@ -197,4 +199,108 @@ export const deactivateUserById = async (req: Request<{ id: string }>, res: Resp
       isActive: false,
     },
   });
+};
+
+export const listUsers = async (req: Request, res: Response): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (!hasPermission(req.auth.role, "users.list")) {
+    throw new HttpError(403, "Forbidden");
+  }
+
+  const requester = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: { gymId: true, isActive: true },
+  });
+
+  if (!requester || !requester.isActive) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  const role = (req.query.role as string) ?? undefined;
+
+  const users = await prisma.user.findMany({
+    where: {
+      gymId: requester.gymId,
+      isActive: true,
+      ...(role ? { role: role as UserRole } : {}),
+    },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      role: true,
+      createdAt: true,
+      isActive: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  res.json({ users });
+};
+
+export const createUser = async (
+  req: Request<Record<string, never>, unknown, CreateUserInput>,
+  res: Response,
+): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (!hasPermission(req.auth.role, "users.create")) {
+    throw new HttpError(403, "Forbidden");
+  }
+
+  const requester = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: { gymId: true, isActive: true, role: true },
+  });
+
+  if (!requester || !requester.isActive) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  // Trainers can only create members, not other trainers or admins
+  if ((requester.role as string) === "trainer" && req.body.role !== "member") {
+    throw new HttpError(403, "Trainers can only create member accounts");
+  }
+
+  // Prevent creating admin accounts through this endpoint
+  if ((req.body.role as string) === "admin") {
+    throw new HttpError(403, "Admin accounts cannot be created through this endpoint");
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email: req.body.email } });
+  if (existing) {
+    throw new HttpError(409, "El correo ya está en uso");
+  }
+
+  const bcrypt = await import("bcryptjs");
+  const passwordHash = await bcrypt.hash(req.body.password, 12);
+
+  const created = await prisma.user.create({
+    data: {
+      gymId: requester.gymId,
+      email: req.body.email,
+      passwordHash,
+      fullName: req.body.fullName,
+      role: req.body.role as UserRole,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      role: true,
+      createdAt: true,
+    },
+  });
+
+  console.log(
+    `[AUDIT] action=users.create actor=${req.auth.userId} target=${created.id} role=${created.role}`,
+  );
+
+  res.status(201).json({ message: "Usuario creado correctamente", user: created });
 };
