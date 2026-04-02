@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -68,6 +70,11 @@ export function AdminUsersScreen() {
       Alert.alert("Campos requeridos", "Todos los campos son obligatorios.");
       return;
     }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newEmail.trim())) {
+      Alert.alert("Correo inválido", "Ingresa un correo electrónico válido (ej: nombre@dominio.com).");
+      return;
+    }
     if (newPassword.length < 8) {
       Alert.alert("Contraseña débil", "La contraseña debe tener al menos 8 caracteres.");
       return;
@@ -89,7 +96,12 @@ export function AdminUsersScreen() {
       setNewRole("member");
       void loadUsers();
     } catch (e) {
-      Alert.alert("Error al crear", e instanceof Error ? e.message : "Error inesperado");
+      const msg = e instanceof Error ? e.message : "Error inesperado";
+      if (msg.includes("409") || msg.toLowerCase().includes("already in use") || msg.toLowerCase().includes("already exists")) {
+        Alert.alert("Correo en uso", "Ya existe una cuenta con ese correo electrónico. Usa otro correo.");
+      } else {
+        Alert.alert("Error al crear", msg);
+      }
     } finally {
       setCreating(false);
     }
@@ -111,6 +123,29 @@ export function AdminUsersScreen() {
               void loadUsers();
             } catch (e) {
               Alert.alert("Error", e instanceof Error ? e.message : "No se pudo desactivar");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const onDelete = (target: GymUser) => {
+    Alert.alert(
+      "Eliminar usuario",
+      `Esta acción eliminará permanentemente a ${target.fullName}. ¿Deseas continuar?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            if (!token) return;
+            try {
+              await api.deleteUser(target.id, token);
+              void loadUsers();
+            } catch (e) {
+              Alert.alert("Error", e instanceof Error ? e.message : "No se pudo eliminar");
             }
           },
         },
@@ -164,9 +199,16 @@ export function AdminUsersScreen() {
                     <Text style={styles.roleBadgeText}>{ROLE_LABELS[u.role] ?? u.role}</Text>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.deactivateBtn} onPress={() => onDeactivate(u)}>
-                  <Text style={styles.deactivateBtnText}>Desactivar</Text>
-                </TouchableOpacity>
+                <View style={styles.userActions}>
+                  <TouchableOpacity style={styles.deactivateBtn} onPress={() => onDeactivate(u)}>
+                    <Text style={styles.deactivateBtnText}>Desactivar</Text>
+                  </TouchableOpacity>
+                  {user?.role === "admin" && (
+                    <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(u)}>
+                      <Text style={styles.deleteBtnText}>Eliminar</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             ))
           )}
@@ -174,9 +216,19 @@ export function AdminUsersScreen() {
       )}
 
       {/* Modal crear usuario */}
-      <Modal visible={showCreateModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+      <Modal visible={showCreateModal} animationType="slide" transparent onRequestClose={() => setShowCreateModal(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowCreateModal(false)}>
+            <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+              <ScrollView
+                style={styles.modalCard}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 20 }}
+              >
             <Text style={styles.modalTitle}>Crear usuario</Text>
 
             {/* Selector de rol */}
@@ -235,8 +287,10 @@ export function AdminUsersScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -314,8 +368,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: palette.coral,
+    marginBottom: 8,
   },
   deactivateBtnText: { color: palette.coral, fontWeight: "600", fontSize: 12 },
+  userActions: {
+    alignItems: "flex-end",
+  },
+  deleteBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#9c1f1f",
+  },
+  deleteBtnText: { color: "#9c1f1f", fontWeight: "700", fontSize: 12 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
@@ -326,7 +392,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 28,
-    paddingBottom: 40,
+    maxHeight: "90%",
   },
   modalTitle: { fontSize: 20, fontWeight: "700", color: palette.cocoa, marginBottom: 20, textAlign: "center" },
   roleSelector: { flexDirection: "row", marginBottom: 20, gap: 12 },

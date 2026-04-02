@@ -17,7 +17,7 @@ const API_BASE_URL =
     ?.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:3000";
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   token?: string;
   body?: unknown;
   timeoutMs?: number;
@@ -25,6 +25,24 @@ interface RequestOptions {
 
 const REQUEST_TIMEOUT_MS = 15000;
 const AI_TIMEOUT_MS = 60000;
+const AUTH_TIMEOUT_MS = 30000; // longer for cold starts on Render free tier
+
+async function requestWithRetry<T>(path: string, options: RequestOptions = {}, retries = 1): Promise<T> {
+  try {
+    return await request<T>(path, options);
+  } catch (err) {
+    const isNetworkError =
+      err instanceof Error &&
+      (err.message.includes("Tiempo de espera") ||
+        err.message.includes("No se pudo conectar") ||
+        err.message.includes("Failed to fetch"));
+    if (retries > 0 && isNetworkError) {
+      await new Promise((r) => setTimeout(r, 2000));
+      return requestWithRetry<T>(path, options, retries - 1);
+    }
+    throw err;
+  }
+}
 
 function parseJsonSafe(text: string): unknown {
   if (!text) {
@@ -78,21 +96,24 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   login: (payload: { email: string; password: string; requestedRole: UserRole }) =>
-    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/login", {
+    requestWithRetry<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/login", {
       method: "POST",
       body: payload,
+      timeoutMs: AUTH_TIMEOUT_MS,
     }),
 
   loginWithGoogle: (payload: { idToken: string; requestedRole: UserRole }) =>
-    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/oauth/google", {
+    requestWithRetry<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/oauth/google", {
       method: "POST",
       body: payload,
+      timeoutMs: AUTH_TIMEOUT_MS,
     }),
 
   loginWithApple: (payload: { idToken: string; requestedRole: UserRole }) =>
-    request<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/oauth/apple", {
+    requestWithRetry<{ token: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/oauth/apple", {
       method: "POST",
       body: payload,
+      timeoutMs: AUTH_TIMEOUT_MS,
     }),
 
   register: (payload: {
@@ -329,7 +350,13 @@ export const api = {
     }),
 
   deactivateUser: (id: string, token: string) =>
-    request<{ message: string; user: { id: string; isActive: boolean } }>(`/users/${id}`, {
+    request<{ message: string; user: { id: string; isActive: boolean } }>(`/users/${id}/deactivate`, {
+      method: "PATCH",
+      token,
+    }),
+
+  deleteUser: (id: string, token: string) =>
+    request<{ message: string; user: { id: string; role: string } }>(`/users/${id}`, {
       method: "DELETE",
       token,
     }),

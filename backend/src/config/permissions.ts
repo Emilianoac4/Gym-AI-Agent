@@ -4,6 +4,7 @@ export type PermissionAction =
   | "users.profile.read"
   | "users.profile.update"
   | "users.deactivate"
+  | "users.delete"
   | "users.measurements.read"
   | "users.measurements.write"
   | "ai.use";
@@ -17,6 +18,7 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
     "users.profile.read",
     "users.profile.update",
     "users.deactivate",
+    "users.delete",
     "users.measurements.read",
     "users.measurements.write",
     "ai.use",

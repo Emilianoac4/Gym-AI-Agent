@@ -1,5 +1,12 @@
 import { Router } from "express";
-import { deactivateUserById, getUserProfileById, listUsers, createUser, updateUserProfileById } from "./users.controller";
+import {
+	deactivateUserById,
+	deleteUserById,
+	getUserProfileById,
+	listUsers,
+	createUser,
+	updateUserProfileById,
+} from "./users.controller";
 import { authenticate, authorizeAction } from "../../middleware/auth.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { updateProfileSchema, createUserSchema } from "./users.validation";
@@ -29,6 +36,13 @@ usersRouter.put(
 );
 usersRouter.delete(
 	"/:id",
+	authenticate,
+	authorizeAction("users.delete"),
+	deleteUserById,
+);
+
+usersRouter.patch(
+	"/:id/deactivate",
 	authenticate,
 	authorizeAction("users.deactivate"),
 	deactivateUserById,

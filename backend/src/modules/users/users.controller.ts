@@ -201,6 +201,57 @@ export const deactivateUserById = async (req: Request<{ id: string }>, res: Resp
   });
 };
 
+export const deleteUserById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (req.auth.userId === req.params.id) {
+    throw new HttpError(400, "You cannot delete your own account");
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      role: true,
+      gymId: true,
+      isActive: true,
+      fullName: true,
+      email: true,
+    },
+  });
+
+  if (!targetUser) {
+    throw new HttpError(404, "User not found");
+  }
+
+  await assertCanAccessTargetUser(req.auth, targetUser, "users.delete");
+
+  if (targetUser.role === "admin") {
+    throw new HttpError(403, "Admin accounts cannot be deleted from this endpoint");
+  }
+
+  await prisma.$transaction([
+    prisma.aIChatLog.deleteMany({ where: { userId: targetUser.id } }),
+    prisma.user.delete({ where: { id: targetUser.id } }),
+  ]);
+
+  console.log(
+    `[AUDIT] ${req.requestId ?? "n/a"} action=users.delete actor=${req.auth.userId} target=${targetUser.id}`,
+  );
+
+  res.json({
+    message: "User deleted permanently",
+    user: {
+      id: targetUser.id,
+      email: targetUser.email,
+      fullName: targetUser.fullName,
+      role: targetUser.role,
+    },
+  });
+};
+
 export const listUsers = async (req: Request, res: Response): Promise<void> => {
   if (!req.auth) {
     throw new HttpError(401, "Unauthorized");
