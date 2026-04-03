@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS "gym_schedule_templates" (
   "is_open" BOOLEAN NOT NULL DEFAULT true,
   "opens_at" TEXT,
   "closes_at" TEXT,
+  "opens_at_secondary" TEXT,
+  "closes_at_secondary" TEXT,
   "slot_minutes" INTEGER NOT NULL DEFAULT 60,
   "capacity_label" TEXT,
   "created_by_user_id" TEXT NOT NULL,
@@ -56,6 +58,8 @@ CREATE TABLE IF NOT EXISTS "gym_schedule_exceptions" (
   "is_closed" BOOLEAN NOT NULL DEFAULT false,
   "opens_at" TEXT,
   "closes_at" TEXT,
+  "opens_at_secondary" TEXT,
+  "closes_at_secondary" TEXT,
   "slot_minutes" INTEGER,
   "capacity_label" TEXT,
   "note" TEXT,
@@ -92,3 +96,15 @@ ON "gym_schedule_exceptions" ("gym_id", "date");
 
 CREATE INDEX IF NOT EXISTS "user_permission_grants_user_id_idx"
 ON "user_permission_grants" ("user_id");
+
+ALTER TABLE "gym_schedule_templates"
+  ADD COLUMN IF NOT EXISTS "opens_at_secondary" TEXT;
+
+ALTER TABLE "gym_schedule_templates"
+  ADD COLUMN IF NOT EXISTS "closes_at_secondary" TEXT;
+
+ALTER TABLE "gym_schedule_exceptions"
+  ADD COLUMN IF NOT EXISTS "opens_at_secondary" TEXT;
+
+ALTER TABLE "gym_schedule_exceptions"
+  ADD COLUMN IF NOT EXISTS "closes_at_secondary" TEXT;

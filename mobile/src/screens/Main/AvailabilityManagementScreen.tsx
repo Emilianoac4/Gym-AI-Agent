@@ -30,9 +30,34 @@ type TemplateDraft = {
   isOpen: boolean;
   opensAt: string;
   closesAt: string;
+  hasSplitSchedule: boolean;
+  opensAtSecondary: string;
+  closesAtSecondary: string;
   updatedAt: string | null;
   updatedByName: string | null;
 };
+
+type ExceptionDraft = {
+  isClosed: boolean;
+  opensAt: string;
+  closesAt: string;
+  hasSplitSchedule: boolean;
+  opensAtSecondary: string;
+  closesAtSecondary: string;
+  note: string;
+};
+
+type TimePickerTarget =
+  | {
+      kind: "template";
+      dayOfWeek: GymDayOfWeek;
+      field: "opensAt" | "closesAt" | "opensAtSecondary" | "closesAtSecondary";
+    }
+  | {
+      kind: "exception";
+      field: "opensAt" | "closesAt" | "opensAtSecondary" | "closesAtSecondary";
+    }
+  | null;
 
 const dayLabels: Record<GymDayOfWeek, string> = {
   monday: "Lunes",
@@ -53,6 +78,23 @@ const daySequence: GymDayOfWeek[] = [
   "saturday",
   "sunday",
 ];
+
+const monthLabels = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+const weekHeaders = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 
 const toDayOfWeek = (date: Date): GymDayOfWeek => {
   const value = date.getDay();
@@ -85,19 +127,64 @@ const plusDays = (amount: number) => {
   return value.toISOString().slice(0, 10);
 };
 
+const parseDateKey = (value: string) => {
+  const [year, month, day] = value.split("-").map((part) => Number(part));
+  return new Date(Date.UTC(year, month - 1, day));
+};
+
+const toDateKey = (value: Date) => value.toISOString().slice(0, 10);
+
+const formatDateForDisplay = (value: string) => {
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+};
+
+const shiftMonth = (base: Date, amount: number) =>
+  new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + amount, 1));
+
+const buildMonthMatrix = (monthStart: Date) => {
+  const start = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1));
+  const firstWeekday = (start.getUTCDay() + 6) % 7;
+  const daysInMonth = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+
+  const result: Array<Date | null> = [];
+
+  for (let i = 0; i < firstWeekday; i += 1) {
+    result.push(null);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    result.push(new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), day)));
+  }
+
+  while (result.length % 7 !== 0) {
+    result.push(null);
+  }
+
+  return result;
+};
+
 const mapTemplateToDraft = (day: GymAvailabilityTemplateDay): TemplateDraft => ({
   dayOfWeek: day.dayOfWeek,
   isOpen: day.isOpen,
   opensAt: day.opensAt ?? "",
   closesAt: day.closesAt ?? "",
+  hasSplitSchedule: Boolean(day.opensAtSecondary && day.closesAtSecondary),
+  opensAtSecondary: day.opensAtSecondary ?? "",
+  closesAtSecondary: day.closesAtSecondary ?? "",
   updatedAt: day.updatedAt,
   updatedByName: day.updatedBy?.fullName ?? null,
 });
 
-const emptyExceptionForm = {
+const emptyExceptionForm: ExceptionDraft = {
   isClosed: false,
   opensAt: "06:00",
   closesAt: "22:00",
+  hasSplitSchedule: false,
+  opensAtSecondary: "",
+  closesAtSecondary: "",
   note: "",
 };
 
@@ -116,12 +203,15 @@ export function AvailabilityManagementScreen() {
   const [exceptions, setExceptions] = useState<GymAvailabilityExceptionDay[]>([]);
   const [trainers, setTrainers] = useState<AvailabilityTrainerPermission[]>([]);
   const [selectedExceptionDate, setSelectedExceptionDate] = useState(todayKey());
-  const [exceptionForm, setExceptionForm] = useState(emptyExceptionForm);
-  const [timePickerTarget, setTimePickerTarget] = useState<
-    | { kind: "template"; dayOfWeek: GymDayOfWeek; field: "opensAt" | "closesAt" }
-    | { kind: "exception"; field: "opensAt" | "closesAt" }
-    | null
-  >(null);
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  });
+  const [exceptionForm, setExceptionForm] = useState<ExceptionDraft>(emptyExceptionForm);
+  const [timePickerTarget, setTimePickerTarget] = useState<TimePickerTarget>(null);
+
+  const calendarDays = useMemo(() => buildMonthMatrix(calendarMonth), [calendarMonth]);
 
   const selectedException = useMemo(
     () => exceptions.find((item) => item.date === selectedExceptionDate) ?? null,
@@ -149,42 +239,48 @@ export function AvailabilityManagementScreen() {
       isClosed: selectedException.isClosed,
       opensAt: selectedException.opensAt ?? "06:00",
       closesAt: selectedException.closesAt ?? "22:00",
+      hasSplitSchedule: Boolean(selectedException.opensAtSecondary && selectedException.closesAtSecondary),
+      opensAtSecondary: selectedException.opensAtSecondary ?? "",
+      closesAtSecondary: selectedException.closesAtSecondary ?? "",
       note: selectedException.note ?? "",
     });
   }, [selectedException]);
 
-  const load = useCallback(async (isRefresh = false) => {
-    if (!token) {
-      return;
-    }
-
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    try {
-      const templateResponse = await api.getAvailabilityTemplate(token);
-      const exceptionsResponse = await api.getAvailabilityExceptions(token, todayKey(), plusDays(30));
-
-      setPermissions(templateResponse.permissions);
-      setTemplateDrafts(templateResponse.template.map(mapTemplateToDraft));
-      setExceptions(exceptionsResponse.exceptions);
-
-      if (templateResponse.permissions.canGrant) {
-        const trainersResponse = await api.listAvailabilityPermissionTrainers(token);
-        setTrainers(trainersResponse.trainers);
-      } else {
-        setTrainers([]);
+  const load = useCallback(
+    async (isRefresh = false) => {
+      if (!token) {
+        return;
       }
-    } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "No se pudo cargar la configuracion");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [token]);
+
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      try {
+        const templateResponse = await api.getAvailabilityTemplate(token);
+        const exceptionsResponse = await api.getAvailabilityExceptions(token, todayKey(), plusDays(30));
+
+        setPermissions(templateResponse.permissions);
+        setTemplateDrafts(templateResponse.template.map(mapTemplateToDraft));
+        setExceptions(exceptionsResponse.exceptions);
+
+        if (templateResponse.permissions.canGrant) {
+          const trainersResponse = await api.listAvailabilityPermissionTrainers(token);
+          setTrainers(trainersResponse.trainers);
+        } else {
+          setTrainers([]);
+        }
+      } catch (error) {
+        Alert.alert("Error", error instanceof Error ? error.message : "No se pudo cargar la configuracion");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [token],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -206,6 +302,9 @@ export function AvailabilityManagementScreen() {
     if (draft.isOpen) {
       updateTemplateDraft(draft.dayOfWeek, {
         isOpen: false,
+        hasSplitSchedule: false,
+        opensAtSecondary: "",
+        closesAtSecondary: "",
       });
       return;
     }
@@ -214,6 +313,27 @@ export function AvailabilityManagementScreen() {
       isOpen: true,
       opensAt: draft.opensAt || "06:00",
       closesAt: draft.closesAt || "22:00",
+    });
+  };
+
+  const onToggleTemplateSplitSchedule = (draft: TemplateDraft) => {
+    if (!permissions.canWrite || !draft.isOpen) {
+      return;
+    }
+
+    if (draft.hasSplitSchedule) {
+      updateTemplateDraft(draft.dayOfWeek, {
+        hasSplitSchedule: false,
+        opensAtSecondary: "",
+        closesAtSecondary: "",
+      });
+      return;
+    }
+
+    updateTemplateDraft(draft.dayOfWeek, {
+      hasSplitSchedule: true,
+      opensAtSecondary: draft.opensAtSecondary || "14:00",
+      closesAtSecondary: draft.closesAtSecondary || "21:00",
     });
   };
 
@@ -229,6 +349,33 @@ export function AvailabilityManagementScreen() {
         isClosed: nextClosed,
         opensAt: nextClosed ? current.opensAt : current.opensAt || "06:00",
         closesAt: nextClosed ? current.closesAt : current.closesAt || "22:00",
+        hasSplitSchedule: nextClosed ? false : current.hasSplitSchedule,
+        opensAtSecondary: nextClosed ? "" : current.opensAtSecondary,
+        closesAtSecondary: nextClosed ? "" : current.closesAtSecondary,
+      };
+    });
+  };
+
+  const onToggleExceptionSplitSchedule = () => {
+    if (!permissions.canWrite || exceptionForm.isClosed) {
+      return;
+    }
+
+    setExceptionForm((current) => {
+      if (current.hasSplitSchedule) {
+        return {
+          ...current,
+          hasSplitSchedule: false,
+          opensAtSecondary: "",
+          closesAtSecondary: "",
+        };
+      }
+
+      return {
+        ...current,
+        hasSplitSchedule: true,
+        opensAtSecondary: current.opensAtSecondary || "14:00",
+        closesAtSecondary: current.closesAtSecondary || "21:00",
       };
     });
   };
@@ -263,6 +410,8 @@ export function AvailabilityManagementScreen() {
         isOpen: draft.isOpen,
         opensAt: draft.isOpen ? draft.opensAt : null,
         closesAt: draft.isOpen ? draft.closesAt : null,
+        opensAtSecondary: draft.isOpen && draft.hasSplitSchedule ? draft.opensAtSecondary : null,
+        closesAtSecondary: draft.isOpen && draft.hasSplitSchedule ? draft.closesAtSecondary : null,
       });
 
       setTemplateDrafts((current) =>
@@ -288,12 +437,22 @@ export function AvailabilityManagementScreen() {
         isClosed: exceptionForm.isClosed,
         opensAt: exceptionForm.isClosed ? null : exceptionForm.opensAt,
         closesAt: exceptionForm.isClosed ? null : exceptionForm.closesAt,
+        opensAtSecondary:
+          exceptionForm.isClosed || !exceptionForm.hasSplitSchedule
+            ? null
+            : exceptionForm.opensAtSecondary,
+        closesAtSecondary:
+          exceptionForm.isClosed || !exceptionForm.hasSplitSchedule
+            ? null
+            : exceptionForm.closesAtSecondary,
         note: exceptionForm.note.trim() || null,
       });
 
       setExceptions((current) => {
         const filtered = current.filter((item) => item.date !== selectedExceptionDate);
-        return [...filtered, response.exception].sort((left, right) => left.date.localeCompare(right.date));
+        return [...filtered, response.exception].sort((left, right) =>
+          left.date.localeCompare(right.date),
+        );
       });
       Alert.alert("Dia especial guardado", "La excepcion quedo publicada correctamente.");
     } catch (error) {
@@ -354,7 +513,13 @@ export function AvailabilityManagementScreen() {
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={palette.cocoa} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void load(true)}
+          tintColor={palette.cocoa}
+        />
+      }
     >
       <View style={styles.heroCard}>
         <Text style={styles.heroTitle}>Disponibilidad operativa</Text>
@@ -426,6 +591,61 @@ export function AvailabilityManagementScreen() {
               </View>
             </View>
 
+            {draft.isOpen ? (
+              <>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleChip,
+                    draft.hasSplitSchedule ? styles.toggleChipOn : styles.toggleChipOff,
+                    !permissions.canWrite && styles.selectInputDisabled,
+                  ]}
+                  disabled={!permissions.canWrite}
+                  onPress={() => onToggleTemplateSplitSchedule(draft)}
+                >
+                  <Text style={[styles.toggleChipText, !draft.hasSplitSchedule && styles.toggleChipTextOff]}>
+                    {draft.hasSplitSchedule ? "Horario diferido activado" : "Activar horario diferido"}
+                  </Text>
+                </TouchableOpacity>
+
+                {draft.hasSplitSchedule ? (
+                  <View style={styles.fieldRow}>
+                    <View style={styles.fieldHalf}>
+                      <Text style={styles.fieldLabel}>Apertura 2</Text>
+                      <Pressable
+                        style={styles.selectInput}
+                        disabled={!permissions.canWrite}
+                        onPress={() =>
+                          setTimePickerTarget({
+                            kind: "template",
+                            dayOfWeek: draft.dayOfWeek,
+                            field: "opensAtSecondary",
+                          })
+                        }
+                      >
+                        <Text style={styles.selectInputText}>{draft.opensAtSecondary || "Seleccionar"}</Text>
+                      </Pressable>
+                    </View>
+                    <View style={styles.fieldHalf}>
+                      <Text style={styles.fieldLabel}>Cierre 2</Text>
+                      <Pressable
+                        style={styles.selectInput}
+                        disabled={!permissions.canWrite}
+                        onPress={() =>
+                          setTimePickerTarget({
+                            kind: "template",
+                            dayOfWeek: draft.dayOfWeek,
+                            field: "closesAtSecondary",
+                          })
+                        }
+                      >
+                        <Text style={styles.selectInputText}>{draft.closesAtSecondary || "Seleccionar"}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+
             {draft.updatedAt ? (
               <Text style={styles.auditText}>Ultima edicion: {draft.updatedByName ?? "Sin nombre"}</Text>
             ) : (
@@ -452,14 +672,17 @@ export function AvailabilityManagementScreen() {
         <Text style={styles.sectionCopy}>Sobrescribe el horario estandar para una fecha puntual.</Text>
 
         <Text style={styles.fieldLabel}>Fecha</Text>
-        <TextInput
-          style={styles.input}
-          editable={permissions.canWrite}
-          value={selectedExceptionDate}
-          onChangeText={setSelectedExceptionDate}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={palette.textSoft}
-        />
+        <Pressable
+          style={[styles.selectInput, !permissions.canWrite && styles.selectInputDisabled]}
+          disabled={!permissions.canWrite}
+          onPress={() => {
+            const current = parseDateKey(selectedExceptionDate);
+            setCalendarMonth(new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1)));
+            setCalendarVisible(true);
+          }}
+        >
+          <Text style={styles.selectInputText}>{formatDateForDisplay(selectedExceptionDate)}</Text>
+        </Pressable>
 
         <TouchableOpacity
           style={[styles.toggleChip, exceptionForm.isClosed ? styles.toggleChipOff : styles.toggleChipOn]}
@@ -493,6 +716,45 @@ export function AvailabilityManagementScreen() {
             </Pressable>
           </View>
         </View>
+
+        {!exceptionForm.isClosed ? (
+          <>
+            <TouchableOpacity
+              style={[styles.toggleChip, exceptionForm.hasSplitSchedule ? styles.toggleChipOn : styles.toggleChipOff]}
+              disabled={!permissions.canWrite}
+              onPress={onToggleExceptionSplitSchedule}
+            >
+              <Text style={[styles.toggleChipText, !exceptionForm.hasSplitSchedule && styles.toggleChipTextOff]}>
+                {exceptionForm.hasSplitSchedule ? "Horario diferido activado" : "Activar horario diferido"}
+              </Text>
+            </TouchableOpacity>
+
+            {exceptionForm.hasSplitSchedule ? (
+              <View style={styles.fieldRow}>
+                <View style={styles.fieldHalf}>
+                  <Text style={styles.fieldLabel}>Apertura 2</Text>
+                  <Pressable
+                    style={[styles.selectInput, !permissions.canWrite && styles.selectInputDisabled]}
+                    disabled={!permissions.canWrite}
+                    onPress={() => setTimePickerTarget({ kind: "exception", field: "opensAtSecondary" })}
+                  >
+                    <Text style={styles.selectInputText}>{exceptionForm.opensAtSecondary || "Seleccionar"}</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.fieldHalf}>
+                  <Text style={styles.fieldLabel}>Cierre 2</Text>
+                  <Pressable
+                    style={[styles.selectInput, !permissions.canWrite && styles.selectInputDisabled]}
+                    disabled={!permissions.canWrite}
+                    onPress={() => setTimePickerTarget({ kind: "exception", field: "closesAtSecondary" })}
+                  >
+                    <Text style={styles.selectInputText}>{exceptionForm.closesAtSecondary || "Seleccionar"}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+          </>
+        ) : null}
 
         <Text style={styles.fieldLabel}>Nota</Text>
         <TextInput
@@ -564,7 +826,9 @@ export function AvailabilityManagementScreen() {
                 <Text
                   style={[
                     styles.permissionButtonText,
-                    trainer.hasAvailabilityWrite ? styles.permissionButtonTextLight : styles.permissionButtonTextDark,
+                    trainer.hasAvailabilityWrite
+                      ? styles.permissionButtonTextLight
+                      : styles.permissionButtonTextDark,
                   ]}
                 >
                   {togglingTrainerId === trainer.id
@@ -597,6 +861,78 @@ export function AvailabilityManagementScreen() {
             </ScrollView>
             <Pressable style={styles.modalCloseButton} onPress={() => setTimePickerTarget(null)}>
               <Text style={styles.modalCloseButtonText}>Cancelar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={calendarVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCalendarVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.calendarHeader}>
+              <Pressable
+                style={styles.calendarArrowButton}
+                onPress={() => setCalendarMonth((current) => shiftMonth(current, -1))}
+              >
+                <Text style={styles.calendarArrowText}>{"<"}</Text>
+              </Pressable>
+              <Text style={styles.calendarMonthTitle}>
+                {monthLabels[calendarMonth.getUTCMonth()]} {calendarMonth.getUTCFullYear()}
+              </Text>
+              <Pressable
+                style={styles.calendarArrowButton}
+                onPress={() => setCalendarMonth((current) => shiftMonth(current, 1))}
+              >
+                <Text style={styles.calendarArrowText}>{">"}</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.calendarWeekHeaderRow}>
+              {weekHeaders.map((header) => (
+                <Text key={header} style={styles.calendarWeekHeaderCell}>
+                  {header}
+                </Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarGrid}>
+              {calendarDays.map((dateValue, index) => {
+                if (!dateValue) {
+                  return <View key={`empty-${index}`} style={styles.calendarDayCellEmpty} />;
+                }
+
+                const dateKey = toDateKey(dateValue);
+                const isSelected = dateKey === selectedExceptionDate;
+
+                return (
+                  <Pressable
+                    key={dateKey}
+                    style={[styles.calendarDayCell, isSelected && styles.calendarDayCellSelected]}
+                    onPress={() => {
+                      setSelectedExceptionDate(dateKey);
+                      setCalendarVisible(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.calendarDayText,
+                        isSelected && styles.calendarDayTextSelected,
+                      ]}
+                    >
+                      {dateValue.getUTCDate()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable style={styles.modalCloseButton} onPress={() => setCalendarVisible(false)}>
+              <Text style={styles.modalCloseButtonText}>Cerrar</Text>
             </Pressable>
           </View>
         </View>
@@ -688,6 +1024,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    alignSelf: "flex-start",
   },
   toggleChipOn: {
     backgroundColor: palette.moss,
@@ -869,5 +1206,71 @@ const styles = StyleSheet.create({
   modalCloseButtonText: {
     color: palette.cocoa,
     fontWeight: "800",
+  },
+  calendarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  calendarArrowButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: palette.cream,
+  },
+  calendarArrowText: {
+    color: palette.cocoa,
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  calendarMonthTitle: {
+    color: palette.cocoa,
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  calendarWeekHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  calendarWeekHeaderCell: {
+    width: "14.285%",
+    textAlign: "center",
+    color: palette.textSoft,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  calendarGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    rowGap: 6,
+  },
+  calendarDayCell: {
+    width: "14.285%",
+    aspectRatio: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: palette.cream,
+  },
+  calendarDayCellEmpty: {
+    width: "14.285%",
+    aspectRatio: 1,
+  },
+  calendarDayCellSelected: {
+    backgroundColor: palette.cocoa,
+    borderColor: palette.cocoa,
+  },
+  calendarDayText: {
+    color: palette.cocoa,
+    fontWeight: "700",
+  },
+  calendarDayTextSelected: {
+    color: palette.card,
   },
 });

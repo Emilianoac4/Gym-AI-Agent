@@ -197,6 +197,8 @@ model GymScheduleTemplate {
   isOpen          Boolean   @default(true) @map("is_open")
   opensAt         String?   @map("opens_at")
   closesAt        String?   @map("closes_at")
+  opensAtSecondary String?  @map("opens_at_secondary")
+  closesAtSecondary String? @map("closes_at_secondary")
   slotMinutes     Int       @default(60) @map("slot_minutes")
   capacityLabel   String?   @map("capacity_label")
   createdByUserId String    @map("created_by_user_id")
@@ -215,6 +217,8 @@ model GymScheduleException {
   isClosed        Boolean  @default(false) @map("is_closed")
   opensAt         String?  @map("opens_at")
   closesAt        String?  @map("closes_at")
+  opensAtSecondary String? @map("opens_at_secondary")
+  closesAtSecondary String? @map("closes_at_secondary")
   slotMinutes     Int?     @map("slot_minutes")
   capacityLabel   String?  @map("capacity_label")
   note            String?
@@ -236,4 +240,31 @@ model UserPermissionGrant {
 
   @@unique([userId, permissionAction])
   @@map("user_permission_grants")
+}
+
+model TrainerPresenceSession {
+  id            String    @id @default(uuid())
+  gymId         String    @map("gym_id")
+  trainerUserId String    @map("trainer_user_id")
+  startedAt     DateTime  @default(now()) @map("started_at")
+  endedAt       DateTime? @map("ended_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([gymId, startedAt])
+  @@index([trainerUserId, endedAt])
+  @@map("trainer_presence_sessions")
+}
+
+model MembershipReportExport {
+  id                String   @id @default(uuid())
+  gymId             String   @map("gym_id")
+  generatedByUserId String   @map("generated_by_user_id")
+  periodDays        Int      @map("period_days")
+  rowCount          Int      @map("row_count")
+  csvContent        String   @map("csv_content")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([gymId, createdAt])
+  @@map("membership_report_exports")
 }

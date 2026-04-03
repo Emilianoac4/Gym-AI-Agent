@@ -21,6 +21,18 @@ function formatDateLabel(value: string): string {
   return `${day}/${month}/${year}`;
 }
 
+function formatWindow(day: GymAvailabilityDay): string {
+  if (day.status !== "open" || !day.opensAt || !day.closesAt) {
+    return day.source === "default_closed" ? "Sin horario publicado" : "No disponible";
+  }
+
+  if (day.opensAtSecondary && day.closesAtSecondary) {
+    return `${day.opensAt} - ${day.closesAt} | ${day.opensAtSecondary} - ${day.closesAtSecondary}`;
+  }
+
+  return `${day.opensAt} - ${day.closesAt}`;
+}
+
 export function GymAvailabilityScreen() {
   const { token } = useAuth();
   const [days, setDays] = useState<GymAvailabilityDay[]>([]);
@@ -82,11 +94,7 @@ export function GymAvailabilityScreen() {
           </View>
 
           <Text style={styles.windowText}>
-            {day.status === "open" && day.opensAt && day.closesAt
-              ? `${day.opensAt} - ${day.closesAt}`
-              : day.source === "default_closed"
-                ? "Sin horario publicado"
-                : "No disponible"}
+            {formatWindow(day)}
           </Text>
 
           {day.note ? <Text style={styles.note}>{day.note}</Text> : null}

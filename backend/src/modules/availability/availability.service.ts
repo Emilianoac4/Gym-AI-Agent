@@ -30,6 +30,8 @@ export type AvailabilityDay = {
   note: string | null;
   opensAt: string | null;
   closesAt: string | null;
+  opensAtSecondary: string | null;
+  closesAtSecondary: string | null;
   updatedBy: {
     userId: string;
     fullName: string;
@@ -42,6 +44,8 @@ export type AvailabilityTemplateDay = {
   isOpen: boolean;
   opensAt: string | null;
   closesAt: string | null;
+  opensAtSecondary: string | null;
+  closesAtSecondary: string | null;
   updatedBy: {
     userId: string;
     fullName: string;
@@ -55,6 +59,8 @@ export type AvailabilityExceptionDay = {
   isClosed: boolean;
   opensAt: string | null;
   closesAt: string | null;
+  opensAtSecondary: string | null;
+  closesAtSecondary: string | null;
   note: string | null;
   updatedBy: {
     userId: string;
@@ -149,6 +155,8 @@ const toTemplateResponse = (
         isOpen: boolean;
         opensAt: string | null;
         closesAt: string | null;
+        opensAtSecondary: string | null;
+        closesAtSecondary: string | null;
         updatedByUserId: string;
         updatedAt: Date;
       }
@@ -159,6 +167,8 @@ const toTemplateResponse = (
   isOpen: template?.isOpen ?? false,
   opensAt: template?.opensAt ?? null,
   closesAt: template?.closesAt ?? null,
+  opensAtSecondary: template?.opensAtSecondary ?? null,
+  closesAtSecondary: template?.closesAtSecondary ?? null,
   updatedBy: template ? updaters.get(template.updatedByUserId) ?? null : null,
   updatedAt: template?.updatedAt.toISOString() ?? null,
 });
@@ -169,6 +179,8 @@ const toExceptionResponse = (
     isClosed: boolean;
     opensAt: string | null;
     closesAt: string | null;
+    opensAtSecondary: string | null;
+    closesAtSecondary: string | null;
     note: string | null;
     updatedByUserId: string;
     updatedAt: Date;
@@ -180,6 +192,8 @@ const toExceptionResponse = (
   isClosed: exception.isClosed,
   opensAt: exception.opensAt,
   closesAt: exception.closesAt,
+  opensAtSecondary: exception.opensAtSecondary,
+  closesAtSecondary: exception.closesAtSecondary,
   note: exception.note,
   updatedBy: updaters.get(exception.updatedByUserId) ?? null,
   updatedAt: exception.updatedAt.toISOString(),
@@ -192,6 +206,8 @@ const resolveAvailabilityDay = (
         isOpen: boolean;
         opensAt: string | null;
         closesAt: string | null;
+        opensAtSecondary: string | null;
+        closesAtSecondary: string | null;
         updatedByUserId: string;
         updatedAt: Date;
       }
@@ -201,6 +217,8 @@ const resolveAvailabilityDay = (
         isClosed: boolean;
         opensAt: string | null;
         closesAt: string | null;
+        opensAtSecondary: string | null;
+        closesAtSecondary: string | null;
         note: string | null;
         updatedByUserId: string;
         updatedAt: Date;
@@ -218,6 +236,8 @@ const resolveAvailabilityDay = (
       note: exception.note,
       opensAt: isOpen ? exception.opensAt : null,
       closesAt: isOpen ? exception.closesAt : null,
+      opensAtSecondary: isOpen ? exception.opensAtSecondary : null,
+      closesAtSecondary: isOpen ? exception.closesAtSecondary : null,
       updatedBy: updaters.get(exception.updatedByUserId) ?? null,
       updatedAt: exception.updatedAt.toISOString(),
     };
@@ -232,6 +252,8 @@ const resolveAvailabilityDay = (
       note: null,
       opensAt: template.opensAt,
       closesAt: template.closesAt,
+      opensAtSecondary: template.opensAtSecondary,
+      closesAtSecondary: template.closesAtSecondary,
       updatedBy: updaters.get(template.updatedByUserId) ?? null,
       updatedAt: template.updatedAt.toISOString(),
     };
@@ -246,6 +268,8 @@ const resolveAvailabilityDay = (
       note: null,
       opensAt: null,
       closesAt: null,
+      opensAtSecondary: null,
+      closesAtSecondary: null,
       updatedBy: updaters.get(template.updatedByUserId) ?? null,
       updatedAt: template.updatedAt.toISOString(),
     };
@@ -259,6 +283,8 @@ const resolveAvailabilityDay = (
     note: null,
     opensAt: null,
     closesAt: null,
+    opensAtSecondary: null,
+    closesAtSecondary: null,
     updatedBy: null,
     updatedAt: null,
   };
@@ -281,6 +307,8 @@ export const getAvailabilityToday = async (auth: AuthContext) => {
         isOpen: true,
         opensAt: true,
         closesAt: true,
+        opensAtSecondary: true,
+        closesAtSecondary: true,
         updatedByUserId: true,
         updatedAt: true,
       },
@@ -296,6 +324,8 @@ export const getAvailabilityToday = async (auth: AuthContext) => {
         isClosed: true,
         opensAt: true,
         closesAt: true,
+        opensAtSecondary: true,
+        closesAtSecondary: true,
         note: true,
         updatedByUserId: true,
         updatedAt: true,
@@ -327,6 +357,8 @@ export const getAvailabilityNext7Days = async (auth: AuthContext) => {
         isOpen: true,
         opensAt: true,
         closesAt: true,
+        opensAtSecondary: true,
+        closesAtSecondary: true,
         updatedByUserId: true,
         updatedAt: true,
       },
@@ -344,6 +376,8 @@ export const getAvailabilityNext7Days = async (auth: AuthContext) => {
         isClosed: true,
         opensAt: true,
         closesAt: true,
+        opensAtSecondary: true,
+        closesAtSecondary: true,
         note: true,
         updatedByUserId: true,
         updatedAt: true,
@@ -380,6 +414,8 @@ export const getAvailabilityTemplate = async (auth: AuthContext) => {
         isOpen: true,
         opensAt: true,
         closesAt: true,
+        opensAtSecondary: true,
+        closesAtSecondary: true,
         updatedByUserId: true,
         updatedAt: true,
       },
@@ -428,6 +464,8 @@ export const listAvailabilityExceptions = async (
       isClosed: true,
       opensAt: true,
       closesAt: true,
+      opensAtSecondary: true,
+      closesAtSecondary: true,
       note: true,
       updatedByUserId: true,
       updatedAt: true,
@@ -460,6 +498,8 @@ export const saveAvailabilityTemplateDay = async (
       isOpen: input.isOpen,
       opensAt: input.isOpen ? input.opensAt ?? null : null,
       closesAt: input.isOpen ? input.closesAt ?? null : null,
+      opensAtSecondary: input.isOpen ? input.opensAtSecondary ?? null : null,
+      closesAtSecondary: input.isOpen ? input.closesAtSecondary ?? null : null,
       slotMinutes: 60,
       capacityLabel: null,
       createdByUserId: requester.id,
@@ -469,6 +509,8 @@ export const saveAvailabilityTemplateDay = async (
       isOpen: input.isOpen,
       opensAt: input.isOpen ? input.opensAt ?? null : null,
       closesAt: input.isOpen ? input.closesAt ?? null : null,
+      opensAtSecondary: input.isOpen ? input.opensAtSecondary ?? null : null,
+      closesAtSecondary: input.isOpen ? input.closesAtSecondary ?? null : null,
       slotMinutes: 60,
       capacityLabel: null,
       updatedByUserId: requester.id,
@@ -478,6 +520,8 @@ export const saveAvailabilityTemplateDay = async (
       isOpen: true,
       opensAt: true,
       closesAt: true,
+      opensAtSecondary: true,
+      closesAtSecondary: true,
       updatedByUserId: true,
       updatedAt: true,
     },
@@ -510,6 +554,8 @@ export const saveAvailabilityTemplateWeek = async (
           isOpen: day.isOpen,
           opensAt: day.isOpen ? day.opensAt ?? null : null,
           closesAt: day.isOpen ? day.closesAt ?? null : null,
+          opensAtSecondary: day.isOpen ? day.opensAtSecondary ?? null : null,
+          closesAtSecondary: day.isOpen ? day.closesAtSecondary ?? null : null,
           slotMinutes: 60,
           capacityLabel: null,
           createdByUserId: requester.id,
@@ -519,6 +565,8 @@ export const saveAvailabilityTemplateWeek = async (
           isOpen: day.isOpen,
           opensAt: day.isOpen ? day.opensAt ?? null : null,
           closesAt: day.isOpen ? day.closesAt ?? null : null,
+          opensAtSecondary: day.isOpen ? day.opensAtSecondary ?? null : null,
+          closesAtSecondary: day.isOpen ? day.closesAtSecondary ?? null : null,
           slotMinutes: 60,
           capacityLabel: null,
           updatedByUserId: requester.id,
@@ -550,6 +598,8 @@ export const saveAvailabilityException = async (
       isClosed: input.isClosed,
       opensAt: input.isClosed ? null : input.opensAt ?? null,
       closesAt: input.isClosed ? null : input.closesAt ?? null,
+      opensAtSecondary: input.isClosed ? null : input.opensAtSecondary ?? null,
+      closesAtSecondary: input.isClosed ? null : input.closesAtSecondary ?? null,
       slotMinutes: null,
       capacityLabel: null,
       note: input.note ?? null,
@@ -560,6 +610,8 @@ export const saveAvailabilityException = async (
       isClosed: input.isClosed,
       opensAt: input.isClosed ? null : input.opensAt ?? null,
       closesAt: input.isClosed ? null : input.closesAt ?? null,
+      opensAtSecondary: input.isClosed ? null : input.opensAtSecondary ?? null,
+      closesAtSecondary: input.isClosed ? null : input.closesAtSecondary ?? null,
       slotMinutes: null,
       capacityLabel: null,
       note: input.note ?? null,
@@ -570,6 +622,8 @@ export const saveAvailabilityException = async (
       isClosed: true,
       opensAt: true,
       closesAt: true,
+      opensAtSecondary: true,
+      closesAtSecondary: true,
       note: true,
       updatedByUserId: true,
       updatedAt: true,

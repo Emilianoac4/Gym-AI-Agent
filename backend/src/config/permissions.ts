@@ -15,7 +15,10 @@ export type PermissionAction =
   | "ai.use"
   | "availability.read"
   | "availability.write"
-  | "permissions.grant";
+  | "permissions.grant"
+  | "trainer.presence.read"
+  | "trainer.presence.write"
+  | "reports.membership.read";
 
 type AppRole = "admin" | "trainer" | "member";
 
@@ -35,6 +38,8 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
     "availability.read",
     "availability.write",
     "permissions.grant",
+    "trainer.presence.read",
+    "reports.membership.read",
   ],
   trainer: [
     "users.list",
@@ -48,6 +53,7 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
     "users.measurements.write",
     "ai.use",
     "availability.read",
+    "trainer.presence.write",
   ],
   member: [
     "users.profile.read",

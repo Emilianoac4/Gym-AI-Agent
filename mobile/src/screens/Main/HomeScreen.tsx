@@ -58,6 +58,10 @@ function formatAvailabilityWindow(day: GymAvailabilityDay | null): string {
   }
 
   if (day.opensAt && day.closesAt) {
+    if (day.opensAtSecondary && day.closesAtSecondary) {
+      return `${day.opensAt} - ${day.closesAt} | ${day.opensAtSecondary} - ${day.closesAtSecondary}`;
+    }
+
     return `${day.opensAt} - ${day.closesAt}`;
   }
 

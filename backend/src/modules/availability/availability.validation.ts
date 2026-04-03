@@ -17,6 +17,8 @@ const scheduleBaseSchema = z.object({
   isOpen: z.boolean(),
   opensAt: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
   closesAt: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
+  opensAtSecondary: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
+  closesAtSecondary: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
 });
 
 const scheduleInputSchema = scheduleBaseSchema.superRefine((value, ctx) => {
@@ -45,6 +47,48 @@ const scheduleInputSchema = scheduleBaseSchema.superRefine((value, ctx) => {
       code: z.ZodIssueCode.custom,
       message: "La hora de cierre debe ser posterior a la de apertura",
       path: ["closesAt"],
+    });
+  }
+
+  const hasSecondary = Boolean(value.opensAtSecondary || value.closesAtSecondary);
+
+  if (!hasSecondary) {
+    return;
+  }
+
+  if (!value.opensAtSecondary) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debes indicar la segunda hora de apertura",
+      path: ["opensAtSecondary"],
+    });
+  }
+
+  if (!value.closesAtSecondary) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debes indicar la segunda hora de cierre",
+      path: ["closesAtSecondary"],
+    });
+  }
+
+  if (
+    value.opensAtSecondary &&
+    value.closesAtSecondary &&
+    value.opensAtSecondary >= value.closesAtSecondary
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "El segundo cierre debe ser posterior a la segunda apertura",
+      path: ["closesAtSecondary"],
+    });
+  }
+
+  if (value.closesAt && value.opensAtSecondary && value.closesAt >= value.opensAtSecondary) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "El segundo bloque debe iniciar despues del cierre del primer bloque",
+      path: ["opensAtSecondary"],
     });
   }
 });
@@ -124,6 +168,8 @@ export const upsertAvailabilityExceptionSchema = z
     isClosed: z.boolean(),
     opensAt: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
     closesAt: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
+    opensAtSecondary: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
+    closesAtSecondary: z.string().regex(timeRegex, "Hora invalida. Usa HH:mm").optional().nullable(),
     note: z.string().trim().min(1).max(160).optional().nullable(),
   })
   .superRefine((value, ctx) => {
@@ -152,6 +198,48 @@ export const upsertAvailabilityExceptionSchema = z
         code: z.ZodIssueCode.custom,
         message: "La hora de cierre debe ser posterior a la de apertura",
         path: ["closesAt"],
+      });
+    }
+
+    const hasSecondary = Boolean(value.opensAtSecondary || value.closesAtSecondary);
+
+    if (!hasSecondary) {
+      return;
+    }
+
+    if (!value.opensAtSecondary) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Debes indicar la segunda hora de apertura",
+        path: ["opensAtSecondary"],
+      });
+    }
+
+    if (!value.closesAtSecondary) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Debes indicar la segunda hora de cierre",
+        path: ["closesAtSecondary"],
+      });
+    }
+
+    if (
+      value.opensAtSecondary &&
+      value.closesAtSecondary &&
+      value.opensAtSecondary >= value.closesAtSecondary
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El segundo cierre debe ser posterior a la segunda apertura",
+        path: ["closesAtSecondary"],
+      });
+    }
+
+    if (value.closesAt && value.opensAtSecondary && value.closesAt >= value.opensAtSecondary) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El segundo bloque debe iniciar despues del cierre del primer bloque",
+        path: ["opensAtSecondary"],
       });
     }
   });

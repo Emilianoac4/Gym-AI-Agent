@@ -192,6 +192,8 @@ export interface GymAvailabilityDay {
   note: string | null;
   opensAt: string | null;
   closesAt: string | null;
+  opensAtSecondary: string | null;
+  closesAtSecondary: string | null;
   updatedBy: GymAvailabilityActor | null;
   updatedAt: string | null;
 }
@@ -201,6 +203,8 @@ export interface GymAvailabilityTemplateDay {
   isOpen: boolean;
   opensAt: string | null;
   closesAt: string | null;
+  opensAtSecondary: string | null;
+  closesAtSecondary: string | null;
   updatedBy: GymAvailabilityActor | null;
   updatedAt: string | null;
 }
@@ -211,6 +215,8 @@ export interface GymAvailabilityExceptionDay {
   isClosed: boolean;
   opensAt: string | null;
   closesAt: string | null;
+  opensAtSecondary: string | null;
+  closesAtSecondary: string | null;
   note: string | null;
   updatedBy: GymAvailabilityActor | null;
   updatedAt: string | null;
@@ -228,6 +234,74 @@ export interface AvailabilityTrainerPermission {
   hasAvailabilityWrite: boolean;
   grantedAt: string | null;
   grantedBy: GymAvailabilityActor | null;
+}
+
+export interface TrainerPresenceSession {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  isActive: boolean;
+  durationMinutes: number;
+}
+
+export interface TrainerPresenceStatus {
+  isActive: boolean;
+  activeSession: {
+    id: string;
+    startedAt: string;
+    endedAt: null;
+  } | null;
+  sessionsToday: TrainerPresenceSession[];
+}
+
+export interface TrainerPresenceSummaryDay {
+  date: string;
+  activeCount: number;
+  trainers: Array<{
+    trainerId: string;
+    trainerName: string;
+    sessions: Array<{
+      id: string;
+      startedAt: string;
+      endedAt: string | null;
+      isActive: boolean;
+      startHour: number;
+      endHour: number;
+    }>;
+  }>;
+}
+
+export interface MembershipReportRow {
+  id: string;
+  date: string;
+  type: "activation" | "renewal";
+  typeLabel: string;
+  memberName: string;
+  paymentMethod: "card" | "transfer" | "cash";
+  paymentMethodLabel: string;
+  actorName: string;
+  amount: number;
+}
+
+export interface MembershipReportSummary {
+  rowCount: number;
+  totalAmount: number;
+  totalRegistrations: number;
+  totalRenewals: number;
+}
+
+export interface MembershipReport {
+  periodDays: number;
+  generatedAt: string;
+  summary: MembershipReportSummary;
+  rows: MembershipReportRow[];
+  csv: string;
+}
+
+export interface MembershipReportExportInfo {
+  id: string;
+  createdAt: string;
+  fileName: string;
 }
 
 export type AIChatLogType = "CHAT" | "ROUTINE_GENERATION" | "NUTRITION_GENERATION" | "DAILY_TIP";

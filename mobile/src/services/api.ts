@@ -9,11 +9,15 @@ import {
   GymAvailabilityTemplateDay,
   ExerciseStrengthProgress,
   Measurement,
+  MembershipReport,
+  MembershipReportExportInfo,
   ProgressSummary,
   RoutineCheckin,
   RoutineExerciseCheckin,
   StrengthLog,
   StrengthProgressSummary,
+  TrainerPresenceStatus,
+  TrainerPresenceSummaryDay,
   UserRole,
 } from "../types/api";
 
@@ -515,6 +519,8 @@ export const api = {
       isOpen: boolean;
       opensAt?: string | null;
       closesAt?: string | null;
+      opensAtSecondary?: string | null;
+      closesAtSecondary?: string | null;
     },
   ) =>
     request<{ message: string; day: GymAvailabilityTemplateDay }>(`/availability/template/${dayOfWeek}`, {
@@ -530,6 +536,8 @@ export const api = {
       isClosed: boolean;
       opensAt?: string | null;
       closesAt?: string | null;
+      opensAtSecondary?: string | null;
+      closesAtSecondary?: string | null;
       note?: string | null;
     },
   ) =>
@@ -568,6 +576,41 @@ export const api = {
       {
         method: "DELETE",
         token,
+      },
+    ),
+
+  getMyTrainerPresenceStatus: (token: string) =>
+    request<{ status: TrainerPresenceStatus }>("/operations/trainer-presence/me", {
+      token,
+    }),
+
+  updateMyTrainerPresenceStatus: (token: string, body: { isActive: boolean }) =>
+    request<{ message: string; status: TrainerPresenceStatus }>("/operations/trainer-presence/me", {
+      method: "PUT",
+      token,
+      body,
+    }),
+
+  getTrainerPresenceSummary: (token: string, days = 7) =>
+    request<{ days: TrainerPresenceSummaryDay[]; generatedAt: string }>(
+      `/operations/trainer-presence?days=${days}`,
+      {
+        token,
+      },
+    ),
+
+  getMembershipReport: (token: string, days: number) =>
+    request<{ report: MembershipReport }>(`/operations/membership-report?days=${days}`, {
+      token,
+    }),
+
+  exportMembershipReport: (token: string, body: { days: number }) =>
+    request<{ message: string; report: MembershipReport; export: MembershipReportExportInfo }>(
+      "/operations/membership-report/export",
+      {
+        method: "POST",
+        token,
+        body,
       },
     ),
 };
