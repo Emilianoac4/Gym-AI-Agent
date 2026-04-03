@@ -1,7 +1,8 @@
-import { MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/client";
+import { AuditAction, MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/client";
 import { Request, Response } from "express";
 import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
+import { createAuditLog } from "../../utils/audit";
 import { sendPlatformEmail } from "../../utils/email-auth";
 import {
   ExportMembershipReportInput,
@@ -137,6 +138,20 @@ export const updateMyTrainerPresenceStatus = async (
       data: { endedAt: new Date() },
     });
   }
+
+  await createAuditLog({
+    gymId: actor.gymId,
+    actorUserId: actor.id,
+    action: AuditAction.trainer_status_changed,
+    resourceType: "trainer_presence",
+    resourceId: actor.id,
+    changes: {
+      isActive: body.isActive,
+      hadOpenSession: Boolean(openSession),
+    },
+    ipAddress: req.ip,
+    userAgent: req.headers["user-agent"] as string,
+  });
 
   const status = await getTrainerPresenceStatusPayload(actor.gymId, actor.id);
   res.json({ message: "Estado operativo actualizado", status });

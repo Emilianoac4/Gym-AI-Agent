@@ -33,6 +33,30 @@ enum PermissionGrantAction {
   notifications_send
 }
 
+enum AuditAction {
+  user_created
+  user_updated
+  user_deleted
+  user_role_changed
+  membership_renewed
+  membership_cancelled
+  payment_recorded
+  trainer_status_changed
+  assistance_request_created
+  assistance_request_resolved
+  gym_created
+  gym_deleted
+  platform_action
+}
+
+enum AssistanceRequestStatus {
+  CREATED
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  RATED
+}
+
 model GlobalUserAccount {
   id                              String    @id @default(uuid())
   email                           String    @unique
@@ -434,4 +458,44 @@ model PlatformAdminUser {
 
   @@index([isActive])
   @@map("platform_admin_users")
+}
+
+model AuditLog {
+  id            String      @id @default(uuid())
+  gymId         String?     @map("gym_id")
+  actorUserId   String?     @map("actor_user_id")
+  action        AuditAction
+  resourceType  String      @map("resource_type")
+  resourceId    String      @map("resource_id")
+  changes       String?     @db.Text
+  metadata      String?     @db.Text
+  ipAddress     String?     @map("ip_address")
+  userAgent     String?     @map("user_agent")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@index([gymId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}
+
+model AssistanceRequest {
+  id           String                  @id @default(uuid())
+  gymId        String                  @map("gym_id")
+  memberId     String                  @map("member_id")
+  trainerId    String?                 @map("trainer_id")
+  status       AssistanceRequestStatus @default(CREATED)
+  description  String
+  resolution   String?
+  rating       Int?
+  ratedAt      DateTime?               @map("rated_at")
+  assignedAt   DateTime?               @map("assigned_at")
+  resolvedAt   DateTime?               @map("resolved_at")
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+
+  @@index([gymId, status, createdAt])
+  @@index([memberId, createdAt])
+  @@index([trainerId, status])
+  @@map("assistance_requests")
 }

@@ -389,6 +389,31 @@ export interface GymSettings {
   currency: "USD" | "CRC";
 }
 
+/* ─── Assistance Requests ────────────────────────────────── */
+
+export type AssistanceRequestStatus =
+  | "CREATED"
+  | "ASSIGNED"
+  | "IN_PROGRESS"
+  | "RESOLVED"
+  | "RATED";
+
+export interface AssistanceRequest {
+  id: string;
+  gymId: string;
+  memberId: string;
+  trainerId: string | null;
+  status: AssistanceRequestStatus;
+  description: string;
+  resolution: string | null;
+  rating: number | null;
+  ratedAt: string | null;
+  assignedAt: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface EmergencyTicket {
   id: string;
   category: "harassment" | "injury" | "accident" | "incident";

@@ -3,3 +3,9 @@
 
 [build.environment]
   NODE_VERSION = "22"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://gym-ai-agent-backend-staging.onrender.com/:splat"
+  status = 200
+  force = true

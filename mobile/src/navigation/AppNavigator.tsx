@@ -24,6 +24,8 @@ import { GymAvailabilityScreen } from "../screens/Main/GymAvailabilityScreen";
 import { AvailabilityManagementScreen } from "../screens/Main/AvailabilityManagementScreen";
 import { MessagesConversationScreen } from "../screens/Main/MessagesConversationScreen";
 import { MyMessagesScreen } from "../screens/Main/MyMessagesScreen";
+import { AssistanceScreen } from "../screens/Main/AssistanceScreen";
+import { AssistanceRequestsScreen } from "../screens/Main/AssistanceRequestsScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -63,6 +65,7 @@ function MemberTabs() {
       <Tab.Screen name="Inicio" component={HomeScreen} />
       <Tab.Screen name="Medidas" component={MeasurementsScreen} />
       <Tab.Screen name="Rutina" component={RoutineScreen} />
+      <Tab.Screen name="Asistencia" component={AssistanceScreen} />
       <Tab.Screen name="Coach" component={ChatScreen} />
       <Tab.Screen name="Perfil" component={ProfileScreen} />
     </Tab.Navigator>
@@ -92,6 +95,7 @@ function TrainerTabs() {
     >
       <Tab.Screen name="Inicio" component={HomeScreen} />
       <Tab.Screen name="Usuarios" component={AdminUsersScreen} />
+      <Tab.Screen name="Solicitudes" component={AssistanceRequestsScreen} />
       <Tab.Screen name="Horarios" component={AvailabilityManagementScreen} />
       <Tab.Screen name="Mensajes" component={MyMessagesScreen} />
       <Tab.Screen name="Perfil" component={TrainerProfileScreen} />

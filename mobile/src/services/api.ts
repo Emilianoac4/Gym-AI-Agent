@@ -1,5 +1,6 @@
 import {
   AIChatLog,
+  AssistanceRequest,
   AvailabilityTrainerPermission,
   CreateMeasurementPayload,
   DirectMessage,
@@ -782,5 +783,44 @@ export const api = {
         method: "POST",
         token,
       },
+    ),
+
+  /* ─── Assistance Requests ────────────────────────────────── */
+
+  createAssistanceRequest: (token: string, body: { description: string }) =>
+    request<{ message: string; request: AssistanceRequest }>("/assistance", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  listMyAssistanceRequests: (token: string, limit = 20, offset = 0) =>
+    request<{ requests: AssistanceRequest[]; total: number }>(
+      `/assistance/my?limit=${limit}&offset=${offset}`,
+      { token },
+    ),
+
+  listAssistanceRequests: (token: string, status?: string) =>
+    request<{ requests: AssistanceRequest[]; total: number }>(
+      `/assistance${status ? `?status=${status}` : ""}`,
+      { token },
+    ),
+
+  assignAssistanceRequest: (token: string, id: string) =>
+    request<{ message: string; request: Pick<AssistanceRequest, "id" | "status" | "trainerId" | "assignedAt"> }>(
+      `/assistance/${encodeURIComponent(id)}/assign`,
+      { method: "PATCH", token },
+    ),
+
+  resolveAssistanceRequest: (token: string, id: string, body: { resolution: string }) =>
+    request<{ message: string; request: Pick<AssistanceRequest, "id" | "status" | "resolution" | "resolvedAt"> }>(
+      `/assistance/${encodeURIComponent(id)}/resolve`,
+      { method: "PATCH", token, body },
+    ),
+
+  rateAssistanceRequest: (token: string, id: string, body: { rating: number }) =>
+    request<{ message: string; request: Pick<AssistanceRequest, "id" | "status" | "rating" | "ratedAt"> }>(
+      `/assistance/${encodeURIComponent(id)}/rate`,
+      { method: "PATCH", token, body },
     ),
 };

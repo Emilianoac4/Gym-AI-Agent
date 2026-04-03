@@ -12,6 +12,14 @@ declare global {
         platformUserId: string;
         email: string;
       };
+      auditCtx?: {
+        userId?: string;
+        role?: UserRole;
+        gymId?: string;
+        ipAddress?: string;
+        userAgent?: string;
+        timestamp?: Date;
+      };
     }
   }
 }

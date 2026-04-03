@@ -21,7 +21,11 @@ export type PermissionAction =
   | "reports.membership.read"
   | "notifications.general.send"
   | "notifications.messages.read"
-  | "notifications.messages.write";
+  | "notifications.messages.write"
+  | "payments.record"
+  | "assistance.request"
+  | "assistance.resolve"
+  | "trainer.status.change";
 
 type AppRole = "admin" | "trainer" | "member";
 
@@ -62,6 +66,10 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
     "trainer.presence.write",
     "notifications.messages.read",
     "notifications.messages.write",
+    "payments.record",
+    "assistance.request",
+    "assistance.resolve",
+    "trainer.status.change",
   ],
   member: [
     "users.profile.read",

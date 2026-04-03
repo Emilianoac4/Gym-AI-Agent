@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
-import { HealthProvider, MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/client";
+import { AuditAction, HealthProvider, MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
+import { createAuditLog } from "../../utils/audit";
 import {
   CreateUserInput,
   RenewMembershipInput,
@@ -306,6 +307,21 @@ export const deleteUserById = async (req: Request<{ id: string }>, res: Response
     prisma.user.delete({ where: { id: targetUser.id } }),
   ]);
 
+  await createAuditLog({
+    gymId: targetUser.gymId,
+    actorUserId: req.auth.userId,
+    action: AuditAction.user_deleted,
+    resourceType: "user",
+    resourceId: targetUser.id,
+    changes: {
+      email: targetUser.email,
+      role: targetUser.role,
+      fullName: targetUser.fullName,
+    },
+    ipAddress: req.ip,
+    userAgent: req.headers["user-agent"] as string,
+  });
+
   console.log(
     `[AUDIT] ${req.requestId ?? "n/a"} action=users.delete actor=${req.auth.userId} target=${targetUser.id}`,
   );
@@ -542,6 +558,23 @@ export const createUser = async (
     return newUser;
   });
 
+  await createAuditLog({
+    gymId: requester.gymId,
+    actorUserId: req.auth.userId,
+    action: AuditAction.user_created,
+    resourceType: "user",
+    resourceId: created.id,
+    changes: {
+      email: created.email,
+      role: created.role,
+      fullName: created.fullName,
+      membershipStartAt: created.membershipStartAt,
+      membershipEndAt: created.membershipEndAt,
+    },
+    ipAddress: req.ip,
+    userAgent: req.headers["user-agent"] as string,
+  });
+
   console.log(
     `[AUDIT] action=users.create actor=${req.auth.userId} target=${created.id} role=${created.role}`,
   );
@@ -650,6 +683,23 @@ export const renewMembershipByUserId = async (
       membershipStartAt,
       membershipEndAt,
     },
+  });
+
+  await createAuditLog({
+    gymId: requester.gymId,
+    actorUserId: req.auth.userId,
+    action: AuditAction.membership_renewed,
+    resourceType: "membership",
+    resourceId: targetUser.id,
+    changes: {
+      membershipMonths: req.body.membershipMonths,
+      membershipStartAt,
+      membershipEndAt,
+      paymentMethod: req.body.paymentMethod,
+      paymentAmount: req.body.paymentAmount,
+    },
+    ipAddress: req.ip,
+    userAgent: req.headers["user-agent"] as string,
   });
 
   console.log(
