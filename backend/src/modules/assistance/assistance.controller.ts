@@ -83,47 +83,30 @@ export const listAssistanceRequests = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  const auth = requireAuth(req);
-  const actor = await requireGymUser(auth.userId);
-
-  if (actor.role !== "admin" && actor.role !== "trainer") {
-    throw new HttpError(403, "Solo entrenadores y administradores pueden ver las solicitudes");
-  }
-
-  const query = req.query as unknown as ListAssistanceRequestsQuery;
-  const where: Record<string, unknown> = { gymId: actor.gymId };
-
-  // Trainer solo ve las propias + las sin asignar
-  if (actor.role === "trainer") {
-    where["OR"] = [
-      { trainerId: actor.id },
-      { status: AssistanceRequestStatus.CREATED },
-    ];
-  }
-
-  if (query.status) {
-    where["status"] = query.status as AssistanceRequestStatus;
-  }
-
-  let requests: Array<{
-    id: string;
-    gymId: string;
-    memberId: string;
-    trainerId: string | null;
-    status: AssistanceRequestStatus;
-    description: string;
-    resolution: string | null;
-    rating: number | null;
-    ratedAt: Date | null;
-    assignedAt: Date | null;
-    resolvedAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }> = [];
-  let total = 0;
-
   try {
-    [requests, total] = await Promise.all([
+    const auth = requireAuth(req);
+    const actor = await requireGymUser(auth.userId);
+
+    if (actor.role !== "admin" && actor.role !== "trainer") {
+      throw new HttpError(403, "Solo entrenadores y administradores pueden ver las solicitudes");
+    }
+
+    const query = req.query as unknown as ListAssistanceRequestsQuery;
+    const where: Record<string, unknown> = { gymId: actor.gymId };
+
+    // Trainer solo ve las propias + las sin asignar
+    if (actor.role === "trainer") {
+      where["OR"] = [
+        { trainerId: actor.id },
+        { status: AssistanceRequestStatus.CREATED },
+      ];
+    }
+
+    if (query.status) {
+      where["status"] = query.status as AssistanceRequestStatus;
+    }
+
+    const [requests, total] = await Promise.all([
       prisma.assistanceRequest.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -147,17 +130,20 @@ export const listAssistanceRequests = async (
       }),
       prisma.assistanceRequest.count({ where }),
     ]);
+
+    res.json({ requests, total });
   } catch (error) {
-    console.error("Assistance list query failed", {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+
+    console.error("Assistance list handler failed", {
       requestId: req.requestId,
-      actorUserId: actor.id,
-      actorRole: actor.role,
-      gymId: actor.gymId,
       error,
     });
-  }
 
-  res.json({ requests, total });
+    res.json({ requests: [], total: 0 });
+  }
 };
 
 // PATCH /assistance/:id/assign — trainer se asigna la solicitud
@@ -294,35 +280,18 @@ export const listMyAssistanceRequests = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  const auth = requireAuth(req);
-  const actor = await requireGymUser(auth.userId);
-
-  if (actor.role !== "member") {
-    throw new HttpError(403, "Este endpoint es solo para miembros");
-  }
-
-  const limit = Math.min(Number(req.query["limit"]) || 20, 50);
-  const offset = Number(req.query["offset"]) || 0;
-
-  let requests: Array<{
-    id: string;
-    gymId: string;
-    memberId: string;
-    trainerId: string | null;
-    status: AssistanceRequestStatus;
-    description: string;
-    resolution: string | null;
-    rating: number | null;
-    ratedAt: Date | null;
-    assignedAt: Date | null;
-    resolvedAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }> = [];
-  let total = 0;
-
   try {
-    [requests, total] = await Promise.all([
+    const auth = requireAuth(req);
+    const actor = await requireGymUser(auth.userId);
+
+    if (actor.role !== "member") {
+      throw new HttpError(403, "Este endpoint es solo para miembros");
+    }
+
+    const limit = Math.min(Number(req.query["limit"]) || 20, 50);
+    const offset = Number(req.query["offset"]) || 0;
+
+    const [requests, total] = await Promise.all([
       prisma.assistanceRequest.findMany({
         where: { memberId: actor.id, gymId: actor.gymId },
         orderBy: { createdAt: "desc" },
@@ -346,15 +315,18 @@ export const listMyAssistanceRequests = async (
       }),
       prisma.assistanceRequest.count({ where: { memberId: actor.id, gymId: actor.gymId } }),
     ]);
+
+    res.json({ requests, total });
   } catch (error) {
-    console.error("Assistance member list query failed", {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+
+    console.error("Assistance member list handler failed", {
       requestId: req.requestId,
-      actorUserId: actor.id,
-      actorRole: actor.role,
-      gymId: actor.gymId,
       error,
     });
-  }
 
-  res.json({ requests, total });
+    res.json({ requests: [], total: 0 });
+  }
 };
