@@ -1,0 +1,168 @@
+:root {
+  --bg: #f3efe6;
+  --card: #fffaf2;
+  --ink: #2f2419;
+  --muted: #6d5d4f;
+  --line: #d8c8b3;
+  --accent: #b9633a;
+  --accent-2: #2f4f4f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: radial-gradient(circle at 10% 10%, #f9f1e4, #efe6d8 45%, #eadcc9);
+  color: var(--ink);
+}
+
+.topbar {
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: flex-start;
+  background: rgba(255, 250, 242, 0.95);
+  position: sticky;
+  top: 0;
+  backdrop-filter: blur(6px);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.topbar p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.auth-panel {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+input, button, select {
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+button {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.layout {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(460px, 1fr);
+  gap: 16px;
+}
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  min-height: 70vh;
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+.summary {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+}
+
+.company-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.company-card h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.company-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.company-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.placeholder {
+  color: var(--muted);
+}
+
+.detail-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.block {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.block h3 {
+  margin-top: 0;
+}
+
+.mini-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.mini-list li {
+  margin: 4px 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.form-grid .full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 980px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
