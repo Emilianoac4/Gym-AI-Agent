@@ -63,6 +63,13 @@ model Gym {
   country   String?
   state     String?
   district  String?
+  deletedAt DateTime? @map("deleted_at")
+  recoverUntil DateTime? @map("recover_until")
+  deletedByPlatformUserId String? @map("deleted_by_platform_user_id")
+  deletionPendingAt DateTime? @map("deletion_pending_at")
+  deletionChallengeHash String? @map("deletion_challenge_hash")
+  deletionChallengeExpiresAt DateTime? @map("deletion_challenge_expires_at")
+  deletionRequestedByPlatformUserId String? @map("deletion_requested_by_platform_user_id")
   createdAt DateTime @default(now()) @map("created_at")
 
   users User[]

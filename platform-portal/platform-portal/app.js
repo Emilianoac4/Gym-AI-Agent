@@ -1,5 +1,7 @@
+const API_BASE = "https://gym-ai-agent-backend-staging.onrender.com";
+
 const state = {
-  apiBase: "",
+  apiBase: API_BASE,
   token: "",
   selectedGymId: "",
   user: null,
@@ -9,13 +11,51 @@ const LOCATION_DATA = {
   "Costa Rica": {
     dialCode: "+506",
     states: {
-      "San Jose": ["San Jose", "Escazu", "Desamparados", "Tibas", "Aserri"],
-      Alajuela: ["Alajuela", "San Ramon", "Grecia", "Atenas", "Naranjo"],
-      Cartago: ["Cartago", "Paraiso", "La Union", "Turrialba"],
-      Heredia: ["Heredia", "Barva", "Santo Domingo", "Belen"],
-      Guanacaste: ["Liberia", "Nicoya", "Santa Cruz", "Carrillo"],
-      Puntarenas: ["Puntarenas", "Esparza", "Golfito", "Osa"],
-      Limon: ["Limon", "Pococi", "Siquirres", "Talamanca"],
+      "San Jose": [
+        "San Jose",
+        "Escazu",
+        "Desamparados",
+        "Puriscal",
+        "Tarrazu",
+        "Aserri",
+        "Mora",
+        "Goicoechea",
+        "Santa Ana",
+        "Alajuelita",
+        "Vazquez de Coronado",
+        "Acosta",
+        "Tibas",
+        "Moravia",
+        "Montes de Oca",
+        "Turrubares",
+        "Dota",
+        "Curridabat",
+        "Perez Zeledon",
+        "Leon Cortes Castro",
+      ],
+      Alajuela: [
+        "Alajuela",
+        "San Ramon",
+        "Grecia",
+        "San Mateo",
+        "Atenas",
+        "Naranjo",
+        "Palmares",
+        "Poas",
+        "Orotina",
+        "San Carlos",
+        "Zarcero",
+        "Sarchi",
+        "Upala",
+        "Los Chiles",
+        "Guatuso",
+        "Rio Cuarto",
+      ],
+      Cartago: ["Cartago", "Paraiso", "La Union", "Jimenez", "Turrialba", "Alvarado", "Oreamuno", "El Guarco"],
+      Heredia: ["Heredia", "Barva", "Santo Domingo", "Santa Barbara", "San Rafael", "San Isidro", "Belen", "Flores", "San Pablo", "Sarapiqui"],
+      Guanacaste: ["Liberia", "Nicoya", "Santa Cruz", "Bagaces", "Carrillo", "Canas", "Abangares", "Tilaran", "Nandayure", "La Cruz", "Hojancha"],
+      Puntarenas: ["Puntarenas", "Esparza", "Buenos Aires", "Montes de Oro", "Osa", "Quepos", "Golfito", "Coto Brus", "Parrita", "Corredores", "Garabito", "Monteverde", "Puerto Jimenez"],
+      Limon: ["Limon", "Pococi", "Siquirres", "Talamanca", "Matina", "Guacimo"],
     },
   },
   Mexico: {
@@ -82,6 +122,9 @@ function roleRows(users) {
 function showApp() {
   $("loginScreen").classList.add("hidden");
   $("appScreen").classList.remove("hidden");
+  $("dashboardPage").classList.remove("hidden");
+  $("companyPage").classList.add("hidden");
+  $("backToDashboardBtn").classList.add("hidden");
   $("signedUser").textContent = state.user
     ? `Sesion: ${state.user.fullName} (${state.user.email})`
     : "";
@@ -90,6 +133,18 @@ function showApp() {
 function showLogin() {
   $("appScreen").classList.add("hidden");
   $("loginScreen").classList.remove("hidden");
+}
+
+function openCompanyPage() {
+  $("dashboardPage").classList.add("hidden");
+  $("companyPage").classList.remove("hidden");
+  $("backToDashboardBtn").classList.remove("hidden");
+}
+
+function openDashboardPage() {
+  $("companyPage").classList.add("hidden");
+  $("dashboardPage").classList.remove("hidden");
+  $("backToDashboardBtn").classList.add("hidden");
 }
 
 function fillSelectOptions(selectEl, placeholder, values) {
@@ -125,7 +180,7 @@ function syncLocationSelectors() {
   phoneCode.value = countryData.dialCode;
   const states = Object.keys(countryData.states);
   fillSelectOptions(stateSelect, "Provincia o estado", states);
-  fillSelectOptions(districtSelect, "Distrito", []);
+  fillSelectOptions(districtSelect, "Canton o distrito", []);
 }
 
 function syncDistrictSelector() {
@@ -135,12 +190,12 @@ function syncDistrictSelector() {
 
   const countryData = LOCATION_DATA[country];
   if (!countryData || !stateName) {
-    fillSelectOptions(districtSelect, "Distrito", []);
+    fillSelectOptions(districtSelect, "Canton o distrito", []);
     return;
   }
 
   const districts = countryData.states[stateName] || [];
-  fillSelectOptions(districtSelect, "Distrito", districts);
+  fillSelectOptions(districtSelect, "Canton o distrito", districts);
 }
 
 function renderAlerts(alerts, daysAhead) {
@@ -186,14 +241,25 @@ async function loadAlerts() {
 async function loadDashboard() {
   const summaryEl = $("summary");
   const listEl = $("companyList");
+  const deletedSummaryEl = $("deletedSummary");
+  const deletedListEl = $("deletedCompanyList");
   summaryEl.textContent = "Cargando...";
   listEl.innerHTML = "";
+  deletedSummaryEl.textContent = "";
+  deletedListEl.innerHTML = "";
 
   try {
-    const data = await apiFetch("/platform/dashboard");
-    summaryEl.textContent = `Empresas: ${data.summary.companies} | Por vencer: ${data.summary.expiringSoon} | Sobrecupo: ${data.summary.overflowing}`;
+    const data = await apiFetch("/platform/dashboard?includeDeleted=true");
+    const activeCompanies = data.companies.filter((company) => !company.isDeleted);
+    const deletedCompanies = data.companies.filter((company) => company.isDeleted);
 
-    listEl.innerHTML = data.companies
+    summaryEl.textContent = `Empresas activas: ${data.summary.companies} | Por vencer: ${data.summary.expiringSoon} | Sobrecupo: ${data.summary.overflowing}`;
+    deletedSummaryEl.textContent =
+      deletedCompanies.length > 0
+        ? `Eliminadas recuperables: ${deletedCompanies.length}`
+        : "Sin empresas eliminadas.";
+
+    listEl.innerHTML = activeCompanies
       .map(
         (company) => `
           <article class="company-card">
@@ -204,6 +270,23 @@ async function loadDashboard() {
             <div class="company-meta">Vence: ${fmtDate(company.activeUntil)}</div>
             <div class="company-actions">
               <button data-gym-id="${company.gymId}" class="ghost-btn detail-btn">Ver detalle</button>
+              <button data-gym-id="${company.gymId}" data-gym-name="${company.gymName}" class="ghost-btn delete-btn">Eliminar</button>
+            </div>
+          </article>
+        `,
+      )
+      .join("");
+
+    deletedListEl.innerHTML = deletedCompanies
+      .map(
+        (company) => `
+          <article class="company-card deleted">
+            <h3>${company.gymName}</h3>
+            <div class="company-meta">Eliminada: ${company.deletedAt ? fmtDate(company.deletedAt) : "-"}</div>
+            <div class="company-meta">Recuperable hasta: ${company.recoverUntil ? fmtDate(company.recoverUntil) : "-"}</div>
+            <div class="company-actions">
+              <button data-gym-id="${company.gymId}" class="ghost-btn detail-btn">Ver detalle</button>
+              <button data-gym-id="${company.gymId}" class="ghost-btn recover-btn">Recuperar</button>
             </div>
           </article>
         `,
@@ -213,7 +296,64 @@ async function loadDashboard() {
     document.querySelectorAll(".detail-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         state.selectedGymId = btn.getAttribute("data-gym-id");
+        openCompanyPage();
         void loadCompanyDetail(state.selectedGymId);
+      });
+    });
+
+    document.querySelectorAll(".delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const gymId = btn.getAttribute("data-gym-id");
+        const gymName = btn.getAttribute("data-gym-name");
+        try {
+          const platformPassword = prompt("Paso 1/2: Ingresa tu contrasena de plataforma para eliminar");
+          if (!platformPassword) return;
+
+          const requestStep = await apiFetch(`/platform/companies/${gymId}/deletion/request`, {
+            method: "POST",
+            body: JSON.stringify({ platformPassword }),
+          });
+
+          const confirmation = prompt(
+            `Paso 2/2: escribe el nombre exacto para confirmar eliminacion:\n${requestStep.confirmationHint}`,
+          );
+          if (!confirmation) return;
+
+          await apiFetch(`/platform/companies/${gymId}/deletion/confirm`, {
+            method: "POST",
+            body: JSON.stringify({
+              challengeToken: requestStep.challengeToken,
+              confirmation,
+            }),
+          });
+
+          alert(`Empresa ${gymName} eliminada. Recuperable por 60 dias.`);
+          await loadDashboard();
+          await loadAlerts();
+        } catch (error) {
+          alert(error.message);
+        }
+      });
+    });
+
+    document.querySelectorAll(".recover-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const gymId = btn.getAttribute("data-gym-id");
+        try {
+          const platformPassword = prompt("Ingresa tu contrasena de plataforma para recuperar esta empresa");
+          if (!platformPassword) return;
+
+          await apiFetch(`/platform/companies/${gymId}/recover`, {
+            method: "POST",
+            body: JSON.stringify({ platformPassword }),
+          });
+
+          alert("Empresa recuperada correctamente");
+          await loadDashboard();
+          await loadAlerts();
+        } catch (error) {
+          alert(error.message);
+        }
       });
     });
   } catch (error) {
@@ -235,6 +375,8 @@ async function loadCompanyDetail(gymId) {
           <h3>${data.company.gymName}</h3>
           <p>Owner: ${data.company.ownerName}</p>
           <p>Moneda: ${data.company.currency}</p>
+          <p>Estado empresa: ${data.company.isDeleted ? "Eliminada" : "Activa"}</p>
+          ${data.company.recoverUntil ? `<p>Recuperable hasta: ${fmtDate(data.company.recoverUntil)}</p>` : ""}
           <p>Plan: ${sub.planTier.toUpperCase()} | Cupo: ${sub.userLimit}</p>
           <p>Estado: ${sub.status} | Miembros activos: ${sub.activeMemberCount}</p>
           <p>Vigencia: ${fmtDate(sub.startsAt)} a ${fmtDate(sub.endsAt)}</p>
@@ -379,13 +521,11 @@ $("loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const errorEl = $("loginError");
   errorEl.textContent = "";
-
-  state.apiBase = $("apiBase").value.trim().replace(/\/$/, "");
   const email = $("loginEmail").value.trim();
   const password = $("loginPassword").value;
 
-  if (!state.apiBase || !email || !password) {
-    errorEl.textContent = "Completa API base, correo y contrasena.";
+  if (!email || !password) {
+    errorEl.textContent = "Completa correo y contrasena.";
     return;
   }
 
@@ -430,6 +570,9 @@ $("createCompanyForm").addEventListener("submit", async (event) => {
       adminPassword: $("companyAdminPassword").value,
       planTier: $("companyPlanTier").value,
       userLimit: Number($("companyUserLimit").value),
+      startsAt: $("companyStartsAt").value
+        ? new Date($("companyStartsAt").value).toISOString()
+        : undefined,
       endsAt: $("companyEndsAt").value
         ? new Date($("companyEndsAt").value).toISOString()
         : undefined,
@@ -464,6 +607,17 @@ $("refreshBtn").addEventListener("click", async () => {
   if (state.selectedGymId) {
     await loadCompanyDetail(state.selectedGymId);
   }
+});
+
+$("backToDashboardBtn").addEventListener("click", () => {
+  openDashboardPage();
+});
+
+document.querySelectorAll(".accordion-header").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const panel = btn.closest(".accordion");
+    panel.classList.toggle("open");
+  });
 });
 
 $("logoutBtn").addEventListener("click", () => {

@@ -16,9 +16,6 @@
         <h1>Platform Control Center</h1>
         <p class="auth-copy">Acceso exclusivo para usuarios de plataforma registrados.</p>
         <form id="loginForm" class="auth-form">
-          <label class="field-label" for="apiBase">API Base</label>
-          <input id="apiBase" type="url" placeholder="https://gym-ai-agent-backend-staging.onrender.com" required />
-
           <label class="field-label" for="loginEmail">Correo</label>
           <input id="loginEmail" type="email" autocomplete="email" placeholder="admin@tucofitness.com" required />
 
@@ -39,66 +36,102 @@
           <p id="signedUser" class="signed-user"></p>
         </div>
         <div class="topbar-actions">
+          <button id="backToDashboardBtn" class="ghost-btn hidden" type="button">Volver al panel</button>
           <button id="refreshBtn" class="ghost-btn" type="button">Actualizar</button>
           <button id="logoutBtn" class="ghost-btn" type="button">Cerrar sesión</button>
         </div>
       </header>
 
-      <main class="layout">
-        <section class="panel">
-          <h3>Alta de gimnasio</h3>
-          <form id="createCompanyForm" class="form-grid">
-            <input id="companyGymName" placeholder="Nombre del gimnasio" required />
-            <input id="companyOwnerName" placeholder="Nombre del propietario" required />
-            <input id="companyAddress" class="full" placeholder="Direccion (opcional)" />
-            <select id="companyCountry">
-              <option value="" selected>Pais</option>
-              <option value="Costa Rica" data-dial-code="+506">Costa Rica</option>
-              <option value="Mexico" data-dial-code="+52">Mexico</option>
-              <option value="Colombia" data-dial-code="+57">Colombia</option>
-              <option value="Estados Unidos" data-dial-code="+1">Estados Unidos</option>
-            </select>
-            <select id="companyState">
-              <option value="" selected>Provincia o estado</option>
-            </select>
-            <select id="companyDistrict">
-              <option value="" selected>Distrito</option>
-            </select>
-            <div class="phone-inline">
-              <input id="companyPhoneCode" placeholder="+000" readonly />
-              <input id="companyPhone" placeholder="Telefono (opcional)" />
-            </div>
-            <select id="companyCurrency">
-              <option value="USD">USD</option>
-              <option value="CRC">CRC</option>
-            </select>
-            <input id="companyAdminEmail" type="email" class="full" placeholder="Correo admin inicial" required />
-            <input id="companyAdminName" placeholder="Nombre admin inicial" required />
-            <input id="companyAdminPassword" type="password" placeholder="Contrasena admin inicial" required />
-            <select id="companyPlanTier">
-              <option value="basica">Basica</option>
-              <option value="standard">Standard</option>
-              <option value="premium" selected>Premium</option>
-            </select>
-            <input id="companyUserLimit" type="number" min="1" placeholder="Cupo usuarios" value="50" required />
-            <input id="companyEndsAt" class="full" type="datetime-local" />
-            <input id="companyNotes" class="full" placeholder="Notas (opcional)" />
-            <button class="full" type="submit">Crear gimnasio</button>
-          </form>
-          <p id="createCompanyError" class="error-copy"></p>
-
-          <h3 style="margin-top:18px;">Alertas importantes</h3>
-          <div id="alertsSummary" class="summary"></div>
-          <div id="alertsList" class="list"></div>
-
-          <h3>Empresas suscritas</h3>
-          <div id="summary" class="summary"></div>
-          <div id="companyList" class="list"></div>
+      <main id="dashboardPage" class="stack-page">
+        <section class="panel accordion open" data-accordion="create">
+          <button type="button" class="accordion-header">
+            <span>Alta de gimnasio</span>
+            <span class="accordion-arrow">▾</span>
+          </button>
+          <div class="accordion-content">
+            <form id="createCompanyForm" class="form-grid">
+              <input id="companyGymName" placeholder="Nombre del gimnasio" required />
+              <input id="companyOwnerName" placeholder="Nombre del propietario" required />
+              <input id="companyAddress" class="full" placeholder="Direccion (opcional)" />
+              <select id="companyCountry">
+                <option value="" selected>Pais</option>
+                <option value="Costa Rica" data-dial-code="+506">Costa Rica</option>
+                <option value="Mexico" data-dial-code="+52">Mexico</option>
+                <option value="Colombia" data-dial-code="+57">Colombia</option>
+                <option value="Estados Unidos" data-dial-code="+1">Estados Unidos</option>
+              </select>
+              <select id="companyState">
+                <option value="" selected>Provincia o estado</option>
+              </select>
+              <select id="companyDistrict">
+                <option value="" selected>Canton o distrito</option>
+              </select>
+              <div class="phone-inline">
+                <input id="companyPhoneCode" placeholder="+000" readonly />
+                <input id="companyPhone" placeholder="Telefono (opcional)" />
+              </div>
+              <select id="companyCurrency">
+                <option value="USD">USD</option>
+                <option value="CRC">CRC</option>
+              </select>
+              <input id="companyAdminEmail" type="email" class="full" placeholder="Correo admin inicial" required />
+              <input id="companyAdminName" placeholder="Nombre admin inicial" required />
+              <input id="companyAdminPassword" type="password" placeholder="Contrasena admin inicial" required />
+              <select id="companyPlanTier">
+                <option value="basica">Basica</option>
+                <option value="standard">Standard</option>
+                <option value="premium" selected>Premium</option>
+              </select>
+              <input id="companyUserLimit" type="number" min="1" placeholder="Cupo usuarios" value="50" required />
+              <label class="field-label full" for="companyStartsAt">Fecha de inscripcion (inicio, opcional)</label>
+              <input id="companyStartsAt" class="full" type="datetime-local" />
+              <label class="field-label full" for="companyEndsAt">Fecha de vencimiento (opcional)</label>
+              <input id="companyEndsAt" class="full" type="datetime-local" />
+              <input id="companyNotes" class="full" placeholder="Notas (opcional)" />
+              <button class="full" type="submit">Crear gimnasio</button>
+            </form>
+            <p id="createCompanyError" class="error-copy"></p>
+          </div>
         </section>
 
+        <section class="panel accordion" data-accordion="alerts">
+          <button type="button" class="accordion-header">
+            <span>Alertas importantes</span>
+            <span class="accordion-arrow">▾</span>
+          </button>
+          <div class="accordion-content">
+            <div id="alertsSummary" class="summary"></div>
+            <div id="alertsList" class="list"></div>
+          </div>
+        </section>
+
+        <section class="panel accordion open" data-accordion="companies">
+          <button type="button" class="accordion-header">
+            <span>Empresas suscritas</span>
+            <span class="accordion-arrow">▾</span>
+          </button>
+          <div class="accordion-content">
+            <div id="summary" class="summary"></div>
+            <div id="companyList" class="list"></div>
+          </div>
+        </section>
+
+        <section class="panel accordion" data-accordion="deleted">
+          <button type="button" class="accordion-header">
+            <span>Empresas eliminadas (recuperables)</span>
+            <span class="accordion-arrow">▾</span>
+          </button>
+          <div class="accordion-content">
+            <div id="deletedSummary" class="summary"></div>
+            <div id="deletedCompanyList" class="list"></div>
+          </div>
+        </section>
+      </main>
+
+      <main id="companyPage" class="stack-page hidden">
         <section class="panel">
           <h3>Detalle de empresa</h3>
-          <div id="companyDetail" class="placeholder">Selecciona una empresa para ver jerarquía y suscripción.</div>
+          <div id="companyDetail" class="placeholder">Selecciona una empresa para ver jerarquia y suscripcion.</div>
         </section>
       </main>
     </section>

@@ -1,15 +1,20 @@
 import { GymSubscriptionStatus, SubscriptionPlanTier, UserRole } from "@prisma/client";
 import { Request, Response } from "express";
+import { createHash, randomBytes } from "crypto";
 import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
 import { HttpError } from "../../utils/http-error";
 import {
   CreateCompanyInput,
   CreateCompanyAdminInput,
+  DeleteCompanyConfirmInput,
+  DeleteCompanyRequestInput,
   EnforceGymSubscriptionInput,
   PlatformAlertsQueryInput,
   PlatformAdminUserInput,
+  PlatformDashboardQueryInput,
   PlatformLoginInput,
+  RecoverCompanyInput,
   UpdateGymSubscriptionInput,
   UpdateSubscriptionStatusInput,
 } from "./platform.validation";
@@ -82,6 +87,27 @@ const normalizeUsernames = (fullName: string, usernames?: string[]) => {
 
 const getComparablePasswordHash = (value: string) =>
   value.startsWith("TEMP$") ? value.slice("TEMP$".length) : value;
+
+const hashDeletionChallenge = (value: string) => createHash("sha256").update(value).digest("hex");
+
+const generateDeletionChallengeToken = () => randomBytes(24).toString("hex");
+
+const verifyPlatformPassword = async (platformUserId: string, password: string) => {
+  const platformUser = await prisma.platformAdminUser.findUnique({
+    where: { id: platformUserId },
+    select: { id: true, isActive: true, passwordHash: true },
+  });
+
+  if (!platformUser || !platformUser.isActive) {
+    throw new HttpError(401, "Usuario de plataforma no valido");
+  }
+
+  const bcrypt = await import("bcryptjs");
+  const isValidPassword = await bcrypt.compare(password, platformUser.passwordHash);
+  if (!isValidPassword) {
+    throw new HttpError(401, "Credenciales invalidas");
+  }
+};
 
 export const loginPlatform = async (req: Request, res: Response): Promise<void> => {
   const body = req.body as PlatformLoginInput;
@@ -218,14 +244,20 @@ export const listPlatformAdminUsers = async (req: Request, res: Response): Promi
   });
 };
 
-export const getPlatformDashboard = async (_req: Request, res: Response): Promise<void> => {
+export const getPlatformDashboard = async (req: Request, res: Response): Promise<void> => {
+  const query = req.query as unknown as PlatformDashboardQueryInput;
+  const includeDeleted = query.includeDeleted === true;
+
   const [gyms, subscriptions] = await Promise.all([
     prisma.gym.findMany({
+      where: includeDeleted ? undefined : { deletedAt: null },
       select: {
         id: true,
         name: true,
         ownerName: true,
         currency: true,
+        deletedAt: true,
+        recoverUntil: true,
         createdAt: true,
       },
       orderBy: { createdAt: "asc" },
@@ -276,6 +308,9 @@ export const getPlatformDashboard = async (_req: Request, res: Response): Promis
         gymName: gym.name,
         ownerName: gym.ownerName,
         currency: gym.currency === "CRC" ? "CRC" : "USD",
+        isDeleted: Boolean(gym.deletedAt),
+        deletedAt: gym.deletedAt ? toUtcIso(gym.deletedAt) : null,
+        recoverUntil: gym.recoverUntil ? toUtcIso(gym.recoverUntil) : null,
         planTier: sub.planTier,
         userLimit: sub.userLimit,
         subscriptionStatus: sub.status,
@@ -289,12 +324,15 @@ export const getPlatformDashboard = async (_req: Request, res: Response): Promis
   );
 
   const expiringSoon = companyCards.filter((item) => item.daysRemaining <= 10);
-  const overflowing = companyCards.filter((item) => item.isOverflowing);
+  const overflowing = companyCards.filter((item) => item.isOverflowing && !item.isDeleted);
+  const deleted = companyCards.filter((item) => item.isDeleted);
+  const active = companyCards.filter((item) => !item.isDeleted);
 
   res.json({
     generatedAt: new Date().toISOString(),
     summary: {
-      companies: companyCards.length,
+      companies: active.length,
+      deleted: deleted.length,
       expiringSoon: expiringSoon.length,
       overflowing: overflowing.length,
     },
@@ -332,6 +370,7 @@ export const getPlatformAlerts = async (req: Request, res: Response): Promise<vo
       orderBy: { endsAt: "asc" },
     }),
     prisma.gym.findMany({
+      where: { deletedAt: null },
       select: { id: true, name: true, ownerName: true },
     }),
   ]);
@@ -360,12 +399,14 @@ export const getPlatformAlerts = async (req: Request, res: Response): Promise<vo
     pendingQueriesByGym.set(item.thread.gymId, current + 1);
   });
 
-  const alerts = subscriptions.map((sub) => {
+  const alerts = subscriptions
+    .filter((sub) => gymMap.has(sub.gymId))
+    .map((sub) => {
     const gym = gymMap.get(sub.gymId);
     const daysRemaining = Math.max(0, Math.ceil((sub.endsAt.getTime() - Date.now()) / 86400000));
     const pendingQueries = pendingQueriesByGym.get(sub.gymId) ?? 0;
 
-    return {
+      return {
       gymId: sub.gymId,
       gymName: gym?.name ?? "Gimnasio",
       ownerName: gym?.ownerName ?? "",
@@ -379,8 +420,8 @@ export const getPlatformAlerts = async (req: Request, res: Response): Promise<vo
       isExpiringSoon: daysRemaining <= daysAhead,
       isInGrace: sub.status === GymSubscriptionStatus.grace,
       isSuspended: sub.status === GymSubscriptionStatus.suspended,
-    };
-  });
+      };
+    });
 
   res.json({
     generatedAt: new Date().toISOString(),
@@ -597,7 +638,15 @@ export const getCompanyHierarchy = async (req: Request, res: Response): Promise<
 
   const gym = await prisma.gym.findUnique({
     where: { id: gymId },
-    select: { id: true, name: true, ownerName: true, currency: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      ownerName: true,
+      currency: true,
+      deletedAt: true,
+      recoverUntil: true,
+      createdAt: true,
+    },
   });
 
   if (!gym) {
@@ -628,6 +677,9 @@ export const getCompanyHierarchy = async (req: Request, res: Response): Promise<
       gymName: gym.name,
       ownerName: gym.ownerName,
       currency: gym.currency === "CRC" ? "CRC" : "USD",
+      isDeleted: Boolean(gym.deletedAt),
+      deletedAt: gym.deletedAt ? toUtcIso(gym.deletedAt) : null,
+      recoverUntil: gym.recoverUntil ? toUtcIso(gym.recoverUntil) : null,
       createdAt: toUtcIso(gym.createdAt),
     },
     subscription: {
@@ -826,9 +878,15 @@ export const createCompanyAdmin = async (req: Request, res: Response): Promise<v
   const { gymId } = req.params as { gymId: string };
   const body = req.body as CreateCompanyAdminInput;
 
-  const gym = await prisma.gym.findUnique({ where: { id: gymId }, select: { id: true, name: true } });
+  const gym = await prisma.gym.findUnique({
+    where: { id: gymId },
+    select: { id: true, name: true, deletedAt: true },
+  });
   if (!gym) {
     throw new HttpError(404, "Empresa no encontrada");
+  }
+  if (gym.deletedAt) {
+    throw new HttpError(409, "No puedes crear administradores en una empresa eliminada");
   }
 
   const emailLower = body.email.toLowerCase().trim();
@@ -921,5 +979,183 @@ export const createCompanyAdmin = async (req: Request, res: Response): Promise<v
       ...created,
       createdAt: created.createdAt.toISOString(),
     },
+  });
+};
+
+export const requestCompanyDeletion = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const { gymId } = req.params as { gymId: string };
+  const body = req.body as DeleteCompanyRequestInput;
+
+  await verifyPlatformPassword(session.platformUserId, body.platformPassword);
+
+  const gym = await prisma.gym.findUnique({
+    where: { id: gymId },
+    select: { id: true, name: true, deletedAt: true },
+  });
+  if (!gym) {
+    throw new HttpError(404, "Empresa no encontrada");
+  }
+  if (gym.deletedAt) {
+    throw new HttpError(409, "La empresa ya fue eliminada");
+  }
+
+  const challengeToken = generateDeletionChallengeToken();
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+  await prisma.gym.update({
+    where: { id: gymId },
+    data: {
+      deletionPendingAt: new Date(),
+      deletionChallengeHash: hashDeletionChallenge(challengeToken),
+      deletionChallengeExpiresAt: expiresAt,
+      deletionRequestedByPlatformUserId: session.platformUserId,
+    },
+  });
+
+  res.json({
+    message: "Paso 1 completado. Confirma eliminacion con el token y nombre de empresa.",
+    challengeToken,
+    expiresAt: expiresAt.toISOString(),
+    confirmationHint: gym.name,
+  });
+};
+
+export const confirmCompanyDeletion = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const { gymId } = req.params as { gymId: string };
+  const body = req.body as DeleteCompanyConfirmInput;
+
+  const gym = await prisma.gym.findUnique({
+    where: { id: gymId },
+    select: {
+      id: true,
+      name: true,
+      deletedAt: true,
+      deletionChallengeHash: true,
+      deletionChallengeExpiresAt: true,
+    },
+  });
+  if (!gym) {
+    throw new HttpError(404, "Empresa no encontrada");
+  }
+  if (gym.deletedAt) {
+    throw new HttpError(409, "La empresa ya fue eliminada");
+  }
+
+  if (!gym.deletionChallengeHash || !gym.deletionChallengeExpiresAt) {
+    throw new HttpError(400, "Primero debes solicitar la eliminacion (paso 1)");
+  }
+  if (gym.deletionChallengeExpiresAt.getTime() < Date.now()) {
+    throw new HttpError(400, "El token de eliminacion expiró. Solicita uno nuevo.");
+  }
+
+  if (gym.name.trim().toLowerCase() !== body.confirmation.trim().toLowerCase()) {
+    throw new HttpError(400, "La confirmacion no coincide con el nombre del gimnasio");
+  }
+
+  if (hashDeletionChallenge(body.challengeToken) !== gym.deletionChallengeHash) {
+    throw new HttpError(401, "Token de confirmacion invalido");
+  }
+
+  const deletedAt = new Date();
+  const recoverUntil = new Date(deletedAt);
+  recoverUntil.setUTCDate(recoverUntil.getUTCDate() + 60);
+
+  await prisma.$transaction([
+    prisma.gym.update({
+      where: { id: gymId },
+      data: {
+        deletedAt,
+        recoverUntil,
+        deletedByPlatformUserId: session.platformUserId,
+        deletionPendingAt: null,
+        deletionChallengeHash: null,
+        deletionChallengeExpiresAt: null,
+      },
+    }),
+    prisma.gymSubscription.updateMany({
+      where: { gymId },
+      data: {
+        status: GymSubscriptionStatus.cancelled,
+        updatedBy: session.platformUserId,
+      },
+    }),
+    prisma.user.updateMany({
+      where: { gymId },
+      data: { isActive: false },
+    }),
+    prisma.gymSubscriptionAudit.create({
+      data: {
+        gymId,
+        action: "company.deleted",
+        reason: "Soft delete with 60-day recovery",
+        createdBy: session.platformUserId,
+      },
+    }),
+  ]);
+
+  res.json({
+    message: "Empresa eliminada. Puedes recuperarla durante 60 dias.",
+    deletedAt: deletedAt.toISOString(),
+    recoverUntil: recoverUntil.toISOString(),
+  });
+};
+
+export const recoverCompany = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const { gymId } = req.params as { gymId: string };
+  const body = req.body as RecoverCompanyInput;
+
+  await verifyPlatformPassword(session.platformUserId, body.platformPassword);
+
+  const gym = await prisma.gym.findUnique({
+    where: { id: gymId },
+    select: { id: true, deletedAt: true, recoverUntil: true },
+  });
+  if (!gym) {
+    throw new HttpError(404, "Empresa no encontrada");
+  }
+  if (!gym.deletedAt || !gym.recoverUntil) {
+    throw new HttpError(409, "La empresa no esta eliminada");
+  }
+  if (gym.recoverUntil.getTime() < Date.now()) {
+    throw new HttpError(410, "La ventana de recuperacion de 60 dias ya expiro");
+  }
+
+  await prisma.$transaction([
+    prisma.gym.update({
+      where: { id: gymId },
+      data: {
+        deletedAt: null,
+        recoverUntil: null,
+        deletedByPlatformUserId: null,
+        deletionPendingAt: null,
+        deletionChallengeHash: null,
+        deletionChallengeExpiresAt: null,
+        deletionRequestedByPlatformUserId: null,
+      },
+    }),
+    prisma.gymSubscription.updateMany({
+      where: { gymId },
+      data: {
+        status: GymSubscriptionStatus.active,
+        updatedBy: session.platformUserId,
+      },
+    }),
+    prisma.gymSubscriptionAudit.create({
+      data: {
+        gymId,
+        action: "company.recovered",
+        reason: "Recovered during 60-day window",
+        createdBy: session.platformUserId,
+      },
+    }),
+  ]);
+
+  res.json({
+    message: "Empresa recuperada correctamente",
+    gymId,
   });
 };

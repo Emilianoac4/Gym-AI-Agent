@@ -6,6 +6,7 @@ import {
 } from "../../middleware/platform-auth.middleware";
 import {
   bootstrapPlatformAdmin,
+  confirmCompanyDeletion,
   createCompany,
   createPlatformAdminUser,
   createCompanyAdmin,
@@ -16,17 +17,23 @@ import {
   getPlatformDashboard,
   listPlatformAdminUsers,
   loginPlatform,
+  recoverCompany,
+  requestCompanyDeletion,
   updateCompanySubscription,
   updateCompanySubscriptionStatus,
 } from "./platform.controller";
 import {
+  deleteCompanyConfirmSchema,
+  deleteCompanyRequestSchema,
   createCompanySchema,
   createCompanyAdminSchema,
   enforceGymSubscriptionSchema,
   gymParamsSchema,
+  platformDashboardQuerySchema,
   platformAlertsQuerySchema,
   platformAdminUserSchema,
   platformLoginSchema,
+  recoverCompanySchema,
   updateSubscriptionStatusSchema,
   updateGymSubscriptionSchema,
 } from "./platform.validation";
@@ -47,7 +54,7 @@ platformRouter.get("/auth/me", getPlatformSession);
 platformRouter.get("/auth/users", listPlatformAdminUsers);
 platformRouter.post("/auth/users", validate(platformAdminUserSchema), createPlatformAdminUser);
 
-platformRouter.get("/dashboard", getPlatformDashboard);
+platformRouter.get("/dashboard", validate(platformDashboardQuerySchema), getPlatformDashboard);
 platformRouter.get("/alerts", validate(platformAlertsQuerySchema), getPlatformAlerts);
 platformRouter.post("/companies", validate(createCompanySchema), createCompany);
 platformRouter.get("/companies/:gymId", validate(gymParamsSchema), getCompanyHierarchy);
@@ -62,6 +69,24 @@ platformRouter.put(
   validate(gymParamsSchema),
   validate(updateGymSubscriptionSchema),
   updateCompanySubscription,
+);
+platformRouter.post(
+  "/companies/:gymId/deletion/request",
+  validate(gymParamsSchema),
+  validate(deleteCompanyRequestSchema),
+  requestCompanyDeletion,
+);
+platformRouter.post(
+  "/companies/:gymId/deletion/confirm",
+  validate(gymParamsSchema),
+  validate(deleteCompanyConfirmSchema),
+  confirmCompanyDeletion,
+);
+platformRouter.post(
+  "/companies/:gymId/recover",
+  validate(gymParamsSchema),
+  validate(recoverCompanySchema),
+  recoverCompany,
 );
 platformRouter.post(
   "/companies/:gymId/subscription/enforce",

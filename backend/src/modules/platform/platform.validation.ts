@@ -45,6 +45,23 @@ export const platformAlertsQuerySchema = z.object({
   daysAhead: z.coerce.number().int().min(1).max(60).optional(),
 });
 
+export const platformDashboardQuerySchema = z.object({
+  includeDeleted: z.coerce.boolean().optional(),
+});
+
+export const deleteCompanyRequestSchema = z.object({
+  platformPassword: z.string().min(8).max(120),
+});
+
+export const deleteCompanyConfirmSchema = z.object({
+  challengeToken: z.string().min(16).max(200),
+  confirmation: z.string().min(2).max(200),
+});
+
+export const recoverCompanySchema = z.object({
+  platformPassword: z.string().min(8).max(120),
+});
+
 export const platformLoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(120),
@@ -71,3 +88,7 @@ export type PlatformAdminUserInput = z.infer<typeof platformAdminUserSchema>;
 export type CreateCompanyInput = z.infer<typeof createCompanySchema>;
 export type UpdateSubscriptionStatusInput = z.infer<typeof updateSubscriptionStatusSchema>;
 export type PlatformAlertsQueryInput = z.infer<typeof platformAlertsQuerySchema>;
+export type PlatformDashboardQueryInput = z.infer<typeof platformDashboardQuerySchema>;
+export type DeleteCompanyRequestInput = z.infer<typeof deleteCompanyRequestSchema>;
+export type DeleteCompanyConfirmInput = z.infer<typeof deleteCompanyConfirmSchema>;
+export type RecoverCompanyInput = z.infer<typeof recoverCompanySchema>;
