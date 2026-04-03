@@ -7,30 +7,56 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <h1>Tuco Platform Admin</h1>
-        <p>Gestión centralizada de empresas, planes y cupos</p>
-      </div>
-      <div class="auth-panel">
-        <input id="apiBase" type="text" placeholder="API base (ej: https://api.tucofit.com)" />
-        <input id="platformToken" type="password" placeholder="x-platform-token" />
-        <button id="connectBtn">Conectar</button>
-      </div>
-    </header>
+    <div class="bg-orb bg-orb-a"></div>
+    <div class="bg-orb bg-orb-b"></div>
 
-    <main class="layout">
-      <section class="panel">
-        <h2>Empresas suscritas</h2>
-        <div id="summary" class="summary"></div>
-        <div id="companyList" class="list"></div>
-      </section>
+    <section id="loginScreen" class="auth-shell">
+      <div class="auth-card">
+        <p class="eyebrow">Tuco Fitness Center</p>
+        <h1>Platform Control Center</h1>
+        <p class="auth-copy">Acceso exclusivo para usuarios de plataforma registrados.</p>
+        <form id="loginForm" class="auth-form">
+          <label class="field-label" for="apiBase">API Base</label>
+          <input id="apiBase" type="url" placeholder="https://gym-ai-agent-backend-staging.onrender.com" required />
 
-      <section class="panel">
-        <h2>Detalle de empresa</h2>
-        <div id="companyDetail" class="placeholder">Selecciona una empresa para ver jerarquía y suscripción.</div>
-      </section>
-    </main>
+          <label class="field-label" for="loginEmail">Correo</label>
+          <input id="loginEmail" type="email" autocomplete="email" placeholder="admin@tucofitness.com" required />
+
+          <label class="field-label" for="loginPassword">Contraseña</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Tu contraseña" required />
+
+          <button id="loginBtn" type="submit">Iniciar sesión</button>
+          <p id="loginError" class="error-copy"></p>
+        </form>
+      </div>
+    </section>
+
+    <section id="appScreen" class="app-shell hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Tuco Fitness Center</p>
+          <h2>Gestión centralizada de empresas</h2>
+          <p id="signedUser" class="signed-user"></p>
+        </div>
+        <div class="topbar-actions">
+          <button id="refreshBtn" class="ghost-btn" type="button">Actualizar</button>
+          <button id="logoutBtn" class="ghost-btn" type="button">Cerrar sesión</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel">
+          <h3>Empresas suscritas</h3>
+          <div id="summary" class="summary"></div>
+          <div id="companyList" class="list"></div>
+        </section>
+
+        <section class="panel">
+          <h3>Detalle de empresa</h3>
+          <div id="companyDetail" class="placeholder">Selecciona una empresa para ver jerarquía y suscripción.</div>
+        </section>
+      </main>
+    </section>
 
     <script src="app.js"></script>
   </body>

@@ -2,14 +2,15 @@ const state = {
   apiBase: "",
   token: "",
   selectedGymId: "",
+  user: null,
 };
 
 const $ = (id) => document.getElementById(id);
 
-function header() {
+function authHeaders() {
   return {
     "Content-Type": "application/json",
-    "x-platform-token": state.token,
+    Authorization: `Bearer ${state.token}`,
   };
 }
 
@@ -17,7 +18,7 @@ async function apiFetch(path, options = {}) {
   const res = await fetch(`${state.apiBase}${path}`, {
     ...options,
     headers: {
-      ...header(),
+      ...(state.token ? authHeaders() : { "Content-Type": "application/json" }),
       ...(options.headers || {}),
     },
   });
@@ -37,6 +38,19 @@ function roleRows(users) {
   return users
     .map((u) => `<li>${u.fullName} (${u.email}) ${u.isActive ? "" : "[INACTIVO]"}</li>`)
     .join("");
+}
+
+function showApp() {
+  $("loginScreen").classList.add("hidden");
+  $("appScreen").classList.remove("hidden");
+  $("signedUser").textContent = state.user
+    ? `Sesion: ${state.user.fullName} (${state.user.email})`
+    : "";
+}
+
+function showLogin() {
+  $("appScreen").classList.add("hidden");
+  $("loginScreen").classList.remove("hidden");
 }
 
 async function loadDashboard() {
@@ -59,7 +73,7 @@ async function loadDashboard() {
             <div class="company-meta">Activos: ${company.counts.activeMembers} | Estado: ${company.subscriptionStatus}</div>
             <div class="company-meta">Vence: ${fmtDate(company.activeUntil)}</div>
             <div class="company-actions">
-              <button data-gym-id="${company.gymId}" class="secondary detail-btn">Ver detalle</button>
+              <button data-gym-id="${company.gymId}" class="ghost-btn detail-btn">Ver detalle</button>
             </div>
           </article>
         `,
@@ -197,15 +211,49 @@ async function loadCompanyDetail(gymId) {
   }
 }
 
-$("connectBtn").addEventListener("click", async () => {
-  const apiBase = $("apiBase").value.trim().replace(/\/$/, "");
-  const token = $("platformToken").value.trim();
-  if (!apiBase || !token) {
-    alert("Debes completar API base y token");
+$("loginForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const errorEl = $("loginError");
+  errorEl.textContent = "";
+
+  state.apiBase = $("apiBase").value.trim().replace(/\/$/, "");
+  const email = $("loginEmail").value.trim();
+  const password = $("loginPassword").value;
+
+  if (!state.apiBase || !email || !password) {
+    errorEl.textContent = "Completa API base, correo y contrasena.";
     return;
   }
 
-  state.apiBase = apiBase;
-  state.token = token;
+  try {
+    const login = await apiFetch("/platform/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    state.token = login.token;
+    const me = await apiFetch("/platform/auth/me");
+    state.user = me.user;
+
+    showApp();
+    await loadDashboard();
+  } catch (error) {
+    errorEl.textContent = error.message;
+  }
+});
+
+$("refreshBtn").addEventListener("click", async () => {
   await loadDashboard();
+  if (state.selectedGymId) {
+    await loadCompanyDetail(state.selectedGymId);
+  }
+});
+
+$("logoutBtn").addEventListener("click", () => {
+  state.token = "";
+  state.user = null;
+  state.selectedGymId = "";
+  $("companyDetail").textContent = "Selecciona una empresa para ver jerarquia y suscripcion.";
+  showLogin();
 });

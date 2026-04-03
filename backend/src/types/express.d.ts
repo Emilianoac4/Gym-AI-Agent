@@ -8,6 +8,10 @@ declare global {
         userId: string;
         role: UserRole;
       };
+      platformAuth?: {
+        platformUserId: string;
+        email: string;
+      };
     }
   }
 }

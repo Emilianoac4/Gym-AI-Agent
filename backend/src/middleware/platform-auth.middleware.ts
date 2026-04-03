@@ -1,14 +1,37 @@
 import { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
 import { HttpError } from "../utils/http-error";
+import { verifyPlatformAuthToken } from "../utils/platform-jwt";
 
-export const authenticatePlatform = (
+export const authenticatePlatformSession = (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    next(new HttpError(401, "Missing or invalid Authorization header"));
+    return;
+  }
+
+  const token = authHeader.slice(7);
+
+  try {
+    const payload = verifyPlatformAuthToken(token);
+    req.platformAuth = payload;
+    next();
+  } catch {
+    next(new HttpError(401, "Invalid or expired platform session"));
+  }
+};
+
+export const authenticatePlatformBootstrapToken = (
   req: Request,
   _res: Response,
   next: NextFunction,
 ): void => {
   if (!env.PLATFORM_ADMIN_TOKEN) {
-    next(new HttpError(503, "Platform administration is not configured"));
+    next(new HttpError(503, "Platform bootstrap token is not configured"));
     return;
   }
 
@@ -19,7 +42,7 @@ export const authenticatePlatform = (
   }
 
   if (providedToken !== env.PLATFORM_ADMIN_TOKEN) {
-    next(new HttpError(403, "Invalid platform token"));
+    next(new HttpError(403, "Invalid platform bootstrap token"));
     return;
   }
 

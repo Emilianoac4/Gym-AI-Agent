@@ -392,3 +392,17 @@ model GymSubscriptionAudit {
   @@index([gymId, createdAt])
   @@map("gym_subscription_audits")
 }
+
+model PlatformAdminUser {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  passwordHash String  @map("password_hash")
+  fullName    String   @map("full_name")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@map("platform_admin_users")
+}

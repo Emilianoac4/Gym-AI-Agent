@@ -6,8 +6,11 @@ import { HttpError } from "../../utils/http-error";
 import {
   CreateCompanyAdminInput,
   EnforceGymSubscriptionInput,
+  PlatformAdminUserInput,
+  PlatformLoginInput,
   UpdateGymSubscriptionInput,
 } from "./platform.validation";
+import { signPlatformAuthToken } from "../../utils/platform-jwt";
 
 const DEFAULT_PLAN: SubscriptionPlanTier = SubscriptionPlanTier.premium;
 const DEFAULT_LIMIT = 50;
@@ -55,6 +58,146 @@ const resolveGraceWindow = (from: Date) => {
   const graceEndsAt = new Date(from);
   graceEndsAt.setUTCDate(graceEndsAt.getUTCDate() + env.PLATFORM_SUBSCRIPTION_GRACE_DAYS);
   return { graceStartsAt, graceEndsAt };
+};
+
+const requirePlatformSession = (req: Request) => {
+  if (!req.platformAuth) {
+    throw new HttpError(401, "Platform session required");
+  }
+
+  return req.platformAuth;
+};
+
+export const loginPlatform = async (req: Request, res: Response): Promise<void> => {
+  const body = req.body as PlatformLoginInput;
+
+  const user = await prisma.platformAdminUser.findUnique({
+    where: { email: body.email.toLowerCase() },
+  });
+
+  if (!user || !user.isActive) {
+    throw new HttpError(401, "Credenciales invalidas");
+  }
+
+  const bcrypt = await import("bcryptjs");
+  const isValid = await bcrypt.compare(body.password, user.passwordHash);
+  if (!isValid) {
+    throw new HttpError(401, "Credenciales invalidas");
+  }
+
+  const token = signPlatformAuthToken({
+    platformUserId: user.id,
+    email: user.email,
+  });
+
+  res.json({
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+    },
+  });
+};
+
+export const getPlatformSession = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const user = await prisma.platformAdminUser.findUnique({
+    where: { id: session.platformUserId },
+    select: { id: true, email: true, fullName: true, isActive: true },
+  });
+
+  if (!user || !user.isActive) {
+    throw new HttpError(401, "Platform session user is not active");
+  }
+
+  res.json({ user });
+};
+
+export const bootstrapPlatformAdmin = async (req: Request, res: Response): Promise<void> => {
+  const body = req.body as PlatformAdminUserInput;
+
+  const existingCount = await prisma.platformAdminUser.count();
+  if (existingCount > 0) {
+    throw new HttpError(409, "Platform bootstrap already completed");
+  }
+
+  const bcrypt = await import("bcryptjs");
+  const passwordHash = await bcrypt.hash(body.password, 12);
+
+  const created = await prisma.platformAdminUser.create({
+    data: {
+      email: body.email.toLowerCase(),
+      passwordHash,
+      fullName: body.fullName,
+      isActive: true,
+      createdById: null,
+    },
+    select: { id: true, email: true, fullName: true, createdAt: true },
+  });
+
+  res.status(201).json({
+    message: "Usuario de plataforma creado",
+    user: {
+      ...created,
+      createdAt: created.createdAt.toISOString(),
+    },
+  });
+};
+
+export const createPlatformAdminUser = async (req: Request, res: Response): Promise<void> => {
+  const body = req.body as PlatformAdminUserInput;
+  const session = requirePlatformSession(req);
+
+  const existing = await prisma.platformAdminUser.findUnique({ where: { email: body.email.toLowerCase() } });
+  if (existing) {
+    throw new HttpError(409, "Ya existe un usuario de plataforma con ese correo");
+  }
+
+  const bcrypt = await import("bcryptjs");
+  const passwordHash = await bcrypt.hash(body.password, 12);
+
+  const created = await prisma.platformAdminUser.create({
+    data: {
+      email: body.email.toLowerCase(),
+      passwordHash,
+      fullName: body.fullName,
+      isActive: true,
+      createdById: session.platformUserId,
+    },
+    select: { id: true, email: true, fullName: true, createdAt: true },
+  });
+
+  res.status(201).json({
+    message: "Usuario de plataforma creado",
+    user: {
+      ...created,
+      createdAt: created.createdAt.toISOString(),
+    },
+  });
+};
+
+export const listPlatformAdminUsers = async (req: Request, res: Response): Promise<void> => {
+  requirePlatformSession(req);
+
+  const users = await prisma.platformAdminUser.findMany({
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      isActive: true,
+      createdAt: true,
+      createdById: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  res.json({
+    users: users.map((user) => ({
+      ...user,
+      createdAt: user.createdAt.toISOString(),
+    })),
+  });
 };
 
 export const getPlatformDashboard = async (_req: Request, res: Response): Promise<void> => {

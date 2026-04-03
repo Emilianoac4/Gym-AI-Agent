@@ -17,6 +17,17 @@ export const gymParamsSchema = z.object({
   gymId: z.string().uuid(),
 });
 
+export const platformLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(120),
+});
+
+export const platformAdminUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(120),
+  fullName: z.string().min(2).max(120),
+});
+
 export const createCompanyAdminSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(2).max(120),
@@ -26,3 +37,5 @@ export const createCompanyAdminSchema = z.object({
 export type UpdateGymSubscriptionInput = z.infer<typeof updateGymSubscriptionSchema>;
 export type EnforceGymSubscriptionInput = z.infer<typeof enforceGymSubscriptionSchema>;
 export type CreateCompanyAdminInput = z.infer<typeof createCompanyAdminSchema>;
+export type PlatformLoginInput = z.infer<typeof platformLoginSchema>;
+export type PlatformAdminUserInput = z.infer<typeof platformAdminUserSchema>;
