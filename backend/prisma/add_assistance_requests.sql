@@ -1,8 +1,12 @@
 -- Create AssistanceRequest table for Fase 1 (Trainer operations)
 -- Safe to run multiple times
 
+-- Drop old snake_case enum + table if created by a previous run
+DROP TYPE IF EXISTS assistance_request_status CASCADE;
+
+-- Create enum with PascalCase name to match Prisma
 DO $$ BEGIN
-  CREATE TYPE assistance_request_status AS ENUM (
+  CREATE TYPE "AssistanceRequestStatus" AS ENUM (
     'CREATED',
     'ASSIGNED',
     'IN_PROGRESS',
@@ -17,7 +21,7 @@ CREATE TABLE IF NOT EXISTS "assistance_requests" (
   "gym_id"      UUID        NOT NULL,
   "member_id"   UUID        NOT NULL,
   "trainer_id"  UUID,
-  "status"      assistance_request_status NOT NULL DEFAULT 'CREATED',
+  "status"      "AssistanceRequestStatus" NOT NULL DEFAULT 'CREATED',
   "description" TEXT        NOT NULL,
   "resolution"  TEXT,
   "rating"      INTEGER     CHECK ("rating" BETWEEN 1 AND 5),

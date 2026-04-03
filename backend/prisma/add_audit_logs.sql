@@ -1,8 +1,12 @@
 -- Create AuditLog table for Fase 0 (Audit and permissions foundation)
 -- Safe to run multiple times
 
+-- Drop old snake_case enum if it was created by a previous run
+DROP TYPE IF EXISTS audit_action;
+
+-- Create enum with PascalCase name to match Prisma
 DO $$ BEGIN
-  CREATE TYPE audit_action AS ENUM (
+  CREATE TYPE "AuditAction" AS ENUM (
     'user_created',
     'user_updated',
     'user_deleted',
@@ -24,7 +28,7 @@ CREATE TABLE IF NOT EXISTS "audit_logs" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   "gym_id" UUID,
   "actor_user_id" UUID,
-  "action" audit_action NOT NULL,
+  "action" "AuditAction" NOT NULL,
   "resource_type" TEXT NOT NULL,
   "resource_id" TEXT NOT NULL,
   "changes" TEXT,
