@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tuco Platform Admin</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Tuco Platform Admin</h1>
+        <p>Gestión centralizada de empresas, planes y cupos</p>
+      </div>
+      <div class="auth-panel">
+        <input id="apiBase" type="text" placeholder="API base (ej: https://api.tucofit.com)" />
+        <input id="platformToken" type="password" placeholder="x-platform-token" />
+        <button id="connectBtn">Conectar</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h2>Empresas suscritas</h2>
+        <div id="summary" class="summary"></div>
+        <div id="companyList" class="list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Detalle de empresa</h2>
+        <div id="companyDetail" class="placeholder">Selecciona una empresa para ver jerarquía y suscripción.</div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -9,6 +9,7 @@ import { aiRouter } from "./modules/ai/ai.routes";
 import { availabilityRouter } from "./modules/availability/availability.routes";
 import { operationsRouter } from "./modules/operations/operations.routes";
 import { notificationsRouter } from "./modules/notifications/notifications.routes";
+import { platformRouter } from "./modules/platform/platform.routes";
 import { notFoundHandler } from "./middleware/not-found.middleware";
 import { errorHandler } from "./middleware/error.middleware";
 
@@ -55,6 +56,7 @@ app.use("/ai", aiRouter);
 app.use("/availability", availabilityRouter);
 app.use("/operations", operationsRouter);
 app.use("/notifications", notificationsRouter);
+app.use("/platform", platformRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

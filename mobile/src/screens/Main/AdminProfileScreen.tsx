@@ -39,6 +39,13 @@ const formatDateTime = (value: string) =>
     minute: "2-digit",
   });
 
+const formatMoney = (value: number, currency: "USD" | "CRC") =>
+  new Intl.NumberFormat(currency === "CRC" ? "es-CR" : "en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(value);
+
 const formatHour = (value: string | null) => {
   if (!value) {
     return "En curso";
@@ -413,7 +420,12 @@ export function AdminProfileScreen() {
           </View>
           <View style={styles.infoCard}>
             <Text style={styles.reportCaption}>Rango actual: {report?.reportLabel ?? reportRangeLabel}</Text>
-            <Text style={styles.reportAmount}>${report?.summary.totalAmount.toFixed(2) ?? "0.00"}</Text>
+            <Text style={styles.reportAmount}>
+              {formatMoney(
+                report?.summary.totalAmount ?? 0,
+                report?.currency ?? gymSettings?.currency ?? "USD",
+              )}
+            </Text>
             <View style={styles.reportStatsRow}>
               <View style={styles.reportStatChip}>
                 <Text style={styles.reportStatValue}>{report?.summary.totalRegistrations ?? 0}</Text>
@@ -437,7 +449,7 @@ export function AdminProfileScreen() {
                   </Text>
                 </View>
                 <View style={styles.reportRowRight}>
-                  <Text style={styles.reportRowAmount}>${row.amount.toFixed(2)}</Text>
+                  <Text style={styles.reportRowAmount}>{formatMoney(row.amount, row.currency)}</Text>
                   <Text style={styles.reportRowMeta}>{formatDateTime(row.date)}</Text>
                 </View>
               </View>

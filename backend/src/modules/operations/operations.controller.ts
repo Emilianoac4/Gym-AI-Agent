@@ -22,6 +22,14 @@ const TRANSACTION_TYPE_LABEL: Record<MembershipTransactionType, string> = {
   renewal: "Renovacion",
 };
 
+type GymCurrency = "USD" | "CRC";
+
+const normalizeCurrency = (value: string | null | undefined): GymCurrency =>
+  value === "CRC" ? "CRC" : "USD";
+
+const getCurrencySymbol = (currency: GymCurrency): string =>
+  currency === "CRC" ? "CRC " : "$";
+
 const requireAuth = (req: Request<any, any, any, any>) => {
   if (!req.auth) {
     throw new HttpError(401, "Unauthorized");
@@ -235,6 +243,17 @@ const buildMembershipReport = async (
   days: number,
   specificDate?: string,
 ) => {
+  const gym = await prisma.gym.findUnique({
+    where: { id: gymId },
+    select: { currency: true },
+  });
+
+  if (!gym) {
+    throw new HttpError(404, "Gimnasio no encontrado");
+  }
+
+  const reportCurrency = normalizeCurrency(gym.currency);
+
   const rangeStart = new Date();
   rangeStart.setHours(0, 0, 0, 0);
   rangeStart.setDate(rangeStart.getDate() - (days - 1));
@@ -267,6 +286,7 @@ const buildMembershipReport = async (
       actorUserId: true,
       paymentMethod: true,
       amount: true,
+      currency: true,
     },
   });
 
@@ -289,6 +309,7 @@ const buildMembershipReport = async (
     paymentMethodLabel: PAYMENT_METHOD_LABEL[row.paymentMethod],
     actorName: userMap.get(row.actorUserId) ?? "Sistema",
     amount: row.amount,
+    currency: normalizeCurrency(row.currency ?? reportCurrency),
   }));
 
   const summary = normalizedRows.reduce(
@@ -302,7 +323,13 @@ const buildMembershipReport = async (
       }
       return acc;
     },
-    { rowCount: 0, totalAmount: 0, totalRegistrations: 0, totalRenewals: 0 },
+    {
+      rowCount: 0,
+      totalAmount: 0,
+      totalRegistrations: 0,
+      totalRenewals: 0,
+      currency: reportCurrency,
+    },
   );
 
   const csvLines = [
@@ -312,6 +339,7 @@ const buildMembershipReport = async (
       "Usuario",
       "Metodo de pago",
       "Registrado por",
+      "Moneda",
       "Monto",
     ].join(","),
     ...normalizedRows.map((row) =>
@@ -321,6 +349,7 @@ const buildMembershipReport = async (
         row.memberName,
         row.paymentMethodLabel,
         row.actorName,
+        row.currency,
         row.amount.toFixed(2),
       ]
         .map((value) => `"${String(value).replace(/"/g, '""')}"`)
@@ -332,6 +361,7 @@ const buildMembershipReport = async (
     periodDays: days,
     reportLabel,
     specificDate: specificDate ?? null,
+    currency: reportCurrency,
     generatedAt: new Date().toISOString(),
     summary,
     rows: normalizedRows,
@@ -340,14 +370,15 @@ const buildMembershipReport = async (
 };
 
 const buildMembershipReportEmail = (report: Awaited<ReturnType<typeof buildMembershipReport>>) => {
+  const moneySymbol = getCurrencySymbol(report.currency);
   const rowsHtml = report.rows.length
     ? report.rows
         .map(
           (row) =>
-            `<tr><td>${row.date}</td><td>${row.typeLabel}</td><td>${row.memberName}</td><td>${row.paymentMethodLabel}</td><td>${row.actorName}</td><td>${row.amount.toFixed(2)}</td></tr>`,
+            `<tr><td>${row.date}</td><td>${row.typeLabel}</td><td>${row.memberName}</td><td>${row.paymentMethodLabel}</td><td>${row.actorName}</td><td>${row.currency}</td><td>${moneySymbol}${row.amount.toFixed(2)}</td></tr>`,
         )
         .join("")
-    : "<tr><td colspan=\"6\">Sin movimientos en el periodo seleccionado.</td></tr>";
+    : "<tr><td colspan=\"7\">Sin movimientos en el periodo seleccionado.</td></tr>";
 
   const html = `
     <h2>Reporte de registros y renovaciones</h2>
@@ -355,7 +386,8 @@ const buildMembershipReportEmail = (report: Awaited<ReturnType<typeof buildMembe
     <p>Total movimientos: ${report.summary.rowCount}</p>
     <p>Total registros: ${report.summary.totalRegistrations}</p>
     <p>Total renovaciones: ${report.summary.totalRenewals}</p>
-    <p>Monto total: ${report.summary.totalAmount.toFixed(2)}</p>
+    <p>Moneda: ${report.currency}</p>
+    <p>Monto total: ${moneySymbol}${report.summary.totalAmount.toFixed(2)}</p>
     <table border="1" cellspacing="0" cellpadding="6">
       <thead>
         <tr>
@@ -364,6 +396,7 @@ const buildMembershipReportEmail = (report: Awaited<ReturnType<typeof buildMembe
           <th>Usuario</th>
           <th>Metodo de pago</th>
           <th>Registrado por</th>
+          <th>Moneda</th>
           <th>Monto</th>
         </tr>
       </thead>
@@ -379,7 +412,8 @@ const buildMembershipReportEmail = (report: Awaited<ReturnType<typeof buildMembe
     `Movimientos: ${report.summary.rowCount}`,
     `Registros: ${report.summary.totalRegistrations}`,
     `Renovaciones: ${report.summary.totalRenewals}`,
-    `Monto total: ${report.summary.totalAmount.toFixed(2)}`,
+    `Moneda: ${report.currency}`,
+    `Monto total: ${moneySymbol}${report.summary.totalAmount.toFixed(2)}`,
     "",
     report.csv,
   ].join("\n");

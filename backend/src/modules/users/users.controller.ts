@@ -384,7 +384,7 @@ export const createUser = async (
 
   const requester = await prisma.user.findUnique({
     where: { id: req.auth.userId },
-    select: { gymId: true, isActive: true, role: true },
+    select: { gymId: true, isActive: true, role: true, gym: { select: { currency: true } } },
   });
 
   if (!requester || !requester.isActive) {
@@ -476,6 +476,7 @@ export const createUser = async (
           type: MembershipTransactionType.activation,
           paymentMethod: req.body.paymentMethod as PaymentMethod,
           amount: req.body.paymentAmount,
+          currency: requester.gym?.currency === "CRC" ? "CRC" : "USD",
           membershipMonths: req.body.membershipMonths ?? 1,
           membershipStartAt,
           membershipEndAt,
@@ -559,7 +560,7 @@ export const renewMembershipByUserId = async (
 
   const requester = await prisma.user.findUnique({
     where: { id: req.auth.userId },
-    select: { gymId: true, isActive: true, role: true },
+    select: { gymId: true, isActive: true, role: true, gym: { select: { currency: true } } },
   });
 
   if (!requester || !requester.isActive) {
@@ -624,6 +625,7 @@ export const renewMembershipByUserId = async (
       type: MembershipTransactionType.renewal,
       paymentMethod: req.body.paymentMethod as PaymentMethod,
       amount: req.body.paymentAmount,
+      currency: requester.gym?.currency === "CRC" ? "CRC" : "USD",
       membershipMonths: req.body.membershipMonths,
       membershipStartAt,
       membershipEndAt,

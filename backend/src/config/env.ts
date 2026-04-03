@@ -26,6 +26,8 @@ const envSchema = z.object({
     .optional()
     .transform((value) => value === "true"),
   DAILY_MEMBERSHIP_SUMMARY_HOUR_UTC: z.coerce.number().min(0).max(23).default(23),
+  PLATFORM_ADMIN_TOKEN: z.string().min(24).optional(),
+  PLATFORM_SUBSCRIPTION_GRACE_DAYS: z.coerce.number().min(1).max(30).default(3),
 });
 
 const parsed = envSchema.safeParse(process.env);

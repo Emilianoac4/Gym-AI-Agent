@@ -137,6 +137,19 @@ enum PaymentMethod {
   cash
 }
 
+enum SubscriptionPlanTier {
+  basica
+  standard
+  premium
+}
+
+enum GymSubscriptionStatus {
+  active
+  grace
+  suspended
+  cancelled
+}
+
 model UserHealthConnection {
   id                      String         @id @default(uuid())
   userId                  String         @map("user_id")
@@ -341,4 +354,41 @@ model EmergencyTicket {
   @@index([gymId, status, createdAt])
   @@index([reporterUserId, createdAt])
   @@map("emergency_tickets")
+}
+
+model GymSubscription {
+  id            String                @id @default(uuid())
+  gymId         String                @unique @map("gym_id")
+  planTier      SubscriptionPlanTier  @map("plan_tier")
+  userLimit     Int                   @map("user_limit")
+  status        GymSubscriptionStatus @default(active)
+  startsAt      DateTime              @map("starts_at")
+  endsAt        DateTime              @map("ends_at")
+  graceStartedAt DateTime?            @map("grace_started_at")
+  graceEndsAt   DateTime?             @map("grace_ends_at")
+  notes         String?
+  updatedBy     String?               @map("updated_by")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  @@index([status, endsAt])
+  @@map("gym_subscriptions")
+}
+
+model GymSubscriptionAudit {
+  id               String                @id @default(uuid())
+  gymId            String                @map("gym_id")
+  action           String
+  previousPlanTier SubscriptionPlanTier? @map("previous_plan_tier")
+  newPlanTier      SubscriptionPlanTier? @map("new_plan_tier")
+  previousUserLimit Int?                 @map("previous_user_limit")
+  newUserLimit     Int?                  @map("new_user_limit")
+  previousEndsAt   DateTime?             @map("previous_ends_at")
+  newEndsAt        DateTime?             @map("new_ends_at")
+  reason           String?
+  createdBy        String                @map("created_by")
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  @@index([gymId, createdAt])
+  @@map("gym_subscription_audits")
 }

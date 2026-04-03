@@ -284,6 +284,7 @@ export interface MembershipReportRow {
   paymentMethodLabel: string;
   actorName: string;
   amount: number;
+  currency: "USD" | "CRC";
 }
 
 export interface MembershipReportSummary {
@@ -291,12 +292,14 @@ export interface MembershipReportSummary {
   totalAmount: number;
   totalRegistrations: number;
   totalRenewals: number;
+  currency: "USD" | "CRC";
 }
 
 export interface MembershipReport {
   periodDays: number;
   reportLabel?: string;
   specificDate?: string | null;
+  currency: "USD" | "CRC";
   generatedAt: string;
   summary: MembershipReportSummary;
   rows: MembershipReportRow[];
