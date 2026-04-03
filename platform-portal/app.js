@@ -328,7 +328,7 @@ async function loadDashboard() {
               openModal({
                 eyebrow: "Paso 2 de 2 - Confirmar eliminacion",
                 title: "Confirmar eliminacion definitiva",
-                desc: `Para confirmar, escribe el nombre exacto del gimnasio:`,
+                desc: `Para confirmar, escribe el nombre exacto del gimnasio y presiona Enter para eliminar.`,
                 step: 2,
                 confirmLabel: `"${gymName}"`,
                 confirmPlaceholder: gymName,
