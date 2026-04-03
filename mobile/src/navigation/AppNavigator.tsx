@@ -8,6 +8,7 @@ import { palette } from "../theme/palette";
 import { RoleSelectScreen } from "../screens/Auth/RoleSelectScreen";
 import { LoginScreen } from "../screens/Auth/LoginScreen";
 import { RegisterScreen } from "../screens/Auth/RegisterScreen";
+import { GymSelectorScreen } from "../screens/Auth/GymSelectorScreen";
 import { ChangeTemporaryPasswordScreen } from "../screens/Auth/ChangeTemporaryPasswordScreen";
 import { HomeScreen } from "../screens/Main/HomeScreen";
 import { ProfileScreen } from "../screens/Main/ProfileScreen";
@@ -142,7 +143,7 @@ const navTheme = {
 };
 
 export function AppNavigator() {
-  const { token, user } = useAuth();
+  const { token, user, pendingGymSelection } = useAuth();
 
   const role = user?.role;
 
@@ -203,9 +204,15 @@ export function AppNavigator() {
           )
         ) : (
           <>
-            <Stack.Screen name="RoleSelect" component={RoleSelectScreen} />
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
+            {pendingGymSelection ? (
+              <Stack.Screen name="GymSelector" component={GymSelectorScreen} />
+            ) : (
+              <>
+                <Stack.Screen name="RoleSelect" component={RoleSelectScreen} />
+                <Stack.Screen name="Login" component={LoginScreen} />
+                <Stack.Screen name="Register" component={RegisterScreen} />
+              </>
+            )}
           </>
         )}
       </Stack.Navigator>

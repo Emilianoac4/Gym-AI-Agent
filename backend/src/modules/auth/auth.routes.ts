@@ -11,6 +11,7 @@ import {
 	resetPasswordFromQuery,
 	verifyEmail,
 	verifyEmailFromQuery,
+	selectGym,
 } from "./auth.controller";
 import { validate } from "../../middleware/validate.middleware";
 import {
@@ -22,6 +23,7 @@ import {
 	registerSchema,
 	resetPasswordSchema,
 	verifyEmailSchema,
+	selectGymSchema,
 } from "./auth.validation";
 import { authenticate } from "../../middleware/auth.middleware";
 
@@ -29,6 +31,7 @@ const authRouter = Router();
 
 authRouter.post("/register", validate(registerSchema), register);
 authRouter.post("/login", validate(loginSchema), login);
+authRouter.post("/select-gym", validate(selectGymSchema), selectGym);
 authRouter.post("/oauth/google", validate(oauthLoginSchema), oauthGoogle);
 authRouter.post("/oauth/apple", validate(oauthLoginSchema), oauthApple);
 authRouter.post(

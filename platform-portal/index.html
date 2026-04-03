@@ -51,7 +51,23 @@
             <input id="companyGymName" placeholder="Nombre del gimnasio" required />
             <input id="companyOwnerName" placeholder="Nombre del propietario" required />
             <input id="companyAddress" class="full" placeholder="Direccion (opcional)" />
-            <input id="companyPhone" placeholder="Telefono (opcional)" />
+            <select id="companyCountry">
+              <option value="" selected>Pais</option>
+              <option value="Costa Rica" data-dial-code="+506">Costa Rica</option>
+              <option value="Mexico" data-dial-code="+52">Mexico</option>
+              <option value="Colombia" data-dial-code="+57">Colombia</option>
+              <option value="Estados Unidos" data-dial-code="+1">Estados Unidos</option>
+            </select>
+            <select id="companyState">
+              <option value="" selected>Provincia o estado</option>
+            </select>
+            <select id="companyDistrict">
+              <option value="" selected>Distrito</option>
+            </select>
+            <div class="phone-inline">
+              <input id="companyPhoneCode" placeholder="+000" readonly />
+              <input id="companyPhone" placeholder="Telefono (opcional)" />
+            </div>
             <select id="companyCurrency">
               <option value="USD">USD</option>
               <option value="CRC">CRC</option>

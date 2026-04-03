@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { api } from "../services/api";
-import { AuthUser, UserRole } from "../types/api";
+import { AuthUser, GymSelectionOption, UserRole } from "../types/api";
 
 // Show in-app notifications as banners
 Notifications.setNotificationHandler({
@@ -20,7 +20,9 @@ type AuthContextValue = {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string, requestedRole: UserRole) => Promise<void>;
+  pendingGymSelection: { selectorToken: string; gyms: GymSelectionOption[] } | null;
+  login: (identifier: string, password: string, requestedRole: UserRole) => Promise<void>;
+  selectGym: (userId: string) => Promise<void>;
   loginWithGoogle: (idToken: string, requestedRole: UserRole) => Promise<void>;
   loginWithApple: (idToken: string, requestedRole: UserRole) => Promise<void>;
   completeTemporaryPasswordChange: (newPassword: string) => Promise<void>;
@@ -40,6 +42,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingGymSelection, setPendingGymSelection] = useState<{
+    selectorToken: string;
+    gyms: GymSelectionOption[];
+  } | null>(null);
   const pushTokenRef = useRef<string | null>(null);
 
   // Register device push token whenever the user authenticates
@@ -76,10 +82,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [token]);
 
-  const login = async (email: string, password: string, requestedRole: UserRole) => {
+  const login = async (identifier: string, password: string, requestedRole: UserRole) => {
     setLoading(true);
     try {
-      const data = await api.login({ email, password, requestedRole });
+      const data = await api.login({ identifier, password, requestedRole });
+      if (data.requiresGymSelection && data.selectorToken && data.gyms) {
+        setPendingGymSelection({ selectorToken: data.selectorToken, gyms: data.gyms });
+        setToken(null);
+        setUser(null);
+        return;
+      }
+
+      if (!data.token || !data.user) {
+        throw new Error("Respuesta de autenticacion invalida");
+      }
+
+      setPendingGymSelection(null);
+      setToken(data.token);
+      setUser(data.user);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectGym = async (userId: string) => {
+    if (!pendingGymSelection) {
+      throw new Error("No hay seleccion de gimnasio pendiente");
+    }
+
+    setLoading(true);
+    try {
+      const data = await api.selectGym({
+        selectorToken: pendingGymSelection.selectorToken,
+        userId,
+      });
+      setPendingGymSelection(null);
       setToken(data.token);
       setUser(data.user);
     } finally {
@@ -152,10 +189,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       const data = await api.login({
-        email: input.email,
+        identifier: input.email,
         password: input.password,
         requestedRole: "admin",
       });
+      if (data.requiresGymSelection) {
+        throw new Error("No se pudo completar el alta inicial. Intenta iniciar sesion manualmente.");
+      }
+
+      if (!data.token || !data.user) {
+        throw new Error("Respuesta de autenticacion invalida");
+      }
+
       setToken(data.token);
       setUser(data.user);
     } finally {
@@ -169,6 +214,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       api.unregisterPushToken(token, { token: pushTokenRef.current }).catch(() => {});
       pushTokenRef.current = null;
     }
+    setPendingGymSelection(null);
     setToken(null);
     setUser(null);
   };
@@ -178,14 +224,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       token,
       loading,
+      pendingGymSelection,
       login,
+      selectGym,
       loginWithGoogle,
       loginWithApple,
       completeTemporaryPasswordChange,
       registerAdmin,
       logout,
     }),
-    [user, token, loading],
+    [user, token, loading, pendingGymSelection],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

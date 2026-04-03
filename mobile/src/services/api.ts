@@ -113,7 +113,34 @@ export const api = {
   ping: () =>
     request<unknown>("/health", { timeoutMs: 90000 }).catch(() => null),
 
-  login: (payload: { email: string; password: string; requestedRole: UserRole }) =>
+  login: (payload: { identifier: string; password: string; requestedRole: UserRole }) =>
+    requestWithRetry<{
+      token?: string;
+      user?: {
+        id: string;
+        email: string;
+        fullName: string;
+        role: "admin" | "trainer" | "member";
+        gymId: string;
+        username?: string;
+        mustChangePassword?: boolean;
+      };
+      requiresGymSelection?: boolean;
+      selectorToken?: string;
+      gyms?: Array<{
+        userId: string;
+        gymId: string;
+        gymName: string;
+        username?: string;
+        role: "admin" | "trainer" | "member";
+      }>;
+    }>("/auth/login", {
+      method: "POST",
+      body: payload,
+      timeoutMs: AUTH_TIMEOUT_MS,
+    }),
+
+  selectGym: (payload: { selectorToken: string; userId: string }) =>
     requestWithRetry<{
       token: string;
       user: {
@@ -122,9 +149,10 @@ export const api = {
         fullName: string;
         role: "admin" | "trainer" | "member";
         gymId: string;
+        username?: string;
         mustChangePassword?: boolean;
       };
-    }>("/auth/login", {
+    }>("/auth/select-gym", {
       method: "POST",
       body: payload,
       timeoutMs: AUTH_TIMEOUT_MS,

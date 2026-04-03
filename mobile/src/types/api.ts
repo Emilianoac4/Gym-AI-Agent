@@ -6,13 +6,30 @@ export interface AuthUser {
   fullName: string;
   role: UserRole;
   gymId: string;
+  username?: string;
   mustChangePassword?: boolean;
 }
 
-export interface LoginResponse {
+export interface LoginSuccessResponse {
   token: string;
   user: AuthUser;
 }
+
+export interface GymSelectionOption {
+  userId: string;
+  gymId: string;
+  gymName: string;
+  username?: string;
+  role: UserRole;
+}
+
+export interface LoginGymSelectionResponse {
+  requiresGymSelection: true;
+  selectorToken: string;
+  gyms: GymSelectionOption[];
+}
+
+export type LoginResponse = LoginSuccessResponse | LoginGymSelectionResponse;
 
 export interface Profile {
   id: string;

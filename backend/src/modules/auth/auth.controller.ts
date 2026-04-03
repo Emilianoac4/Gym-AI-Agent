@@ -4,7 +4,7 @@ import { UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
 import { HttpError } from "../../utils/http-error";
-import { signAuthToken, verifyAuthToken } from "../../utils/jwt";
+import { signAuthToken, signGymSelectorToken, verifyGymSelectorToken, verifyAuthToken } from "../../utils/jwt";
 import {
   ChangeTemporaryPasswordInput,
   ForgotPasswordInput,
@@ -13,6 +13,7 @@ import {
   RequestEmailVerificationInput,
   RegisterInput,
   ResetPasswordInput,
+  SelectGymInput,
   VerifyEmailInput,
 } from "./auth.validation";
 import { verifyAppleIdToken, verifyGoogleIdToken } from "./oauth.providers";
@@ -23,6 +24,7 @@ import {
   sendEmailVerification,
   sendPasswordReset,
 } from "../../utils/email-auth";
+import { generateGymScopedUsername } from "../../utils/username";
 
 const TEMP_PASSWORD_PREFIX = "TEMP$";
 const EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
@@ -347,33 +349,64 @@ export const register = async (
     throw new HttpError(400, "Gym data is required for first setup");
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: user.email } });
-  if (existing) {
-    throw new HttpError(409, "Ya existe una cuenta con ese correo electrónico.");
-  }
-
-  const passwordHash = await bcrypt.hash(user.password, 12);
+  const emailLower = user.email.toLowerCase().trim();
 
   const created = await prisma.$transaction(async (tx) => {
     let gymId: string;
 
+    let gymName = "gym";
+
     if (usersCount === 0) {
       const createdGym = await tx.gym.create({ data: gym! });
       gymId = createdGym.id;
+      gymName = createdGym.name;
     } else {
-      const requesterRecord = await tx.user.findUnique({ where: { id: requester!.userId } });
+      const requesterRecord = await tx.user.findUnique({
+        where: { id: requester!.userId },
+        include: { gym: { select: { name: true } } },
+      });
       if (!requesterRecord) {
         throw new HttpError(404, "Requester not found");
       }
       gymId = requesterRecord.gymId;
+      gymName = requesterRecord.gym?.name ?? "gym";
+    }
+
+    // Check not already a member of this gym
+    const existingMembership = await tx.user.findFirst({
+      where: {
+        email: emailLower,
+        gymId,
+      },
+    });
+    if (existingMembership) {
+      throw new HttpError(409, "Ya existe una cuenta con ese correo en este gimnasio.");
+    }
+
+    // Find or create GlobalUserAccount
+    let globalAccount = await tx.globalUserAccount.findUnique({ where: { email: emailLower } });
+    if (!globalAccount) {
+      const passwordHash =
+        usersCount === 0
+          ? await bcrypt.hash(user.password, 12)
+          : `TEMP$${await bcrypt.hash(user.password, 12)}`;
+
+      globalAccount = await tx.globalUserAccount.create({
+        data: {
+          email: emailLower,
+          passwordHash,
+          fullName: user.fullName,
+          emailVerifiedAt: usersCount === 0 ? new Date() : null,
+        },
+      });
     }
 
     return tx.user.create({
       data: {
         gymId,
-        email: user.email,
-        passwordHash,
-        emailVerifiedAt: usersCount === 0 ? new Date() : null,
+        globalUserId: globalAccount.id,
+        email: emailLower,
+        username: await generateGymScopedUsername(tx, user.fullName, gymName),
         fullName: user.fullName,
         role: user.role as UserRole,
       },
@@ -398,38 +431,157 @@ export const login = async (
   req: Request<unknown, unknown, LoginInput>,
   res: Response,
 ): Promise<void> => {
-  const { email, password, requestedRole } = req.body;
+  const { identifier, password, requestedRole } = req.body;
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.isActive) {
+  const isEmail = identifier.includes("@");
+
+  if (isEmail) {
+    // ── Email-based login ──────────────────────────────────────────────
+    const globalAccount = await prisma.globalUserAccount.findUnique({
+      where: { email: identifier.toLowerCase() },
+    });
+
+    if (!globalAccount || !globalAccount.isActive) {
+      throw new HttpError(401, "Invalid credentials");
+    }
+
+    const comparableHash = getComparablePasswordHash(globalAccount.passwordHash);
+    const isValidPassword = await bcrypt.compare(password, comparableHash);
+    if (!isValidPassword) {
+      throw new HttpError(401, "Invalid credentials");
+    }
+
+    if (!globalAccount.emailVerifiedAt) {
+      throw new HttpError(403, "Debes verificar tu correo antes de ingresar");
+    }
+
+    const memberships = await prisma.user.findMany({
+      where: { globalUserId: globalAccount.id, role: requestedRole as UserRole, isActive: true },
+      include: { gym: { select: { id: true, name: true } } },
+    });
+
+    if (memberships.length === 0) {
+      throw new HttpError(403, `No tienes una cuenta como ${requestedRole} en ningun gimnasio`);
+    }
+
+    if (memberships.length === 1) {
+      const membership = memberships[0];
+      await ensureMembershipActive(membership);
+      const token = signAuthToken({ userId: membership.id, role: membership.role });
+      res.json({
+        token,
+        user: {
+          id: membership.id,
+          email: globalAccount.email,
+          fullName: globalAccount.fullName,
+          role: membership.role,
+          gymId: membership.gymId,
+          username: membership.username ?? undefined,
+          mustChangePassword: isTemporaryPasswordHash(globalAccount.passwordHash),
+        },
+      });
+      return;
+    }
+
+    // Multiple gyms → return gym selector
+    const selectorToken = signGymSelectorToken(globalAccount.id);
+    res.json({
+      requiresGymSelection: true,
+      selectorToken,
+      gyms: memberships.map((m) => ({
+        userId: m.id,
+        gymId: m.gymId,
+        gymName: m.gym.name,
+        username: m.username ?? undefined,
+        role: m.role,
+      })),
+    });
+    return;
+  }
+
+  // ── Username-based login ─────────────────────────────────────────────
+  const userByUsername = await prisma.user.findUnique({
+    where: { username: identifier },
+    include: { globalAccount: true },
+  });
+
+  if (!userByUsername || !userByUsername.isActive || !userByUsername.globalAccount.isActive) {
     throw new HttpError(401, "Invalid credentials");
   }
 
-  const comparableHash = getComparablePasswordHash(user.passwordHash);
+  const globalAccount = userByUsername.globalAccount;
+  const comparableHash = getComparablePasswordHash(globalAccount.passwordHash);
   const isValidPassword = await bcrypt.compare(password, comparableHash);
   if (!isValidPassword) {
     throw new HttpError(401, "Invalid credentials");
   }
 
-  assertRequestedRole(user.role, requestedRole as UserRole);
+  assertRequestedRole(userByUsername.role, requestedRole as UserRole);
 
-  await ensureMembershipActive(user);
-
-  if (!user.emailVerifiedAt) {
+  if (!globalAccount.emailVerifiedAt) {
     throw new HttpError(403, "Debes verificar tu correo antes de ingresar");
   }
 
-  const token = signAuthToken({ userId: user.id, role: user.role });
+  await ensureMembershipActive(userByUsername);
 
+  const token = signAuthToken({ userId: userByUsername.id, role: userByUsername.role });
   res.json({
     token,
     user: {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role,
-      gymId: user.gymId,
-      mustChangePassword: isTemporaryPasswordHash(user.passwordHash),
+      id: userByUsername.id,
+      email: globalAccount.email,
+      fullName: globalAccount.fullName,
+      role: userByUsername.role,
+      gymId: userByUsername.gymId,
+      username: userByUsername.username ?? undefined,
+      mustChangePassword: isTemporaryPasswordHash(globalAccount.passwordHash),
+    },
+  });
+};
+
+export const selectGym = async (
+  req: Request<unknown, unknown, SelectGymInput>,
+  res: Response,
+): Promise<void> => {
+  const { selectorToken, userId } = req.body;
+
+  let payload;
+  try {
+    payload = verifyGymSelectorToken(selectorToken);
+  } catch {
+    throw new HttpError(401, "Token de seleccion invalido o expirado");
+  }
+
+  const membership = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { globalAccount: true },
+  });
+
+  if (!membership || !membership.isActive) {
+    throw new HttpError(404, "Cuenta no encontrada");
+  }
+
+  if (membership.globalUserId !== payload.globalAccountId) {
+    throw new HttpError(403, "Seleccion de gimnasio no autorizada");
+  }
+
+  if (!membership.globalAccount.isActive) {
+    throw new HttpError(403, "Cuenta desactivada");
+  }
+
+  await ensureMembershipActive(membership);
+
+  const token = signAuthToken({ userId: membership.id, role: membership.role });
+  res.json({
+    token,
+    user: {
+      id: membership.id,
+      email: membership.globalAccount.email,
+      fullName: membership.globalAccount.fullName,
+      role: membership.role,
+      gymId: membership.gymId,
+      username: membership.username ?? undefined,
+      mustChangePassword: isTemporaryPasswordHash(membership.globalAccount.passwordHash),
     },
   });
 };
@@ -439,38 +591,61 @@ const completeOauthLogin = async (
   requestedRole: UserRole,
   res: Response,
 ): Promise<void> => {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const globalAccount = await prisma.globalUserAccount.findUnique({ where: { email } });
 
-  if (!user || !user.isActive) {
+  if (!globalAccount || !globalAccount.isActive) {
     throw new HttpError(
       404,
       "No account is linked to this social email. Ask an admin to create your account first.",
     );
   }
 
-  await ensureMembershipActive(user);
-
-  if (!user.emailVerifiedAt) {
-    await prisma.user.update({
-      where: { id: user.id },
+  if (!globalAccount.emailVerifiedAt) {
+    await prisma.globalUserAccount.update({
+      where: { id: globalAccount.id },
       data: { emailVerifiedAt: new Date() },
     });
   }
 
-  assertRequestedRole(user.role, requestedRole);
+  const memberships = await prisma.user.findMany({
+    where: { globalUserId: globalAccount.id, role: requestedRole, isActive: true },
+    include: { gym: { select: { id: true, name: true } } },
+  });
 
-  const token = signAuthToken({ userId: user.id, role: user.role });
+  if (memberships.length === 0) {
+    throw new HttpError(403, `No tienes una cuenta como ${requestedRole} en ningun gimnasio`);
+  }
 
+  if (memberships.length === 1) {
+    const membership = memberships[0];
+    await ensureMembershipActive(membership);
+    const token = signAuthToken({ userId: membership.id, role: membership.role });
+    res.json({
+      token,
+      user: {
+        id: membership.id,
+        email: globalAccount.email,
+        fullName: globalAccount.fullName,
+        role: membership.role,
+        gymId: membership.gymId,
+        username: membership.username ?? undefined,
+        mustChangePassword: false,
+      },
+    });
+    return;
+  }
+
+  const selectorToken = signGymSelectorToken(globalAccount.id);
   res.json({
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role,
-      gymId: user.gymId,
-      mustChangePassword: false,
-    },
+    requiresGymSelection: true,
+    selectorToken,
+    gyms: memberships.map((m) => ({
+      userId: m.id,
+      gymId: m.gymId,
+      gymName: m.gym.name,
+      username: m.username ?? undefined,
+      role: m.role,
+    })),
   });
 };
 
@@ -486,7 +661,7 @@ export const changeTemporaryPassword = async (
     where: { id: req.auth.userId },
     select: {
       id: true,
-      passwordHash: true,
+      globalUserId: true,
       isActive: true,
     },
   });
@@ -495,14 +670,23 @@ export const changeTemporaryPassword = async (
     throw new HttpError(401, "Unauthorized");
   }
 
-  if (!isTemporaryPasswordHash(user.passwordHash)) {
+  const globalAccount = await prisma.globalUserAccount.findUnique({
+    where: { id: user.globalUserId },
+    select: { id: true, passwordHash: true, isActive: true },
+  });
+
+  if (!globalAccount || !globalAccount.isActive) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (!isTemporaryPasswordHash(globalAccount.passwordHash)) {
     throw new HttpError(400, "Este usuario no tiene una contraseña temporal pendiente");
   }
 
   const newPasswordHash = await bcrypt.hash(req.body.newPassword, 12);
 
-  await prisma.user.update({
-    where: { id: user.id },
+  await prisma.globalUserAccount.update({
+    where: { id: globalAccount.id },
     data: {
       passwordHash: newPasswordHash,
     },
@@ -545,21 +729,21 @@ export const requestEmailVerification = async (
   req: Request<unknown, unknown, RequestEmailVerificationInput>,
   res: Response,
 ): Promise<void> => {
-  const user = await prisma.user.findUnique({ where: { email: req.body.email } });
+  const account = await prisma.globalUserAccount.findUnique({ where: { email: req.body.email } });
 
-  if (!user || !user.isActive) {
+  if (!account || !account.isActive) {
     res.json({ message: "Si el correo existe, se envio un enlace de verificacion" });
     return;
   }
 
-  if (user.emailVerifiedAt) {
+  if (account.emailVerifiedAt) {
     res.json({ message: "Este correo ya esta verificado" });
     return;
   }
 
-  if (user.emailVerificationLastSentAt) {
+  if (account.emailVerificationLastSentAt) {
     const elapsedSeconds = Math.floor(
-      (Date.now() - user.emailVerificationLastSentAt.getTime()) / 1000,
+      (Date.now() - account.emailVerificationLastSentAt.getTime()) / 1000,
     );
     if (elapsedSeconds < EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS) {
       const remaining = EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS - elapsedSeconds;
@@ -573,8 +757,8 @@ export const requestEmailVerification = async (
   const { token, tokenHash } = createTokenPair();
   const expiresAt = getFutureDateMinutes(env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES);
 
-  await prisma.user.update({
-    where: { id: user.id },
+  await prisma.globalUserAccount.update({
+    where: { id: account.id },
     data: {
       emailVerificationLastSentAt: new Date(),
       emailVerificationTokenHash: tokenHash,
@@ -582,7 +766,7 @@ export const requestEmailVerification = async (
     },
   });
 
-  await sendEmailVerification(user.email, token);
+  await sendEmailVerification(account.email, token);
 
   res.json({
     message: "Si el correo existe, se envio un enlace de verificacion",
@@ -596,7 +780,7 @@ export const verifyEmail = async (
 ): Promise<void> => {
   const tokenHash = hashOpaqueToken(req.body.token);
 
-  const user = await prisma.user.findFirst({
+  const account = await prisma.globalUserAccount.findFirst({
     where: {
       emailVerificationTokenHash: tokenHash,
       emailVerificationTokenExpiresAt: { gt: new Date() },
@@ -605,12 +789,12 @@ export const verifyEmail = async (
     select: { id: true },
   });
 
-  if (!user) {
+  if (!account) {
     throw new HttpError(400, "Token de verificacion invalido o expirado");
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
+  await prisma.globalUserAccount.update({
+    where: { id: account.id },
     data: {
       emailVerifiedAt: new Date(),
       emailVerificationTokenHash: null,
@@ -643,7 +827,7 @@ export const verifyEmailFromQuery = async (
 
   const tokenHash = hashOpaqueToken(token);
 
-  const user = await prisma.user.findFirst({
+  const account = await prisma.globalUserAccount.findFirst({
     where: {
       emailVerificationTokenHash: tokenHash,
       emailVerificationTokenExpiresAt: { gt: new Date() },
@@ -652,7 +836,7 @@ export const verifyEmailFromQuery = async (
     select: { id: true },
   });
 
-  if (!user) {
+  if (!account) {
     res
       .status(400)
       .type("html")
@@ -666,8 +850,8 @@ export const verifyEmailFromQuery = async (
     return;
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
+  await prisma.globalUserAccount.update({
+    where: { id: account.id },
     data: {
       emailVerifiedAt: new Date(),
       emailVerificationTokenHash: null,
@@ -691,9 +875,9 @@ export const forgotPassword = async (
   req: Request<unknown, unknown, ForgotPasswordInput>,
   res: Response,
 ): Promise<void> => {
-  const user = await prisma.user.findUnique({ where: { email: req.body.email } });
+  const account = await prisma.globalUserAccount.findUnique({ where: { email: req.body.email } });
 
-  if (!user || !user.isActive) {
+  if (!account || !account.isActive) {
     res.json({ message: "Si el correo existe, se envio un enlace de recuperacion" });
     return;
   }
@@ -701,15 +885,15 @@ export const forgotPassword = async (
   const { token, tokenHash } = createTokenPair();
   const expiresAt = getFutureDateMinutes(env.PASSWORD_RESET_TOKEN_TTL_MINUTES);
 
-  await prisma.user.update({
-    where: { id: user.id },
+  await prisma.globalUserAccount.update({
+    where: { id: account.id },
     data: {
       passwordResetTokenHash: tokenHash,
       passwordResetTokenExpiresAt: expiresAt,
     },
   });
 
-  await sendPasswordReset(user.email, token);
+  await sendPasswordReset(account.email, token);
 
   res.json({
     message: "Si el correo existe, se envio un enlace de recuperacion",
@@ -723,7 +907,7 @@ export const resetPassword = async (
 ): Promise<void> => {
   const tokenHash = hashOpaqueToken(req.body.token);
 
-  const user = await prisma.user.findFirst({
+  const account = await prisma.globalUserAccount.findFirst({
     where: {
       passwordResetTokenHash: tokenHash,
       passwordResetTokenExpiresAt: { gt: new Date() },
@@ -732,14 +916,14 @@ export const resetPassword = async (
     select: { id: true },
   });
 
-  if (!user) {
+  if (!account) {
     throw new HttpError(400, "Token de recuperacion invalido o expirado");
   }
 
   const newPasswordHash = await bcrypt.hash(req.body.newPassword, 12);
 
-  await prisma.user.update({
-    where: { id: user.id },
+  await prisma.globalUserAccount.update({
+    where: { id: account.id },
     data: {
       passwordHash: newPasswordHash,
       passwordResetTokenHash: null,

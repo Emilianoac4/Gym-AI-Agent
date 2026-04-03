@@ -33,6 +33,26 @@ enum PermissionGrantAction {
   notifications_send
 }
 
+model GlobalUserAccount {
+  id                              String    @id @default(uuid())
+  email                           String    @unique
+  passwordHash                    String    @map("password_hash")
+  fullName                        String    @map("full_name")
+  isActive                        Boolean   @default(true) @map("is_active")
+  emailVerifiedAt                 DateTime? @map("email_verified_at")
+  emailVerificationLastSentAt     DateTime? @map("email_verification_last_sent_at")
+  emailVerificationTokenHash      String?   @map("email_verification_token_hash")
+  emailVerificationTokenExpiresAt DateTime? @map("email_verification_token_expires_at")
+  passwordResetTokenHash          String?   @map("password_reset_token_hash")
+  passwordResetTokenExpiresAt     DateTime? @map("password_reset_token_expires_at")
+  createdAt                       DateTime  @default(now()) @map("created_at")
+  updatedAt                       DateTime  @updatedAt @map("updated_at")
+
+  memberships User[]
+
+  @@map("global_user_accounts")
+}
+
 model Gym {
   id        String   @id @default(uuid())
   name      String
@@ -40,6 +60,9 @@ model Gym {
   address   String?
   phone     String?
   currency  String   @default("USD")
+  country   String?
+  state     String?
+  district  String?
   createdAt DateTime @default(now()) @map("created_at")
 
   users User[]
@@ -48,29 +71,27 @@ model Gym {
 }
 
 model User {
-  id           String      @id @default(uuid())
-  gymId        String      @map("gym_id")
-  email        String      @unique
-  passwordHash String      @map("password_hash")
-  emailVerifiedAt DateTime? @map("email_verified_at")
-  emailVerificationLastSentAt DateTime? @map("email_verification_last_sent_at")
-  emailVerificationTokenHash String? @map("email_verification_token_hash")
-  emailVerificationTokenExpiresAt DateTime? @map("email_verification_token_expires_at")
-  passwordResetTokenHash String? @map("password_reset_token_hash")
-  passwordResetTokenExpiresAt DateTime? @map("password_reset_token_expires_at")
-  fullName     String      @map("full_name")
-  role         UserRole    @default(member)
-  membershipStartAt DateTime? @map("membership_start_at")
-  membershipEndAt DateTime? @map("membership_end_at")
-  createdAt    DateTime    @default(now()) @map("created_at")
-  updatedAt    DateTime    @updatedAt @map("updated_at")
-  isActive     Boolean     @default(true) @map("is_active")
+  id                String      @id @default(uuid())
+  gymId             String      @map("gym_id")
+  globalUserId      String      @map("global_user_id")
+  email             String
+  username          String?     @unique
+  fullName          String      @map("full_name")
+  role              UserRole    @default(member)
+  membershipStartAt DateTime?   @map("membership_start_at")
+  membershipEndAt   DateTime?   @map("membership_end_at")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  isActive          Boolean     @default(true) @map("is_active")
 
-  gym          Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  profile      UserProfile?
-  measurements Measurement[]
+  gym           Gym                @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  globalAccount GlobalUserAccount  @relation(fields: [globalUserId], references: [id], onDelete: Cascade)
+  profile       UserProfile?
+  measurements  Measurement[]
   healthConnections UserHealthConnection[]
 
+  @@index([gymId])
+  @@index([globalUserId])
   @@map("users")
 }
 

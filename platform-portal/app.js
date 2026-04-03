@@ -5,6 +5,45 @@ const state = {
   user: null,
 };
 
+const LOCATION_DATA = {
+  "Costa Rica": {
+    dialCode: "+506",
+    states: {
+      "San Jose": ["San Jose", "Escazu", "Desamparados", "Tibas", "Aserri"],
+      Alajuela: ["Alajuela", "San Ramon", "Grecia", "Atenas", "Naranjo"],
+      Cartago: ["Cartago", "Paraiso", "La Union", "Turrialba"],
+      Heredia: ["Heredia", "Barva", "Santo Domingo", "Belen"],
+      Guanacaste: ["Liberia", "Nicoya", "Santa Cruz", "Carrillo"],
+      Puntarenas: ["Puntarenas", "Esparza", "Golfito", "Osa"],
+      Limon: ["Limon", "Pococi", "Siquirres", "Talamanca"],
+    },
+  },
+  Mexico: {
+    dialCode: "+52",
+    states: {
+      CDMX: ["Cuauhtemoc", "Benito Juarez", "Coyoacan"],
+      Jalisco: ["Guadalajara", "Zapopan", "Tlaquepaque"],
+      NuevoLeon: ["Monterrey", "San Nicolas", "Guadalupe"],
+    },
+  },
+  Colombia: {
+    dialCode: "+57",
+    states: {
+      Cundinamarca: ["Bogota", "Soacha", "Chia"],
+      Antioquia: ["Medellin", "Envigado", "Bello"],
+      "Valle del Cauca": ["Cali", "Palmira", "Buenaventura"],
+    },
+  },
+  "Estados Unidos": {
+    dialCode: "+1",
+    states: {
+      California: ["Los Angeles", "San Diego", "San Jose"],
+      Texas: ["Houston", "Dallas", "Austin"],
+      Florida: ["Miami", "Orlando", "Tampa"],
+    },
+  },
+};
+
 const $ = (id) => document.getElementById(id);
 
 function authHeaders() {
@@ -51,6 +90,57 @@ function showApp() {
 function showLogin() {
   $("appScreen").classList.add("hidden");
   $("loginScreen").classList.remove("hidden");
+}
+
+function fillSelectOptions(selectEl, placeholder, values) {
+  selectEl.innerHTML = "";
+  const first = document.createElement("option");
+  first.value = "";
+  first.textContent = placeholder;
+  first.selected = true;
+  selectEl.appendChild(first);
+
+  values.forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    selectEl.appendChild(option);
+  });
+}
+
+function syncLocationSelectors() {
+  const country = $("companyCountry").value;
+  const stateSelect = $("companyState");
+  const districtSelect = $("companyDistrict");
+  const phoneCode = $("companyPhoneCode");
+
+  const countryData = LOCATION_DATA[country];
+  if (!countryData) {
+    phoneCode.value = "";
+    fillSelectOptions(stateSelect, "Provincia o estado", []);
+    fillSelectOptions(districtSelect, "Distrito", []);
+    return;
+  }
+
+  phoneCode.value = countryData.dialCode;
+  const states = Object.keys(countryData.states);
+  fillSelectOptions(stateSelect, "Provincia o estado", states);
+  fillSelectOptions(districtSelect, "Distrito", []);
+}
+
+function syncDistrictSelector() {
+  const country = $("companyCountry").value;
+  const stateName = $("companyState").value;
+  const districtSelect = $("companyDistrict");
+
+  const countryData = LOCATION_DATA[country];
+  if (!countryData || !stateName) {
+    fillSelectOptions(districtSelect, "Distrito", []);
+    return;
+  }
+
+  const districts = countryData.states[stateName] || [];
+  fillSelectOptions(districtSelect, "Distrito", districts);
 }
 
 function renderAlerts(alerts, daysAhead) {
@@ -328,7 +418,12 @@ $("createCompanyForm").addEventListener("submit", async (event) => {
       gymName: $("companyGymName").value,
       ownerName: $("companyOwnerName").value,
       address: $("companyAddress").value || undefined,
-      phone: $("companyPhone").value || undefined,
+      country: $("companyCountry").value || undefined,
+      state: $("companyState").value || undefined,
+      district: $("companyDistrict").value || undefined,
+      phone: $("companyPhone").value
+        ? `${$("companyPhoneCode").value || ""} ${$("companyPhone").value}`.trim()
+        : undefined,
       currency: $("companyCurrency").value,
       adminEmail: $("companyAdminEmail").value,
       adminFullName: $("companyAdminName").value,
@@ -350,6 +445,7 @@ $("createCompanyForm").addEventListener("submit", async (event) => {
     $("companyCurrency").value = "USD";
     $("companyPlanTier").value = "premium";
     $("companyUserLimit").value = "50";
+    syncLocationSelectors();
     alert("Gimnasio creado correctamente");
     await loadDashboard();
     await loadAlerts();
@@ -357,6 +453,10 @@ $("createCompanyForm").addEventListener("submit", async (event) => {
     errorEl.textContent = error.message;
   }
 });
+
+$("companyCountry").addEventListener("change", syncLocationSelectors);
+$("companyState").addEventListener("change", syncDistrictSelector);
+syncLocationSelectors();
 
 $("refreshBtn").addEventListener("click", async () => {
   await loadDashboard();

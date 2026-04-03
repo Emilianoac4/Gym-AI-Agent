@@ -31,7 +31,7 @@ export function LoginScreen() {
   const route = useRoute<any>();
   const { login, loginWithGoogle, loginWithApple, loading } = useAuth();
 
-  const [email, setEmail] = useState("admin@gymiai.com");
+  const [identifier, setIdentifier] = useState("admin@gymiai.com");
   const [password, setPassword] = useState("Admin123456");
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -67,16 +67,20 @@ export function LoginScreen() {
   const onLogin = async () => {
     try {
       setAuthError(null);
-      await login(email.trim(), password, selectedRole);
+      await login(identifier.trim(), password, selectedRole);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesion.");
     }
   };
 
   const onResendVerification = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = identifier.trim().toLowerCase();
     if (!normalizedEmail) {
       Alert.alert("Correo requerido", "Ingresa tu correo para reenviar la verificacion.");
+      return;
+    }
+    if (!normalizedEmail.includes("@")) {
+      Alert.alert("Correo requerido", "Para reenviar verificacion debes ingresar tu correo electronico.");
       return;
     }
 
@@ -95,9 +99,13 @@ export function LoginScreen() {
   };
 
   const onForgotPassword = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = identifier.trim().toLowerCase();
     if (!normalizedEmail) {
       Alert.alert("Correo requerido", "Ingresa tu correo para recuperar la contrasena.");
+      return;
+    }
+    if (!normalizedEmail.includes("@")) {
+      Alert.alert("Correo requerido", "Para recuperar contrasena debes ingresar tu correo electronico.");
       return;
     }
 
@@ -275,12 +283,12 @@ export function LoginScreen() {
 
         <TextInput
           style={styles.input}
-          placeholder="Email"
+          placeholder="Correo o nombre de usuario"
           placeholderTextColor={palette.textSoft}
-          keyboardType="email-address"
+          keyboardType="default"
           autoCapitalize="none"
-          value={email}
-          onChangeText={setEmail}
+          value={identifier}
+          onChangeText={setIdentifier}
         />
 
         <View style={styles.passwordRow}>

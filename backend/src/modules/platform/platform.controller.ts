@@ -14,6 +14,7 @@ import {
   UpdateSubscriptionStatusInput,
 } from "./platform.validation";
 import { signPlatformAuthToken } from "../../utils/platform-jwt";
+import { generateGymScopedUsername } from "../../utils/username";
 
 const DEFAULT_PLAN: SubscriptionPlanTier = SubscriptionPlanTier.premium;
 const DEFAULT_LIMIT = 50;
@@ -78,6 +79,9 @@ const normalizeUsernames = (fullName: string, usernames?: string[]) => {
 
   return Array.from(new Set(seed));
 };
+
+const getComparablePasswordHash = (value: string) =>
+  value.startsWith("TEMP$") ? value.slice("TEMP$".length) : value;
 
 export const loginPlatform = async (req: Request, res: Response): Promise<void> => {
   const body = req.body as PlatformLoginInput;
@@ -389,13 +393,25 @@ export const createCompany = async (req: Request, res: Response): Promise<void> 
   const session = requirePlatformSession(req);
   const body = req.body as CreateCompanyInput;
 
-  const existingAdminEmail = await prisma.user.findUnique({ where: { email: body.adminEmail.toLowerCase() } });
-  if (existingAdminEmail) {
-    throw new HttpError(409, "El correo del administrador ya existe en la plataforma");
-  }
+  const adminEmailLower = body.adminEmail.toLowerCase();
+  const existingGlobalAccount = await prisma.globalUserAccount.findUnique({
+    where: { email: adminEmailLower },
+  });
 
   const bcrypt = await import("bcryptjs");
-  const passwordHash = await bcrypt.hash(body.adminPassword, 12);
+
+  if (existingGlobalAccount) {
+    const isPasswordValid = await bcrypt.compare(
+      body.adminPassword,
+      getComparablePasswordHash(existingGlobalAccount.passwordHash),
+    );
+    if (!isPasswordValid) {
+      throw new HttpError(
+        409,
+        "Este correo ya existe y usa una contrasena global diferente. Debes usar la misma contrasena global para afiliarlo a otro gimnasio.",
+      );
+    }
+  }
 
   const now = new Date();
   const startsAt = body.startsAt ? new Date(body.startsAt) : now;
@@ -417,21 +433,45 @@ export const createCompany = async (req: Request, res: Response): Promise<void> 
         address: body.address ?? null,
         phone: body.phone ?? null,
         currency: body.currency,
+        country: body.country ?? null,
+        state: body.state ?? null,
+        district: body.district ?? null,
       },
       select: { id: true, name: true, ownerName: true, currency: true, createdAt: true },
     });
 
+    const adminGlobalAccount = existingGlobalAccount
+      ? await tx.globalUserAccount.update({
+          where: { id: existingGlobalAccount.id },
+          data: {
+            fullName: body.adminFullName,
+            emailVerifiedAt: existingGlobalAccount.emailVerifiedAt ?? new Date(),
+            isActive: true,
+          },
+          select: { id: true, email: true, fullName: true, createdAt: true },
+        })
+      : await tx.globalUserAccount.create({
+          data: {
+            email: adminEmailLower,
+            passwordHash: await bcrypt.hash(body.adminPassword, 12),
+            fullName: body.adminFullName,
+            emailVerifiedAt: new Date(),
+            isActive: true,
+          },
+          select: { id: true, email: true, fullName: true, createdAt: true },
+        });
+
     const admin = await tx.user.create({
       data: {
         gymId: gym.id,
-        email: body.adminEmail.toLowerCase(),
-        passwordHash,
-        emailVerifiedAt: new Date(),
+        globalUserId: adminGlobalAccount.id,
+        email: adminEmailLower,
+        username: await generateGymScopedUsername(tx, body.adminFullName, body.gymName),
         fullName: body.adminFullName,
         role: UserRole.admin,
         isActive: true,
       },
-      select: { id: true, email: true, fullName: true, role: true, createdAt: true },
+      select: { id: true, email: true, username: true, fullName: true, role: true, createdAt: true },
     });
 
     const subscription = await tx.gymSubscription.create({
@@ -786,37 +826,84 @@ export const createCompanyAdmin = async (req: Request, res: Response): Promise<v
   const { gymId } = req.params as { gymId: string };
   const body = req.body as CreateCompanyAdminInput;
 
-  const gym = await prisma.gym.findUnique({ where: { id: gymId }, select: { id: true } });
+  const gym = await prisma.gym.findUnique({ where: { id: gymId }, select: { id: true, name: true } });
   if (!gym) {
     throw new HttpError(404, "Empresa no encontrada");
   }
 
-  const existingByEmail = await prisma.user.findUnique({ where: { email: body.email } });
-  if (existingByEmail) {
-    throw new HttpError(409, "Ya existe un usuario con ese correo");
+  const emailLower = body.email.toLowerCase().trim();
+  const existingMembership = await prisma.user.findFirst({
+    where: { gymId, email: emailLower },
+    select: { id: true },
+  });
+  if (existingMembership) {
+    throw new HttpError(409, "Ese correo ya tiene cuenta en este gimnasio");
   }
 
   const bcrypt = await import("bcryptjs");
-  const passwordHash = await bcrypt.hash(body.password, 12);
 
-  const created = await prisma.user.create({
-    data: {
-      gymId,
-      email: body.email,
-      passwordHash,
-      emailVerifiedAt: new Date(),
-      fullName: body.fullName,
-      role: UserRole.admin,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      gymId: true,
-      email: true,
-      fullName: true,
-      role: true,
-      createdAt: true,
-    },
+  const created = await prisma.$transaction(async (tx) => {
+    const existingGlobalAccount = await tx.globalUserAccount.findUnique({
+      where: { email: emailLower },
+    });
+
+    let globalAccountId: string;
+    if (existingGlobalAccount) {
+      const isPasswordValid = await bcrypt.compare(
+        body.password,
+        getComparablePasswordHash(existingGlobalAccount.passwordHash),
+      );
+      if (!isPasswordValid) {
+        throw new HttpError(
+          409,
+          "Este correo ya existe y usa una contrasena global diferente. Debes usar la misma contrasena global para afiliarlo a otro gimnasio.",
+        );
+      }
+
+      const refreshed = await tx.globalUserAccount.update({
+        where: { id: existingGlobalAccount.id },
+        data: {
+          fullName: body.fullName,
+          emailVerifiedAt: existingGlobalAccount.emailVerifiedAt ?? new Date(),
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      globalAccountId = refreshed.id;
+    } else {
+      const createdGlobal = await tx.globalUserAccount.create({
+        data: {
+          email: emailLower,
+          passwordHash: await bcrypt.hash(body.password, 12),
+          fullName: body.fullName,
+          emailVerifiedAt: new Date(),
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      globalAccountId = createdGlobal.id;
+    }
+
+    return tx.user.create({
+      data: {
+        gymId,
+        globalUserId: globalAccountId,
+        email: emailLower,
+        username: await generateGymScopedUsername(tx, body.fullName, gym.name),
+        fullName: body.fullName,
+        role: UserRole.admin,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        gymId: true,
+        email: true,
+        username: true,
+        fullName: true,
+        role: true,
+        createdAt: true,
+      },
+    });
   });
 
   await prisma.gymSubscriptionAudit.create({

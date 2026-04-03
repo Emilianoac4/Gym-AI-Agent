@@ -15,6 +15,7 @@ import {
   getFutureDateMinutes,
   sendEmailVerification,
 } from "../../utils/email-auth";
+import { generateGymScopedUsername } from "../../utils/username";
 import { env } from "../../config/env";
 import { forceSendDailyMembershipSummary } from "../../services/membership-summary.service";
 
@@ -384,7 +385,7 @@ export const createUser = async (
 
   const requester = await prisma.user.findUnique({
     where: { id: req.auth.userId },
-    select: { gymId: true, isActive: true, role: true, gym: { select: { currency: true } } },
+    select: { gymId: true, isActive: true, role: true, gym: { select: { currency: true, name: true } } },
   });
 
   if (!requester || !requester.isActive) {
@@ -401,16 +402,14 @@ export const createUser = async (
     throw new HttpError(403, "Admin accounts cannot be created through this endpoint");
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: req.body.email } });
-  if (existing) {
-    throw new HttpError(409, "El correo ya está en uso");
+  const emailLower = req.body.email.toLowerCase().trim();
+  // Check not already a member of this gym
+  const existingMembership = await prisma.user.findFirst({
+    where: { email: emailLower, gymId: requester.gymId },
+  });
+  if (existingMembership) {
+    throw new HttpError(409, "El correo ya está en uso en este gimnasio");
   }
-
-  const bcrypt = await import("bcryptjs");
-  const passwordHash = `TEMP$${await bcrypt.hash(req.body.password, 12)}`;
-  const { token, tokenHash } = createTokenPair();
-  const tokenExpiresAt = getFutureDateMinutes(env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES);
-  const verificationSentAt = new Date();
 
   const isMemberRole = req.body.role === "member";
   const membershipStartAt = isMemberRole ? new Date() : null;
@@ -421,18 +420,39 @@ export const createUser = async (
         return end;
       })()
     : null;
+  let verificationToken: string | null = null;
 
   const created = await prisma.$transaction(async (tx) => {
+    const bcrypt = await import("bcryptjs");
+    const tempPasswordHash = `TEMP$${await bcrypt.hash(req.body.password, 12)}`;
+    const { token, tokenHash } = createTokenPair();
+    verificationToken = token;
+    const tokenExpiresAt = getFutureDateMinutes(env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES);
+    const verificationSentAt = new Date();
+
+    // Find or create GlobalUserAccount
+    let globalAccount = await tx.globalUserAccount.findUnique({ where: { email: emailLower } });
+    if (!globalAccount) {
+      globalAccount = await tx.globalUserAccount.create({
+        data: {
+          email: emailLower,
+          passwordHash: tempPasswordHash,
+          fullName: req.body.fullName,
+          emailVerifiedAt: null,
+          emailVerificationLastSentAt: verificationSentAt,
+          emailVerificationTokenHash: tokenHash,
+          emailVerificationTokenExpiresAt: tokenExpiresAt,
+        },
+      });
+    }
+
     const newUser = await tx.user.create({
       data: {
         gymId: requester.gymId,
-        email: req.body.email,
-        passwordHash,
-        emailVerifiedAt: null,
-        emailVerificationLastSentAt: verificationSentAt,
-        emailVerificationTokenHash: tokenHash,
-        emailVerificationTokenExpiresAt: tokenExpiresAt,
+        globalUserId: globalAccount.id,
+        email: emailLower,
         fullName: req.body.fullName,
+        username: await generateGymScopedUsername(tx, req.body.fullName, requester.gym?.name ?? "gym"),
         role: req.body.role as UserRole,
         membershipStartAt,
         membershipEndAt,
@@ -528,7 +548,7 @@ export const createUser = async (
 
   let verificationWarning: string | undefined;
   try {
-    await sendEmailVerification(created.email, token);
+    if (verificationToken) await sendEmailVerification(created.email, verificationToken);
   } catch (error) {
     verificationWarning =
       error instanceof Error
@@ -542,7 +562,7 @@ export const createUser = async (
       : "Usuario creado correctamente. Se envio enlace de verificacion al correo.",
     user: created,
     ...(verificationWarning ? { warning: verificationWarning } : {}),
-    ...(env.NODE_ENV !== "production" ? { devVerificationToken: token } : {}),
+    ...(env.NODE_ENV !== "production" && verificationToken ? { devVerificationToken: verificationToken } : {}),
   });
 };
 

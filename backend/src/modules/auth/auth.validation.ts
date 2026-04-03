@@ -17,10 +17,27 @@ export const registerSchema = z.object({
   }),
 });
 
-export const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  requestedRole: z.enum(["admin", "trainer", "member"]),
+// Accept both `identifier` (new) and `email` (legacy mobile builds)
+export const loginSchema = z
+  .object({
+    identifier: z.string().min(3).max(255).optional(),
+    email: z.string().optional(), // backward compat
+    password: z.string().min(8),
+    requestedRole: z.enum(["admin", "trainer", "member"]),
+  })
+  .transform((data) => ({
+    identifier: (data.identifier ?? data.email ?? "").trim(),
+    password: data.password,
+    requestedRole: data.requestedRole,
+  }))
+  .refine((data) => data.identifier.length >= 3, {
+    message: "Se requiere correo electrónico o nombre de usuario",
+    path: ["identifier"],
+  });
+
+export const selectGymSchema = z.object({
+  selectorToken: z.string().min(10),
+  userId: z.string().uuid(),
 });
 
 export const oauthLoginSchema = z.object({
@@ -51,6 +68,7 @@ export const resetPasswordSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type SelectGymInput = z.infer<typeof selectGymSchema>;
 export type OauthLoginInput = z.infer<typeof oauthLoginSchema>;
 export type ChangeTemporaryPasswordInput = z.infer<typeof changeTemporaryPasswordSchema>;
 export type RequestEmailVerificationInput = z.infer<typeof requestEmailVerificationSchema>;
