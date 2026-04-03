@@ -3,14 +3,17 @@ import { authenticate, authorizeAction } from "../../middleware/auth.middleware"
 import { validate } from "../../middleware/validate.middleware";
 import {
   exportMembershipReport,
+  getGymSettings,
   getMembershipReport,
   getMyTrainerPresenceStatus,
   sendMembershipReport,
   getTrainerPresenceSummary,
+  updateGymSettings,
   updateMyTrainerPresenceStatus,
 } from "./operations.controller";
 import {
   exportMembershipReportSchema,
+  gymCurrencySchema,
   membershipReportQuerySchema,
   sendMembershipReportSchema,
   updateTrainerPresenceSchema,
@@ -63,6 +66,20 @@ operationsRouter.post(
   authorizeAction("reports.membership.read"),
   validate(sendMembershipReportSchema),
   sendMembershipReport,
+);
+
+operationsRouter.get(
+  "/settings",
+  authenticate,
+  getGymSettings,
+);
+
+operationsRouter.put(
+  "/settings",
+  authenticate,
+  authorizeAction("permissions.grant"),
+  validate(gymCurrencySchema),
+  updateGymSettings,
 );
 
 export { operationsRouter };

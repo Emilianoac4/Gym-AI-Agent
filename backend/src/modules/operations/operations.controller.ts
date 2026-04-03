@@ -8,6 +8,7 @@ import {
   MembershipReportQueryInput,
   SendMembershipReportInput,
   UpdateTrainerPresenceInput,
+  GymCurrencyInput,
 } from "./operations.validation";
 
 const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
@@ -481,4 +482,39 @@ export const sendMembershipReport = async (
     report,
     recipient: targetEmail,
   });
+};
+
+export const getGymSettings = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  const gym = await prisma.gym.findUnique({
+    where: { id: actor.gymId },
+    select: { id: true, currency: true },
+  });
+
+  if (!gym) {
+    throw new HttpError(404, "Gimnasio no encontrado");
+  }
+
+  res.json({ settings: { currency: gym.currency === "CRC" ? "CRC" : "USD" } });
+};
+
+export const updateGymSettings = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  if (actor.role !== UserRole.admin) {
+    throw new HttpError(403, "Solo el administrador puede modificar configuraciones");
+  }
+
+  const body = req.body as GymCurrencyInput;
+
+  const gym = await prisma.gym.update({
+    where: { id: actor.gymId },
+    data: { currency: body.currency },
+    select: { currency: true },
+  });
+
+  res.json({ message: "Configuracion actualizada", settings: { currency: gym.currency } });
 };

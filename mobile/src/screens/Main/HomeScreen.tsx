@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { AppButton } from "../../components/AppButton";
@@ -7,6 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
 import {
+  EmergencyTicket,
   GymAvailabilityDay,
   GeneratedRoutine,
   MessageThread,
@@ -73,6 +74,8 @@ export function HomeScreen() {
   const { user, token, logout } = useAuth();
   const navigation = useNavigation<any>();
   const isAdmin = user?.role === "admin";
+  const isTrainer = user?.role === "trainer";
+  const isMember = user?.role === "member";
   const canManageAvailability = user?.role === "admin" || user?.role === "trainer";
   const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
 
@@ -83,6 +86,10 @@ export function HomeScreen() {
   const [todayAvailability, setTodayAvailability] = useState<GymAvailabilityDay | null>(null);
   const [unreadThreads, setUnreadThreads] = useState<MessageThread[]>([]);
   const [activeTrainers, setActiveTrainers] = useState<string[]>([]);
+  const [emergencyTickets, setEmergencyTickets] = useState<EmergencyTicket[]>([]);
+  const [ticketModalVisible, setTicketModalVisible] = useState(false);
+  const [ticketCategory, setTicketCategory] = useState<"harassment" | "injury" | "accident" | "incident">("incident");
+  const [ticketDescription, setTicketDescription] = useState("");
 
   useFocusEffect(
     useCallback(() => {
@@ -95,12 +102,14 @@ export function HomeScreen() {
       const load = async () => {
         const availabilityPromise = api.getAvailabilityToday(token).catch(() => null);
         const threadsPromise = api.getMyThreads(token).catch(() => ({ threads: [] as MessageThread[] }));
+        const ticketsPromise = api.listEmergencyTickets(token).catch(() => ({ tickets: [] as EmergencyTicket[] }));
 
         if (isAdmin) {
-          const [availabilityData, threadsData, presenceData] = await Promise.all([
+          const [availabilityData, threadsData, presenceData, ticketsData] = await Promise.all([
             availabilityPromise,
             threadsPromise,
             api.getTrainerPresenceSummary(token, 1).catch(() => ({ days: [] as any[] })),
+            ticketsPromise,
           ]);
 
           const todayPresence = presenceData.days[0];
@@ -118,18 +127,20 @@ export function HomeScreen() {
             setTodayAvailability(availabilityData?.availability ?? null);
             setUnreadThreads(threadsData.threads.filter((thread) => thread.unreadCount > 0));
             setActiveTrainers(activeTrainerNames);
+            setEmergencyTickets(ticketsData.tickets);
           }
           return;
         }
 
         try {
-          const [availabilityData, progress, strength, latestRoutine, checkinData, threadsData] = await Promise.all([
+          const [availabilityData, progress, strength, latestRoutine, checkinData, threadsData, ticketsData] = await Promise.all([
             availabilityPromise,
-            api.getProgressSummary(user.id, token),
-            api.getStrengthProgress(user.id, token, 120),
+            api.getProgressSummary(user.id, token).catch(() => ({ summary: null as any })),
+            api.getStrengthProgress(user.id, token, 120).catch(() => ({ summary: null as any })),
             api.getLatestRoutine(user.id, token).catch(() => null),
-            api.getRoutineCheckins(user.id, token, 28),
+            api.getRoutineCheckins(user.id, token, 28).catch(() => ({ checkins: [] as RoutineCheckin[] })),
             threadsPromise,
+            ticketsPromise,
           ]);
 
           if (cancelled) {
@@ -137,12 +148,13 @@ export function HomeScreen() {
           }
 
           setTodayAvailability(availabilityData?.availability ?? null);
-          setSummary(progress.summary);
-          setStrengthSummary(strength.summary);
+          setSummary(progress.summary ?? null);
+          setStrengthSummary(strength.summary ?? null);
           setRoutine(latestRoutine?.routine ?? null);
           setCheckins(checkinData.checkins);
           setUnreadThreads(threadsData.threads.filter((thread) => thread.unreadCount > 0));
           setActiveTrainers([]);
+          setEmergencyTickets(ticketsData.tickets);
         } catch {
           if (!cancelled) {
             setTodayAvailability(null);
@@ -152,6 +164,7 @@ export function HomeScreen() {
             setCheckins([]);
             setUnreadThreads([]);
             setActiveTrainers([]);
+            setEmergencyTickets([]);
           }
         }
       };
@@ -190,32 +203,72 @@ export function HomeScreen() {
     return pending ? `${formatDayLabel(pending.day)} · ${pending.focus}` : "Semana completada";
   }, [completedThisWeek, routine]);
 
+  const urgentOpenTickets = emergencyTickets.filter((ticket) => !ticket.resolvedAt);
+
+  const submitEmergencyTicket = async () => {
+    if (!token || !ticketDescription.trim()) {
+      Alert.alert("Descripcion requerida", "Describe brevemente la situacion para enviar la alerta.");
+      return;
+    }
+
+    try {
+      await api.createEmergencyTicket(token, {
+        category: ticketCategory,
+        description: ticketDescription.trim(),
+      });
+      setTicketDescription("");
+      setTicketCategory("incident");
+      setTicketModalVisible(false);
+      Alert.alert("Alerta enviada", "El equipo administrativo ya fue notificado.");
+      const refreshed = await api.listEmergencyTickets(token);
+      setEmergencyTickets(refreshed.tickets);
+    } catch {
+      Alert.alert("No se pudo enviar", "Intenta de nuevo en unos segundos.");
+    }
+  };
+
   return (
     <LinearGradient colors={[palette.cream, palette.gold, palette.coral]} style={styles.shell}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
           <Text style={styles.welcome}>Hola, {user?.fullName ?? "Atleta"}</Text>
-          <Text style={styles.hero}>{isAdmin ? "Panel de gestion" : "Tu semana en GymAI"}</Text>
+          <Text style={styles.hero}>{isAdmin ? "Panel de gestion" : isTrainer ? "Panel del entrenador" : "Tu semana en GymAI"}</Text>
           <Text style={styles.heroSubtitle}>
             {isAdmin
               ? "Revisa el estado operativo del gimnasio y las prioridades del negocio."
-              : "Consulta tu progreso semanal, la siguiente sesion y el avance real de tus cargas."}
+              : isTrainer
+                ? "Gestiona mensajes y atiende incidentes reportados por los miembros."
+                : "Consulta tu progreso semanal, la siguiente sesion y el avance real de tus cargas."}
           </Text>
         </View>
 
-        {unreadThreads.length > 0 ? (
+        {(unreadThreads.length > 0 || urgentOpenTickets.length > 0) ? (
           <View style={styles.priorityCard}>
             <Text style={styles.priorityEyebrow}>Prioridad</Text>
-            <Text style={styles.priorityTitle}>Tienes {unreadThreads.length} conversación(es) sin leer</Text>
+            {unreadThreads.length > 0 ? (
+              <Text style={styles.priorityTitle}>Tienes {unreadThreads.length} conversación(es) sin leer</Text>
+            ) : null}
+            {urgentOpenTickets.length > 0 ? (
+              <Text style={styles.priorityTitle}>Hay {urgentOpenTickets.length} ticket(s) de emergencia abiertos</Text>
+            ) : null}
             <Text style={styles.priorityCopy}>
-              Revisa tus mensajes directos para responder a tiempo.
+              Atiende primero los mensajes y emergencias para mantener la operacion segura.
             </Text>
-            <Pressable
-              style={styles.priorityButton}
-              onPress={() => navigation.navigate(user?.role === "member" ? "MyMessages" : "Mensajes")}
-            >
-              <Text style={styles.priorityButtonText}>Ir a mensajes</Text>
-            </Pressable>
+            <View style={styles.inlineActionsRow}>
+              {unreadThreads.length > 0 ? (
+                <Pressable
+                  style={styles.priorityButton}
+                  onPress={() => navigation.navigate(user?.role === "member" ? "MyMessages" : "Mensajes")}
+                >
+                  <Text style={styles.priorityButtonText}>Ir a mensajes</Text>
+                </Pressable>
+              ) : null}
+              {(isAdmin || isTrainer) && urgentOpenTickets.length > 0 ? (
+                <Pressable style={styles.priorityButton} onPress={() => navigation.navigate("Mensajes") }>
+                  <Text style={styles.priorityButtonText}>Abrir bandeja admin</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         ) : null}
 
@@ -308,63 +361,92 @@ export function HomeScreen() {
           </>
         ) : (
           <>
-            <View style={styles.kpiRow}>
-              <View style={styles.kpiCardPrimary}>
-                <Text style={styles.kpiLabelDark}>Sesiones completadas</Text>
-                <Text style={styles.kpiValueDark}>
-                  {routine ? `${completedCount}/${routine.weekly_sessions}` : "Sin rutina"}
-                </Text>
-                <Text style={styles.kpiHintDark}>Semana actual</Text>
-              </View>
-              <View style={styles.kpiCardSecondary}>
-                <Text style={styles.kpiLabelLight}>Ejercicios en mejora</Text>
-                <Text style={styles.kpiValueLight}>{strengthSummary?.improvingExercises ?? 0}</Text>
-                <Text style={styles.kpiHintLight}>Ultimos 120 dias</Text>
-              </View>
-            </View>
-
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionEyebrow}>Siguiente paso</Text>
-              <Text style={styles.sectionTitle}>{nextSession}</Text>
-              <Text style={styles.featureDetail}>{summary?.nextAction ?? "Completa tu perfil, genera una rutina y registra tu primera sesion."}</Text>
-            </View>
-
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionEyebrow}>Resumen del miembro</Text>
-              <Text style={styles.sectionTitle}>Estado actual</Text>
-              <View style={styles.featureItem}>
-                <View style={styles.featureDot} />
-                <View style={styles.featureCopy}>
-                  <Text style={styles.featureTitle}>Racha semanal</Text>
-                  <Text style={styles.featureDetail}>{summary ? `${summary.weeklyCheckInStreak} semana(s) con check-in` : "Aun no hay check-ins registrados"}</Text>
+            {isTrainer ? (
+              <>
+                <View style={styles.sectionCard}>
+                  <Text style={styles.sectionEyebrow}>Usuarios que necesitan ayuda</Text>
+                  <Text style={styles.sectionTitle}>Tickets abiertos</Text>
+                  {urgentOpenTickets.length === 0 ? (
+                    <Text style={styles.featureDetail}>No hay tickets abiertos por ahora.</Text>
+                  ) : (
+                    urgentOpenTickets.slice(0, 5).map((ticket) => (
+                      <View key={ticket.id} style={styles.featureItem}>
+                        <View style={styles.featureDot} />
+                        <View style={styles.featureCopy}>
+                          <Text style={styles.featureTitle}>{ticket.category.toUpperCase()}</Text>
+                          <Text style={styles.featureDetail}>{ticket.description}</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
                 </View>
-              </View>
-              <View style={styles.featureItem}>
-                <View style={styles.featureDot} />
-                <View style={styles.featureCopy}>
-                  <Text style={styles.featureTitle}>Mediciones</Text>
-                  <Text style={styles.featureDetail}>{summary ? `${summary.measurementsCount} registros guardados` : "Sin mediciones registradas"}</Text>
-                </View>
-              </View>
-              <View style={styles.featureItem}>
-                <View style={styles.featureDot} />
-                <View style={styles.featureCopy}>
-                  <Text style={styles.featureTitle}>Carga de trabajo</Text>
-                  <Text style={styles.featureDetail}>{strengthSummary ? `${strengthSummary.activeExercises} ejercicios con historial de carga` : "Aun no hay progreso de cargas registrado"}</Text>
-                </View>
-              </View>
-            </View>
+              </>
+            ) : null}
 
-            <View style={styles.twoColumnRow}>
-              <View style={styles.miniCardWarm}>
-                <Text style={styles.miniLabel}>Rutina</Text>
-                <Text style={styles.miniValue}>{routine ? `${routine.sessions.length} dias planificados` : "Pendiente de generar"}</Text>
-              </View>
-              <View style={styles.miniCardDark}>
-                <Text style={styles.miniLabelDark}>Coach IA</Text>
-                <Text style={styles.miniValueDark}>Memoria conversacional y contexto del perfil activos</Text>
-              </View>
-            </View>
+            {isMember ? (
+              <>
+                <View style={styles.kpiRow}>
+                  <View style={styles.kpiCardPrimary}>
+                    <Text style={styles.kpiLabelDark}>Sesiones completadas</Text>
+                    <Text style={styles.kpiValueDark}>
+                      {routine ? `${completedCount}/${routine.weekly_sessions}` : "Sin rutina"}
+                    </Text>
+                    <Text style={styles.kpiHintDark}>Semana actual</Text>
+                  </View>
+                  <View style={styles.kpiCardSecondary}>
+                    <Text style={styles.kpiLabelLight}>Ejercicios en mejora</Text>
+                    <Text style={styles.kpiValueLight}>{strengthSummary?.improvingExercises ?? 0}</Text>
+                    <Text style={styles.kpiHintLight}>Ultimos 120 dias</Text>
+                  </View>
+                </View>
+
+                <View style={styles.sectionCard}>
+                  <Text style={styles.sectionEyebrow}>Siguiente paso</Text>
+                  <Text style={styles.sectionTitle}>{nextSession}</Text>
+                  <Text style={styles.featureDetail}>{summary?.nextAction ?? "Completa tu perfil, genera una rutina y registra tu primera sesion."}</Text>
+                </View>
+
+                <View style={styles.sectionCard}>
+                  <Text style={styles.sectionEyebrow}>Resumen del miembro</Text>
+                  <Text style={styles.sectionTitle}>Estado actual</Text>
+                  <View style={styles.featureItem}>
+                    <View style={styles.featureDot} />
+                    <View style={styles.featureCopy}>
+                      <Text style={styles.featureTitle}>Racha semanal</Text>
+                      <Text style={styles.featureDetail}>{summary ? `${summary.weeklyCheckInStreak} semana(s) con check-in` : "Aun no hay check-ins registrados"}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.featureItem}>
+                    <View style={styles.featureDot} />
+                    <View style={styles.featureCopy}>
+                      <Text style={styles.featureTitle}>Mediciones</Text>
+                      <Text style={styles.featureDetail}>{summary ? `${summary.measurementsCount} registros guardados` : "Sin mediciones registradas"}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.featureItem}>
+                    <View style={styles.featureDot} />
+                    <View style={styles.featureCopy}>
+                      <Text style={styles.featureTitle}>Carga de trabajo</Text>
+                      <Text style={styles.featureDetail}>{strengthSummary ? `${strengthSummary.activeExercises} ejercicios con historial de carga` : "Aun no hay progreso de cargas registrado"}</Text>
+                    </View>
+                  </View>
+                  <Pressable style={styles.inlineActionPrimary} onPress={() => setTicketModalVisible(true)}>
+                    <Text style={styles.inlineActionPrimaryText}>Reportar emergencia</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.twoColumnRow}>
+                  <View style={styles.miniCardWarm}>
+                    <Text style={styles.miniLabel}>Rutina</Text>
+                    <Text style={styles.miniValue}>{routine ? `${routine.sessions.length} dias planificados` : "Pendiente de generar"}</Text>
+                  </View>
+                  <View style={styles.miniCardDark}>
+                    <Text style={styles.miniLabelDark}>Coach IA</Text>
+                    <Text style={styles.miniValueDark}>Memoria conversacional y contexto del perfil activos</Text>
+                  </View>
+                </View>
+              </>
+            ) : null}
           </>
         )}
 
@@ -372,6 +454,44 @@ export function HomeScreen() {
           <AppButton label="Cerrar sesion" onPress={logout} />
         </View>
       </ScrollView>
+
+      <Modal visible={ticketModalVisible} transparent animationType="slide" onRequestClose={() => setTicketModalVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.sectionTitle}>Reportar emergencia</Text>
+            <Text style={styles.featureDetail}>Categoria</Text>
+            <View style={styles.quickGrid}>
+              {(["harassment", "injury", "accident", "incident"] as const).map((category) => (
+                <Pressable
+                  key={category}
+                  style={[
+                    styles.quickButton,
+                    ticketCategory === category ? styles.quickButtonActive : null,
+                  ]}
+                  onPress={() => setTicketCategory(category)}
+                >
+                  <Text style={styles.quickButtonText}>{category}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              value={ticketDescription}
+              onChangeText={setTicketDescription}
+              placeholder="Describe que sucede y donde"
+              style={styles.ticketInput}
+              multiline
+            />
+            <View style={styles.inlineActionsRow}>
+              <Pressable style={styles.inlineActionSecondary} onPress={() => setTicketModalVisible(false)}>
+                <Text style={styles.inlineActionSecondaryText}>Cancelar</Text>
+              </Pressable>
+              <Pressable style={styles.inlineActionPrimary} onPress={submitEmergencyTicket}>
+                <Text style={styles.inlineActionPrimaryText}>Enviar alerta</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -464,6 +584,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: palette.line,
+  },
+  quickButtonActive: {
+    backgroundColor: palette.gold,
+    borderColor: palette.cocoa,
   },
   quickButtonText: {
     color: palette.cocoa,
@@ -645,5 +769,30 @@ const styles = StyleSheet.create({
   actions: {
     marginTop: 24,
     marginBottom: 12,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    backgroundColor: palette.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    borderTopWidth: 1,
+    borderColor: palette.line,
+  },
+  ticketInput: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: palette.surfaceMuted,
+    borderRadius: 12,
+    minHeight: 96,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    textAlignVertical: "top",
+    color: palette.cocoa,
   },
 });

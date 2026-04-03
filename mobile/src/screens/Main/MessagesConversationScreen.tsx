@@ -84,6 +84,13 @@ export function MessagesConversationScreen({ route, navigation }: { route: any; 
   useFocusEffect(
     useCallback(() => {
       loadMessages();
+      const intervalId = setInterval(() => {
+        loadMessages();
+      }, 5000);
+
+      return () => {
+        clearInterval(intervalId);
+      };
     }, [loadMessages]),
   );
 

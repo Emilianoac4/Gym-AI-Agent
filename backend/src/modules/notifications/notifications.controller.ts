@@ -4,8 +4,10 @@ import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
 import { sendExpoPushNotifications } from "../../utils/expo-push";
 import {
+  CreateEmergencyTicketInput,
   CreateThreadInput,
   RegisterPushTokenInput,
+  ResolveEmergencyTicketInput,
   SendGeneralNotificationInput,
   SendMessageInput,
 } from "./notifications.validation";
@@ -45,6 +47,20 @@ const getActiveThread = async (gymId: string, adminUserId: string, memberId: str
     },
     orderBy: { createdAt: "desc" },
   });
+
+const getGymAdmin = async (gymId: string) => {
+  const admin = await prisma.user.findFirst({
+    where: { gymId, role: UserRole.admin, isActive: true },
+    select: { id: true, fullName: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (!admin) {
+    throw new HttpError(404, "No hay administrador activo para este gimnasio");
+  }
+
+  return admin;
+};
 
 /* ─── push token ──────────────────────────────────────────── */
 
@@ -220,25 +236,37 @@ export const getMyThreads = async (req: Request, res: Response): Promise<void> =
 export const getOrCreateThread = async (req: Request, res: Response): Promise<void> => {
   const auth = requireAuth(req);
   const actor = await requireGymUser(auth.userId);
-
-  if (actor.role !== UserRole.admin) {
-    throw new HttpError(403, "Solo el administrador puede iniciar conversaciones");
-  }
-
   const { targetUserId } = req.body as CreateThreadInput;
 
-  // Verify the target belongs to the same gym
-  const target = await prisma.user.findUnique({
-    where: { id: targetUserId },
-    select: { id: true, gymId: true, fullName: true },
-  });
+  let adminUserId = actor.id;
+  let memberUserId = targetUserId ?? actor.id;
+  let memberName = actor.fullName;
 
-  if (!target || target.gymId !== actor.gymId) {
-    throw new HttpError(404, "Usuario no encontrado");
+  if (actor.role === UserRole.admin) {
+    if (!targetUserId) {
+      throw new HttpError(400, "Debes indicar un usuario destino");
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, gymId: true, fullName: true },
+    });
+
+    if (!target || target.gymId !== actor.gymId) {
+      throw new HttpError(404, "Usuario no encontrado");
+    }
+
+    adminUserId = actor.id;
+    memberUserId = targetUserId;
+    memberName = target.fullName;
+  } else {
+    const admin = await getGymAdmin(actor.gymId);
+    adminUserId = admin.id;
+    memberUserId = actor.id;
+    memberName = actor.fullName;
   }
 
-  // Try to reuse an active thread
-  const existing = await getActiveThread(actor.gymId, actor.id, targetUserId);
+  const existing = await getActiveThread(actor.gymId, adminUserId, memberUserId);
 
   if (existing) {
     const messages = await prisma.directMessage.findMany({
@@ -251,7 +279,7 @@ export const getOrCreateThread = async (req: Request, res: Response): Promise<vo
         id: existing.id,
         adminUserId: existing.adminUserId,
         memberId: existing.memberId,
-        memberName: target.fullName,
+        memberName,
         expiresAt: existing.expiresAt.toISOString(),
         createdAt: existing.createdAt.toISOString(),
       },
@@ -266,15 +294,14 @@ export const getOrCreateThread = async (req: Request, res: Response): Promise<vo
     return;
   }
 
-  // Create a new thread (expires in THREAD_TTL_DAYS days)
   const now = new Date();
   const expiresAt = new Date(now.getTime() + THREAD_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   const thread = await prisma.messageThread.create({
     data: {
       gymId: actor.gymId,
-      adminUserId: actor.id,
-      memberId: targetUserId,
+      adminUserId,
+      memberId: memberUserId,
       expiresAt,
     },
   });
@@ -284,7 +311,7 @@ export const getOrCreateThread = async (req: Request, res: Response): Promise<vo
       id: thread.id,
       adminUserId: thread.adminUserId,
       memberId: thread.memberId,
-      memberName: target.fullName,
+      memberName,
       expiresAt: thread.expiresAt.toISOString(),
       createdAt: thread.createdAt.toISOString(),
     },
@@ -395,6 +422,124 @@ export const sendThreadMessage = async (req: Request, res: Response): Promise<vo
       body: message.body,
       readAt: null,
       createdAt: message.createdAt.toISOString(),
+    },
+  });
+};
+
+export const createEmergencyTicket = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+  const body = req.body as CreateEmergencyTicketInput;
+
+  const ticket = await prisma.emergencyTicket.create({
+    data: {
+      gymId: actor.gymId,
+      reporterUserId: actor.id,
+      category: body.category,
+      description: body.description,
+      status: "open",
+    },
+  });
+
+  const admins = await prisma.user.findMany({
+    where: { gymId: actor.gymId, role: UserRole.admin, isActive: true },
+    select: { id: true },
+  });
+
+  if (admins.length > 0) {
+    const tokens = await prisma.pushToken.findMany({
+      where: { userId: { in: admins.map((a) => a.id) } },
+      select: { token: true },
+    });
+
+    await sendExpoPushNotifications(
+      tokens.map((t) => ({
+        to: t.token,
+        title: `${actor.gym.name}`,
+        body: `ALERTA PRIORIDAD 1: ${actor.fullName} reportó ${body.category}`,
+        sound: "default",
+        data: { type: "ticket", ticketId: ticket.id },
+      })),
+    );
+  }
+
+  res.status(201).json({
+    ticket: {
+      id: ticket.id,
+      category: ticket.category,
+      description: ticket.description,
+      status: ticket.status,
+      createdAt: ticket.createdAt.toISOString(),
+    },
+  });
+};
+
+export const listEmergencyTickets = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  const where = actor.role === UserRole.member
+    ? { gymId: actor.gymId, reporterUserId: actor.id }
+    : { gymId: actor.gymId, status: "open" };
+
+  const tickets = await prisma.emergencyTicket.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+
+  const userIds = Array.from(new Set(tickets.flatMap((t) => [t.reporterUserId, t.resolvedByUserId].filter(Boolean) as string[])));
+  const users = userIds.length
+    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } })
+    : [];
+  const userMap = new Map(users.map((u) => [u.id, u.fullName]));
+
+  res.json({
+    tickets: tickets.map((t) => ({
+      id: t.id,
+      category: t.category,
+      description: t.description,
+      status: t.status,
+      reporterUserId: t.reporterUserId,
+      reporterName: userMap.get(t.reporterUserId) ?? "Usuario",
+      resolvedByUserId: t.resolvedByUserId,
+      resolvedByName: t.resolvedByUserId ? (userMap.get(t.resolvedByUserId) ?? "Usuario") : null,
+      resolvedAt: t.resolvedAt?.toISOString() ?? null,
+      createdAt: t.createdAt.toISOString(),
+    })),
+  });
+};
+
+export const resolveEmergencyTicket = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  if (actor.role !== UserRole.admin) {
+    throw new HttpError(403, "Solo el administrador puede cerrar alertas");
+  }
+
+  const { ticketId } = req.params as ResolveEmergencyTicketInput;
+
+  const ticket = await prisma.emergencyTicket.findFirst({ where: { id: ticketId, gymId: actor.gymId } });
+  if (!ticket) {
+    throw new HttpError(404, "Alerta no encontrada");
+  }
+
+  const updated = await prisma.emergencyTicket.update({
+    where: { id: ticket.id },
+    data: {
+      status: "resolved",
+      resolvedByUserId: actor.id,
+      resolvedAt: new Date(),
+    },
+  });
+
+  res.json({
+    message: "Alerta resuelta",
+    ticket: {
+      id: updated.id,
+      status: updated.status,
+      resolvedAt: updated.resolvedAt?.toISOString() ?? null,
     },
   });
 };

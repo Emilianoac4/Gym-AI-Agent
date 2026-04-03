@@ -29,6 +29,7 @@ export function MyMessagesScreen({ navigation }: { navigation: any }) {
   const { token, user } = useAuth();
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [loading, setLoading] = useState(false);
+  const [openingAdminThread, setOpeningAdminThread] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -50,6 +51,23 @@ export function MyMessagesScreen({ navigation }: { navigation: any }) {
     });
   };
 
+  const onContactAdmin = async () => {
+    if (!token) return;
+    setOpeningAdminThread(true);
+    try {
+      const res = await api.getOrCreateThread(token, {});
+      navigation.navigate("MessageConversation", {
+        threadId: res.thread.id,
+        otherUserName: res.thread.memberName === user?.fullName ? "Administrador" : res.thread.memberName,
+        initialMessages: res.messages,
+      });
+    } catch (e: any) {
+      // silent fail with alert
+    } finally {
+      setOpeningAdminThread(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.shell} contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -68,6 +86,15 @@ export function MyMessagesScreen({ navigation }: { navigation: any }) {
           <Text style={styles.emptySubtext}>
             El administrador del gimnasio puede enviarte mensajes personalizados aquí.
           </Text>
+          <TouchableOpacity
+            style={[styles.contactAdminButton, openingAdminThread && { opacity: 0.6 }]}
+            onPress={() => void onContactAdmin()}
+            disabled={openingAdminThread}
+          >
+            <Text style={styles.contactAdminButtonText}>
+              {openingAdminThread ? "Abriendo..." : "Contactar al administrador"}
+            </Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.card}>
@@ -136,6 +163,14 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 48, marginBottom: 12 },
   emptyText: { fontSize: 16, fontWeight: "700", color: palette.cocoa, marginBottom: 8 },
   emptySubtext: { fontSize: 13, color: palette.textMuted, textAlign: "center", paddingHorizontal: 20 },
+  contactAdminButton: {
+    marginTop: 14,
+    backgroundColor: palette.cocoa,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  contactAdminButtonText: { color: palette.white, fontWeight: "700" },
 
   card: {
     backgroundColor: palette.card,

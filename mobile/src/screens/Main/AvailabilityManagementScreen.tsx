@@ -119,6 +119,15 @@ const buildTimeOptions = () => {
 
 const timeOptions = buildTimeOptions();
 
+const addThirtyMinutes = (time: string) => {
+  const [h, m] = time.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return "14:00";
+  const total = ((h * 60 + m + 30) % (24 * 60));
+  const hour = Math.floor(total / 60).toString().padStart(2, "0");
+  const minute = (total % 60).toString().padStart(2, "0");
+  return `${hour}:${minute}`;
+};
+
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
 const plusDays = (amount: number) => {
@@ -355,11 +364,14 @@ export function AvailabilityManagementScreen() {
       return;
     }
 
+    const defaultSecondaryOpen = draft.opensAtSecondary || addThirtyMinutes(draft.closesAt || "13:30");
+    const defaultSecondaryClose = draft.closesAtSecondary || addThirtyMinutes(addThirtyMinutes(defaultSecondaryOpen));
+
     const nextDraft: TemplateDraft = {
       ...draft,
       hasSplitSchedule: true,
-      opensAtSecondary: draft.opensAtSecondary || "14:00",
-      closesAtSecondary: draft.closesAtSecondary || "21:00",
+      opensAtSecondary: defaultSecondaryOpen,
+      closesAtSecondary: defaultSecondaryClose,
     };
     updateTemplateDraft(draft.dayOfWeek, nextDraft);
     void onSaveTemplateDay(nextDraft);
@@ -399,11 +411,14 @@ export function AvailabilityManagementScreen() {
         };
       }
 
+      const defaultSecondaryOpen = current.opensAtSecondary || addThirtyMinutes(current.closesAt || "13:30");
+      const defaultSecondaryClose = current.closesAtSecondary || addThirtyMinutes(addThirtyMinutes(defaultSecondaryOpen));
+
       return {
         ...current,
         hasSplitSchedule: true,
-        opensAtSecondary: current.opensAtSecondary || "14:00",
-        closesAtSecondary: current.closesAtSecondary || "21:00",
+        opensAtSecondary: defaultSecondaryOpen,
+        closesAtSecondary: defaultSecondaryClose,
       };
     });
   };

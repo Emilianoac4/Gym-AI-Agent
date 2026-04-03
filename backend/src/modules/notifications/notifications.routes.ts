@@ -2,18 +2,23 @@ import { Router } from "express";
 import { authenticate, authorizeAction } from "../../middleware/auth.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import {
+  createEmergencyTicket,
   getOrCreateThread,
   getMyThreads,
   getThreadMessages,
+  listEmergencyTickets,
   listGeneralNotifications,
   registerPushToken,
+  resolveEmergencyTicket,
   sendGeneralNotification,
   sendThreadMessage,
   unregisterPushToken,
 } from "./notifications.controller";
 import {
+  createEmergencyTicketSchema,
   createThreadSchema,
   registerPushTokenSchema,
+  resolveEmergencyTicketSchema,
   sendGeneralNotificationSchema,
   sendMessageSchema,
 } from "./notifications.validation";
@@ -58,11 +63,11 @@ notificationsRouter.get(
   getMyThreads,
 );
 
-// Admin only: create or get active thread with a target user
+// Admin can open with target user. Member/trainer can open their own thread with admin.
 notificationsRouter.post(
   "/threads",
   authenticate,
-  authorizeAction("notifications.general.send"),
+  authorizeAction("notifications.messages.write"),
   validate(createThreadSchema),
   getOrCreateThread,
 );
@@ -80,6 +85,29 @@ notificationsRouter.post(
   authorizeAction("notifications.messages.write"),
   validate(sendMessageSchema),
   sendThreadMessage,
+);
+
+notificationsRouter.post(
+  "/tickets",
+  authenticate,
+  authorizeAction("notifications.messages.write"),
+  validate(createEmergencyTicketSchema),
+  createEmergencyTicket,
+);
+
+notificationsRouter.get(
+  "/tickets",
+  authenticate,
+  authorizeAction("notifications.messages.read"),
+  listEmergencyTickets,
+);
+
+notificationsRouter.post(
+  "/tickets/:ticketId/resolve",
+  authenticate,
+  authorizeAction("notifications.messages.read"),
+  validate(resolveEmergencyTicketSchema),
+  resolveEmergencyTicket,
 );
 
 export { notificationsRouter };

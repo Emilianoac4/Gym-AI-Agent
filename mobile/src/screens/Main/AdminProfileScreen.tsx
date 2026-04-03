@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
-import { MembershipReport, TrainerPresenceSummaryDay } from "../../types/api";
+import { GymSettings, MembershipReport, TrainerPresenceSummaryDay } from "../../types/api";
 import { palette } from "../../theme/palette";
 
 const REPORT_OPTIONS = [
@@ -114,6 +114,8 @@ export function AdminProfileScreen() {
   const [customEmail, setCustomEmail] = useState("");
   const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
   const [expandedPresenceMonth, setExpandedPresenceMonth] = useState(false);
+  const [gymSettings, setGymSettings] = useState<GymSettings | null>(null);
+  const [savingCurrency, setSavingCurrency] = useState(false);
   const [selectedReportDate, setSelectedReportDate] = useState(() => toDateKey(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
@@ -128,12 +130,14 @@ export function AdminProfileScreen() {
 
     setLoading(true);
     try {
-      const [presenceResponse, reportResponse] = await Promise.all([
+      const [presenceResponse, reportResponse, settingsResponse] = await Promise.all([
         api.getTrainerPresenceSummary(token, 30),
         api.getMembershipReport(token, 7),
+        api.getGymSettings(token),
       ]);
       setPresenceDays(presenceResponse.days);
       setReport(reportResponse.report);
+      setGymSettings(settingsResponse.settings);
       setReportRangeLabel("1 semana");
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo cargar el panel administrativo";
@@ -239,6 +243,24 @@ export function AdminProfileScreen() {
     }));
   };
 
+  const onUpdateCurrency = async (currency: "USD" | "CRC") => {
+    if (!token || savingCurrency || gymSettings?.currency === currency) {
+      return;
+    }
+
+    setSavingCurrency(true);
+    try {
+      const response = await api.updateGymSettings(token, { currency });
+      setGymSettings(response.settings);
+      Alert.alert("Moneda actualizada", `Ahora la moneda global es ${response.settings.currency}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo actualizar la moneda";
+      Alert.alert("Error", message);
+    } finally {
+      setSavingCurrency(false);
+    }
+  };
+
   const onLogout = () => {
     Alert.alert("Cerrar sesión", "¿Deseas cerrar sesión?", [
       { text: "Cancelar", style: "cancel" },
@@ -270,6 +292,29 @@ export function AdminProfileScreen() {
             <Text style={styles.summaryLabel}>Movimientos</Text>
             <Text style={styles.summaryValue}>{report?.summary.rowCount ?? 0}</Text>
             <Text style={styles.summaryHint}>reporte actual: {reportRangeLabel}</Text>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Configuracion general</Text>
+          </View>
+          <Text style={styles.summaryHint}>Moneda global para reportes y transacciones</Text>
+          <View style={styles.sectionHeaderActions}>
+            <TouchableOpacity
+              style={[styles.refreshChip, gymSettings?.currency === "USD" ? styles.selectedChip : null]}
+              onPress={() => void onUpdateCurrency("USD")}
+              disabled={savingCurrency}
+            >
+              <Text style={styles.refreshChipText}>USD</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.refreshChip, gymSettings?.currency === "CRC" ? styles.selectedChip : null]}
+              onPress={() => void onUpdateCurrency("CRC")}
+              disabled={savingCurrency}
+            >
+              <Text style={styles.refreshChipText}>CRC</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -604,6 +649,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     backgroundColor: palette.sand,
+  },
+  selectedChip: {
+    backgroundColor: palette.gold,
+    borderWidth: 1,
+    borderColor: palette.cocoa,
   },
   refreshChipText: { color: palette.cocoa, fontWeight: "700", fontSize: 12 },
   primaryBtn: {

@@ -9,7 +9,9 @@ import {
   GymAvailabilityExceptionDay,
   GymAvailabilityPermissions,
   GymAvailabilityTemplateDay,
+  EmergencyTicket,
   ExerciseStrengthProgress,
+  GymSettings,
   Measurement,
   MembershipReport,
   MembershipReportExportInfo,
@@ -659,6 +661,18 @@ export const api = {
       },
     ),
 
+  getGymSettings: (token: string) =>
+    request<{ settings: GymSettings }>("/operations/settings", {
+      token,
+    }),
+
+  updateGymSettings: (token: string, body: { currency: "USD" | "CRC" }) =>
+    request<{ message: string; settings: GymSettings }>("/operations/settings", {
+      method: "PUT",
+      token,
+      body,
+    }),
+
   /* ─── Notifications ──────────────────────────────────────── */
 
   registerPushToken: (token: string, body: { token: string; platform: string }) =>
@@ -697,7 +711,7 @@ export const api = {
       token,
     }),
 
-  getOrCreateThread: (token: string, body: { targetUserId: string }) =>
+  getOrCreateThread: (token: string, body: { targetUserId?: string } = {}) =>
     request<ThreadWithMessages>("/notifications/threads", {
       method: "POST",
       token,
@@ -716,4 +730,29 @@ export const api = {
       token,
       body,
     }),
+
+  createEmergencyTicket: (
+    token: string,
+    body: { category: "harassment" | "injury" | "accident" | "incident"; description: string },
+  ) =>
+    request<{ ticket: EmergencyTicket }>("/notifications/tickets", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  listEmergencyTickets: (token: string) =>
+    request<{ tickets: EmergencyTicket[] }>("/notifications/tickets", {
+      method: "GET",
+      token,
+    }),
+
+  resolveEmergencyTicket: (token: string, ticketId: string) =>
+    request<{ message: string; ticket: { id: string; status: string; resolvedAt: string | null } }>(
+      `/notifications/tickets/${encodeURIComponent(ticketId)}/resolve`,
+      {
+        method: "POST",
+        token,
+      },
+    ),
 };

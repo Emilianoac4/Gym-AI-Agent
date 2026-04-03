@@ -10,6 +10,7 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
   const [goal, setGoal] = useState("");
   const [availability, setAvailability] = useState("");
   const [experienceLvl, setExperienceLvl] = useState("");
+  const [unreadThreads, setUnreadThreads] = useState(0);
 
   useEffect(() => {
     const load = async () => {
@@ -17,10 +18,14 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
         return;
       }
       try {
-        const data = await api.getProfile(user.id, token);
+        const [data, threadsData] = await Promise.all([
+          api.getProfile(user.id, token),
+          api.getMyThreads(token).catch(() => ({ threads: [] })),
+        ]);
         setGoal(data.profile?.goal ?? "");
         setAvailability(data.profile?.availability ?? "");
         setExperienceLvl(data.profile?.experienceLvl ?? "");
+        setUnreadThreads(threadsData.threads.reduce((acc, item) => acc + item.unreadCount, 0));
       } catch {
         // Keep defaults when profile does not exist yet.
       }
@@ -70,6 +75,11 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
           onPress={() => navigation.navigate("MyMessages")}
         >
           <Text style={styles.messagesButtonText}>💬 Mis mensajes</Text>
+          {unreadThreads > 0 ? (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>{unreadThreads}</Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -136,8 +146,28 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 12,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: palette.line,
+    position: "relative",
   },
   messagesButtonText: { fontSize: 14, fontWeight: "700", color: palette.cocoa },
+  unreadBadge: {
+    position: "absolute",
+    right: 10,
+    top: "50%",
+    marginTop: -11,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: palette.coral,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unreadBadgeText: {
+    color: palette.white,
+    fontSize: 11,
+    fontWeight: "800",
+  },
 });

@@ -364,3 +364,20 @@ export interface ThreadWithMessages {
   };
   messages: DirectMessage[];
 }
+
+export interface GymSettings {
+  currency: "USD" | "CRC";
+}
+
+export interface EmergencyTicket {
+  id: string;
+  category: "harassment" | "injury" | "accident" | "incident";
+  description: string;
+  status: "open" | "resolved";
+  reporterUserId: string;
+  reporterName: string;
+  resolvedByUserId: string | null;
+  resolvedByName: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}

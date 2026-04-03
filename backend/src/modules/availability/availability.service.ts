@@ -668,20 +668,43 @@ export const listTrainerAvailabilityPermissions = async (auth: AuthContext) => {
     },
   });
 
-  const grants = await prisma.userPermissionGrant.findMany({
-    where: {
-      userId: { in: trainers.map((trainer) => trainer.id) },
-      permissionAction: {
-        in: [PermissionGrantAction.availability_write, PermissionGrantAction.notifications_send],
+  let grants: Array<{
+    userId: string;
+    permissionAction: PermissionGrantAction;
+    grantedByUserId: string;
+    createdAt: Date;
+  }> = [];
+
+  try {
+    grants = await prisma.userPermissionGrant.findMany({
+      where: {
+        userId: { in: trainers.map((trainer) => trainer.id) },
+        permissionAction: {
+          in: [PermissionGrantAction.availability_write, PermissionGrantAction.notifications_send],
+        },
       },
-    },
-    select: {
-      userId: true,
-      permissionAction: true,
-      grantedByUserId: true,
-      createdAt: true,
-    },
-  });
+      select: {
+        userId: true,
+        permissionAction: true,
+        grantedByUserId: true,
+        createdAt: true,
+      },
+    });
+  } catch {
+    // Backward-compatible fallback while notifications_send enum migration is pending
+    grants = await prisma.userPermissionGrant.findMany({
+      where: {
+        userId: { in: trainers.map((trainer) => trainer.id) },
+        permissionAction: PermissionGrantAction.availability_write,
+      },
+      select: {
+        userId: true,
+        permissionAction: true,
+        grantedByUserId: true,
+        createdAt: true,
+      },
+    });
+  }
 
   const grantedByMap = await getUpdaterMap(grants.map((grant) => grant.grantedByUserId));
   const grantsByKey = new Map(

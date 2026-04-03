@@ -39,6 +39,7 @@ model Gym {
   ownerName String   @map("owner_name")
   address   String?
   phone     String?
+  currency  String   @default("USD")
   createdAt DateTime @default(now()) @map("created_at")
 
   users User[]
@@ -324,4 +325,20 @@ model DirectMessage {
 
   @@index([threadId, createdAt])
   @@map("direct_messages")
+}
+
+model EmergencyTicket {
+  id              String    @id @default(uuid())
+  gymId           String    @map("gym_id")
+  reporterUserId  String    @map("reporter_user_id")
+  category        String
+  description     String
+  status          String    @default("open")
+  resolvedByUserId String?  @map("resolved_by_user_id")
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([gymId, status, createdAt])
+  @@index([reporterUserId, createdAt])
+  @@map("emergency_tickets")
 }

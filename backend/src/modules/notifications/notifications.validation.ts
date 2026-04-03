@@ -14,7 +14,7 @@ export const sendGeneralNotificationSchema = z.object({
 export type SendGeneralNotificationInput = z.infer<typeof sendGeneralNotificationSchema>;
 
 export const createThreadSchema = z.object({
-  targetUserId: z.string().uuid(),
+  targetUserId: z.string().uuid().optional(),
 });
 export type CreateThreadInput = z.infer<typeof createThreadSchema>;
 
@@ -24,3 +24,14 @@ export const sendMessageSchema = z.object({
   body: z.string().min(1).max(2000),
 });
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
+
+export const createEmergencyTicketSchema = z.object({
+  category: z.enum(["harassment", "injury", "accident", "incident"]),
+  description: z.string().min(10).max(2000),
+});
+export type CreateEmergencyTicketInput = z.infer<typeof createEmergencyTicketSchema>;
+
+export const resolveEmergencyTicketSchema = z.object({
+  ticketId: z.string().uuid(),
+});
+export type ResolveEmergencyTicketInput = z.infer<typeof resolveEmergencyTicketSchema>;

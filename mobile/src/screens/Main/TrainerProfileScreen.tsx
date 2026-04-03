@@ -20,11 +20,12 @@ const formatHour = (value: string) =>
     minute: "2-digit",
   });
 
-export function TrainerProfileScreen() {
+export function TrainerProfileScreen({ navigation }: { navigation: any }) {
   const { user, token, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<TrainerPresenceStatus | null>(null);
+  const [unreadThreads, setUnreadThreads] = useState(0);
 
   const loadStatus = useCallback(async () => {
     if (!token) {
@@ -33,8 +34,12 @@ export function TrainerProfileScreen() {
 
     setLoading(true);
     try {
-      const response = await api.getMyTrainerPresenceStatus(token);
+      const [response, threadsData] = await Promise.all([
+        api.getMyTrainerPresenceStatus(token),
+        api.getMyThreads(token).catch(() => ({ threads: [] })),
+      ]);
       setStatus(response.status);
+      setUnreadThreads(threadsData.threads.reduce((acc, item) => acc + item.unreadCount, 0));
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo cargar el estado operativo";
       Alert.alert("Error", message);
@@ -119,6 +124,18 @@ export function TrainerProfileScreen() {
             </>
           )}
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Mensajes</Text>
+        <TouchableOpacity style={styles.messagesButton} onPress={() => navigation.navigate("MyMessages")}>
+          <Text style={styles.messagesButtonText}>💬 Mensajes</Text>
+          {unreadThreads > 0 ? (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>{unreadThreads}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -219,6 +236,31 @@ const styles = StyleSheet.create({
   statusButtonText: { color: "#fff", fontSize: 22, fontWeight: "800" },
   statusHeadline: { color: palette.cocoa, fontSize: 18, fontWeight: "800" },
   statusHelp: { color: palette.cocoa + "88", textAlign: "center", marginTop: 8, lineHeight: 20 },
+  messagesButton: {
+    backgroundColor: palette.sand,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.line,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  messagesButtonText: { fontSize: 14, fontWeight: "700", color: palette.cocoa },
+  unreadBadge: {
+    position: "absolute",
+    right: 10,
+    top: "50%",
+    marginTop: -11,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: palette.coral,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unreadBadgeText: { color: palette.white, fontSize: 11, fontWeight: "800" },
   infoCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
