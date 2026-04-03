@@ -44,7 +44,7 @@ body {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .auth-shell {
@@ -320,6 +320,67 @@ button:hover {
   }
 
   .topbar-actions .ghost-btn {
+
+    /* --- Page entrance animation --- */
+    @keyframes fadeInPage {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .app-shell {
+      animation: fadeInPage 320ms ease;
+    }
+
+    /* --- Confirm modal --- */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 18, 13, 0.52);
+      backdrop-filter: blur(4px);
+      display: grid;
+      place-items: center;
+      z-index: 1000;
+      padding: 24px;
+    }
+    .modal-card {
+      width: min(480px, 100%);
+      background: var(--milk);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 28px;
+      box-shadow: 0 24px 64px rgba(17, 18, 13, 0.22);
+      animation: fadeInPage 200ms ease;
+    }
+    .modal-card h2 {
+      margin: 8px 0 0;
+      font-size: 22px;
+    }
+    .modal-desc {
+      color: var(--ink-soft);
+      margin: 10px 0 18px;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .modal-form {
+      display: grid;
+      gap: 8px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+      justify-content: flex-end;
+    }
+    .modal-actions .ghost-btn {
+      width: auto;
+    }
+    .danger-btn {
+      background: #9b2626;
+      border-color: #9b2626;
+    }
+    .danger-btn:hover {
+      background: #7e1f1f;
+      border-color: #7e1f1f;
+    }
     width: 100%;
   }
 }

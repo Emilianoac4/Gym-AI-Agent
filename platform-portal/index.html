@@ -136,6 +136,32 @@
       </main>
     </section>
 
+    <!-- Confirm / Delete / Recover modal -->
+    <div id="confirmModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <p class="eyebrow" id="modalEyebrow"></p>
+        <h2 id="modalTitle"></h2>
+        <p class="modal-desc" id="modalDesc"></p>
+        <form id="modalForm" class="modal-form" autocomplete="off">
+          <div id="modalStep1">
+            <label class="field-label" for="modalEmail">Correo</label>
+            <input id="modalEmail" type="email" autocomplete="username" readonly tabindex="-1" />
+            <label class="field-label" for="modalPassword" style="margin-top:10px">Contraseña de plataforma</label>
+            <input id="modalPassword" type="password" autocomplete="current-password" placeholder="Tu contraseña" />
+          </div>
+          <div id="modalStep2" class="hidden">
+            <label class="field-label" id="modalConfirmLabel">Confirmación</label>
+            <input id="modalConfirmInput" type="text" placeholder="" />
+          </div>
+          <p id="modalError" class="error-copy"></p>
+          <div class="modal-actions">
+            <button type="button" id="modalCancelBtn" class="ghost-btn">Cancelar</button>
+            <button type="submit" id="modalConfirmBtn">Confirmar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>
