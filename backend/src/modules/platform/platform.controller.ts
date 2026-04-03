@@ -4,11 +4,14 @@ import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
 import { HttpError } from "../../utils/http-error";
 import {
+  CreateCompanyInput,
   CreateCompanyAdminInput,
   EnforceGymSubscriptionInput,
+  PlatformAlertsQueryInput,
   PlatformAdminUserInput,
   PlatformLoginInput,
   UpdateGymSubscriptionInput,
+  UpdateSubscriptionStatusInput,
 } from "./platform.validation";
 import { signPlatformAuthToken } from "../../utils/platform-jwt";
 
@@ -292,6 +295,260 @@ export const getPlatformDashboard = async (_req: Request, res: Response): Promis
       overflowing: overflowing.length,
     },
     companies: companyCards,
+  });
+};
+
+export const getPlatformAlerts = async (req: Request, res: Response): Promise<void> => {
+  requirePlatformSession(req);
+  const query = req.query as unknown as PlatformAlertsQueryInput;
+  const daysAhead = Number(query.daysAhead ?? 10);
+
+  const now = new Date();
+  const limitDate = new Date(now);
+  limitDate.setUTCDate(limitDate.getUTCDate() + daysAhead);
+
+  const [subscriptions, gyms] = await Promise.all([
+    prisma.gymSubscription.findMany({
+      where: {
+        OR: [
+          { status: GymSubscriptionStatus.grace },
+          { status: GymSubscriptionStatus.suspended },
+          { status: GymSubscriptionStatus.cancelled },
+          { endsAt: { lte: limitDate } },
+        ],
+      },
+      select: {
+        gymId: true,
+        planTier: true,
+        userLimit: true,
+        status: true,
+        endsAt: true,
+        graceEndsAt: true,
+      },
+      orderBy: { endsAt: "asc" },
+    }),
+    prisma.gym.findMany({
+      select: { id: true, name: true, ownerName: true },
+    }),
+  ]);
+
+  const gymMap = new Map(gyms.map((gym) => [gym.id, gym]));
+
+  const pendingQueriesRaw = await prisma.directMessage.findMany({
+    where: { readAt: null },
+    select: {
+      senderUserId: true,
+      thread: {
+        select: {
+          gymId: true,
+          adminUserId: true,
+        },
+      },
+    },
+  });
+
+  const pendingQueriesByGym = new Map<string, number>();
+  pendingQueriesRaw.forEach((item) => {
+    if (!item.thread || item.senderUserId === item.thread.adminUserId) {
+      return;
+    }
+    const current = pendingQueriesByGym.get(item.thread.gymId) ?? 0;
+    pendingQueriesByGym.set(item.thread.gymId, current + 1);
+  });
+
+  const alerts = subscriptions.map((sub) => {
+    const gym = gymMap.get(sub.gymId);
+    const daysRemaining = Math.max(0, Math.ceil((sub.endsAt.getTime() - Date.now()) / 86400000));
+    const pendingQueries = pendingQueriesByGym.get(sub.gymId) ?? 0;
+
+    return {
+      gymId: sub.gymId,
+      gymName: gym?.name ?? "Gimnasio",
+      ownerName: gym?.ownerName ?? "",
+      planTier: sub.planTier,
+      status: sub.status,
+      userLimit: sub.userLimit,
+      endsAt: sub.endsAt.toISOString(),
+      graceEndsAt: sub.graceEndsAt?.toISOString() ?? null,
+      daysRemaining,
+      pendingUserQueries: pendingQueries,
+      isExpiringSoon: daysRemaining <= daysAhead,
+      isInGrace: sub.status === GymSubscriptionStatus.grace,
+      isSuspended: sub.status === GymSubscriptionStatus.suspended,
+    };
+  });
+
+  res.json({
+    generatedAt: new Date().toISOString(),
+    daysAhead,
+    alerts,
+  });
+};
+
+export const createCompany = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const body = req.body as CreateCompanyInput;
+
+  const existingAdminEmail = await prisma.user.findUnique({ where: { email: body.adminEmail.toLowerCase() } });
+  if (existingAdminEmail) {
+    throw new HttpError(409, "El correo del administrador ya existe en la plataforma");
+  }
+
+  const bcrypt = await import("bcryptjs");
+  const passwordHash = await bcrypt.hash(body.adminPassword, 12);
+
+  const now = new Date();
+  const startsAt = body.startsAt ? new Date(body.startsAt) : now;
+  const endsAt = body.endsAt ? new Date(body.endsAt) : (() => {
+    const date = new Date(startsAt);
+    date.setUTCDate(date.getUTCDate() + 30);
+    return date;
+  })();
+
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+    throw new HttpError(400, "Fechas invalidas para la suscripcion inicial");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const gym = await tx.gym.create({
+      data: {
+        name: body.gymName,
+        ownerName: body.ownerName,
+        address: body.address ?? null,
+        phone: body.phone ?? null,
+        currency: body.currency,
+      },
+      select: { id: true, name: true, ownerName: true, currency: true, createdAt: true },
+    });
+
+    const admin = await tx.user.create({
+      data: {
+        gymId: gym.id,
+        email: body.adminEmail.toLowerCase(),
+        passwordHash,
+        emailVerifiedAt: new Date(),
+        fullName: body.adminFullName,
+        role: UserRole.admin,
+        isActive: true,
+      },
+      select: { id: true, email: true, fullName: true, role: true, createdAt: true },
+    });
+
+    const subscription = await tx.gymSubscription.create({
+      data: {
+        gymId: gym.id,
+        planTier: body.planTier as SubscriptionPlanTier,
+        userLimit: body.userLimit,
+        status: GymSubscriptionStatus.active,
+        startsAt,
+        endsAt,
+        notes: body.notes ?? null,
+        updatedBy: session.platformUserId,
+      },
+    });
+
+    await tx.gymSubscriptionAudit.create({
+      data: {
+        gymId: gym.id,
+        action: "company.created",
+        newPlanTier: subscription.planTier,
+        newUserLimit: subscription.userLimit,
+        newEndsAt: subscription.endsAt,
+        reason: body.notes ?? "Company onboarding",
+        createdBy: session.platformUserId,
+      },
+    });
+
+    return { gym, admin, subscription };
+  });
+
+  res.status(201).json({
+    message: "Empresa creada correctamente",
+    company: {
+      gymId: result.gym.id,
+      gymName: result.gym.name,
+      ownerName: result.gym.ownerName,
+      currency: result.gym.currency,
+      createdAt: result.gym.createdAt.toISOString(),
+    },
+    admin: {
+      ...result.admin,
+      createdAt: result.admin.createdAt.toISOString(),
+    },
+    subscription: {
+      planTier: result.subscription.planTier,
+      userLimit: result.subscription.userLimit,
+      status: result.subscription.status,
+      startsAt: result.subscription.startsAt.toISOString(),
+      endsAt: result.subscription.endsAt.toISOString(),
+    },
+  });
+};
+
+export const updateCompanySubscriptionStatus = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const { gymId } = req.params as { gymId: string };
+  const body = req.body as UpdateSubscriptionStatusInput;
+
+  const subscription = await prisma.gymSubscription.findUnique({ where: { gymId } });
+  if (!subscription) {
+    throw new HttpError(404, "No existe suscripcion para esta empresa");
+  }
+
+  const status = body.status as GymSubscriptionStatus;
+  const nextData: {
+    status: GymSubscriptionStatus;
+    graceStartedAt?: Date | null;
+    graceEndsAt?: Date | null;
+    updatedBy: string;
+  } = {
+    status,
+    updatedBy: session.platformUserId,
+  };
+
+  if (status === GymSubscriptionStatus.active) {
+    nextData.graceStartedAt = null;
+    nextData.graceEndsAt = null;
+  }
+
+  const updated = await prisma.gymSubscription.update({
+    where: { gymId },
+    data: nextData,
+  });
+
+  await prisma.gymSubscriptionAudit.create({
+    data: {
+      gymId,
+      action: "subscription.status.updated",
+      previousPlanTier: subscription.planTier,
+      newPlanTier: updated.planTier,
+      previousUserLimit: subscription.userLimit,
+      newUserLimit: updated.userLimit,
+      previousEndsAt: subscription.endsAt,
+      newEndsAt: updated.endsAt,
+      reason: body.reason ?? null,
+      createdBy: session.platformUserId,
+    },
+  });
+
+  if (status === GymSubscriptionStatus.suspended || status === GymSubscriptionStatus.cancelled) {
+    await prisma.user.updateMany({
+      where: { gymId, role: UserRole.member },
+      data: { isActive: false },
+    });
+  }
+
+  res.json({
+    message: "Estado de suscripcion actualizado",
+    subscription: {
+      gymId,
+      status: updated.status,
+      planTier: updated.planTier,
+      userLimit: updated.userLimit,
+      startsAt: updated.startsAt.toISOString(),
+      endsAt: updated.endsAt.toISOString(),
+      graceEndsAt: updated.graceEndsAt?.toISOString() ?? null,
+    },
   });
 };
 

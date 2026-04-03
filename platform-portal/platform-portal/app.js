@@ -53,6 +53,46 @@ function showLogin() {
   $("loginScreen").classList.remove("hidden");
 }
 
+function renderAlerts(alerts, daysAhead) {
+  const summaryEl = $("alertsSummary");
+  const listEl = $("alertsList");
+
+  if (!alerts || alerts.length === 0) {
+    summaryEl.textContent = `Sin alertas en los proximos ${daysAhead} dias.`;
+    listEl.innerHTML = "";
+    return;
+  }
+
+  const inGrace = alerts.filter((a) => a.isInGrace).length;
+  const suspended = alerts.filter((a) => a.isSuspended).length;
+  const expiring = alerts.filter((a) => a.isExpiringSoon).length;
+
+  summaryEl.textContent = `Vencimientos: ${expiring} | En gracia: ${inGrace} | Suspendidos: ${suspended}`;
+  listEl.innerHTML = alerts
+    .slice(0, 8)
+    .map(
+      (alert) => `
+        <article class="alert-card">
+          <p class="alert-title">${alert.gymName}</p>
+          <p class="alert-meta">Estado: ${alert.status} | Plan: ${alert.planTier.toUpperCase()}</p>
+          <p class="alert-meta">Vence: ${fmtDate(alert.endsAt)} | Consultas pendientes: ${alert.pendingUserQueries}</p>
+          ${alert.graceEndsAt ? `<p class="alert-meta">Gracia hasta: ${fmtDate(alert.graceEndsAt)}</p>` : ""}
+        </article>
+      `,
+    )
+    .join("");
+}
+
+async function loadAlerts() {
+  try {
+    const data = await apiFetch("/platform/alerts?daysAhead=10");
+    renderAlerts(data.alerts, data.daysAhead);
+  } catch (error) {
+    $("alertsSummary").textContent = `Error: ${error.message}`;
+    $("alertsList").innerHTML = "";
+  }
+}
+
 async function loadDashboard() {
   const summaryEl = $("summary");
   const listEl = $("companyList");
@@ -112,6 +152,19 @@ async function loadCompanyDetail(gymId) {
         </section>
 
         <section class="block">
+          <h3>Estado de suscripcion</h3>
+          <div class="form-grid">
+            <select id="subscriptionStatus" class="full">
+              <option value="active">Activa</option>
+              <option value="suspended">Suspendida</option>
+              <option value="cancelled">Cancelada</option>
+            </select>
+            <input id="subscriptionStatusReason" class="full" placeholder="Razon del cambio" />
+            <button id="saveStatusBtn" class="full" type="button">Actualizar estado</button>
+          </div>
+        </section>
+
+        <section class="block">
           <h3>Actualizar suscripción</h3>
           <div class="form-grid">
             <select id="planTier">
@@ -156,6 +209,7 @@ async function loadCompanyDetail(gymId) {
     $("planTier").value = sub.planTier;
     $("userLimit").value = String(sub.userLimit);
     $("endsAt").value = sub.endsAt.slice(0, 16);
+    $("subscriptionStatus").value = sub.status;
 
     $("saveSubBtn").addEventListener("click", async () => {
       try {
@@ -170,6 +224,7 @@ async function loadCompanyDetail(gymId) {
         });
         alert("Suscripción actualizada");
         await loadDashboard();
+        await loadAlerts();
         await loadCompanyDetail(gymId);
       } catch (error) {
         alert(error.message);
@@ -184,6 +239,25 @@ async function loadCompanyDetail(gymId) {
         });
         alert(result.message);
         await loadDashboard();
+        await loadAlerts();
+        await loadCompanyDetail(gymId);
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    $("saveStatusBtn").addEventListener("click", async () => {
+      try {
+        await apiFetch(`/platform/companies/${gymId}/subscription/status`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: $("subscriptionStatus").value,
+            reason: $("subscriptionStatusReason").value || undefined,
+          }),
+        });
+        alert("Estado actualizado");
+        await loadDashboard();
+        await loadAlerts();
         await loadCompanyDetail(gymId);
       } catch (error) {
         alert(error.message);
@@ -238,6 +312,47 @@ $("loginForm").addEventListener("submit", async (event) => {
 
     showApp();
     await loadDashboard();
+    await loadAlerts();
+  } catch (error) {
+    errorEl.textContent = error.message;
+  }
+});
+
+$("createCompanyForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const errorEl = $("createCompanyError");
+  errorEl.textContent = "";
+
+  try {
+    const payload = {
+      gymName: $("companyGymName").value,
+      ownerName: $("companyOwnerName").value,
+      address: $("companyAddress").value || undefined,
+      phone: $("companyPhone").value || undefined,
+      currency: $("companyCurrency").value,
+      adminEmail: $("companyAdminEmail").value,
+      adminFullName: $("companyAdminName").value,
+      adminPassword: $("companyAdminPassword").value,
+      planTier: $("companyPlanTier").value,
+      userLimit: Number($("companyUserLimit").value),
+      endsAt: $("companyEndsAt").value
+        ? new Date($("companyEndsAt").value).toISOString()
+        : undefined,
+      notes: $("companyNotes").value || undefined,
+    };
+
+    await apiFetch("/platform/companies", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    event.target.reset();
+    $("companyCurrency").value = "USD";
+    $("companyPlanTier").value = "premium";
+    $("companyUserLimit").value = "50";
+    alert("Gimnasio creado correctamente");
+    await loadDashboard();
+    await loadAlerts();
   } catch (error) {
     errorEl.textContent = error.message;
   }
@@ -245,6 +360,7 @@ $("loginForm").addEventListener("submit", async (event) => {
 
 $("refreshBtn").addEventListener("click", async () => {
   await loadDashboard();
+  await loadAlerts();
   if (state.selectedGymId) {
     await loadCompanyDetail(state.selectedGymId);
   }

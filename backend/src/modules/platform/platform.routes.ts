@@ -6,22 +6,28 @@ import {
 } from "../../middleware/platform-auth.middleware";
 import {
   bootstrapPlatformAdmin,
+  createCompany,
   createPlatformAdminUser,
   createCompanyAdmin,
   enforceCompanyUserLimit,
+  getPlatformAlerts,
   getPlatformSession,
   getCompanyHierarchy,
   getPlatformDashboard,
   listPlatformAdminUsers,
   loginPlatform,
   updateCompanySubscription,
+  updateCompanySubscriptionStatus,
 } from "./platform.controller";
 import {
+  createCompanySchema,
   createCompanyAdminSchema,
   enforceGymSubscriptionSchema,
   gymParamsSchema,
+  platformAlertsQuerySchema,
   platformAdminUserSchema,
   platformLoginSchema,
+  updateSubscriptionStatusSchema,
   updateGymSubscriptionSchema,
 } from "./platform.validation";
 
@@ -42,6 +48,8 @@ platformRouter.get("/auth/users", listPlatformAdminUsers);
 platformRouter.post("/auth/users", validate(platformAdminUserSchema), createPlatformAdminUser);
 
 platformRouter.get("/dashboard", getPlatformDashboard);
+platformRouter.get("/alerts", validate(platformAlertsQuerySchema), getPlatformAlerts);
+platformRouter.post("/companies", validate(createCompanySchema), createCompany);
 platformRouter.get("/companies/:gymId", validate(gymParamsSchema), getCompanyHierarchy);
 platformRouter.post(
   "/companies/:gymId/admins",
@@ -60,6 +68,12 @@ platformRouter.post(
   validate(gymParamsSchema),
   validate(enforceGymSubscriptionSchema),
   enforceCompanyUserLimit,
+);
+platformRouter.patch(
+  "/companies/:gymId/subscription/status",
+  validate(gymParamsSchema),
+  validate(updateSubscriptionStatusSchema),
+  updateCompanySubscriptionStatus,
 );
 
 export { platformRouter };
