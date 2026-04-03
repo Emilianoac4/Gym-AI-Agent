@@ -245,8 +245,7 @@ export const listPlatformAdminUsers = async (req: Request, res: Response): Promi
 };
 
 export const getPlatformDashboard = async (req: Request, res: Response): Promise<void> => {
-  const query = req.query as unknown as PlatformDashboardQueryInput;
-  const includeDeleted = query.includeDeleted === true;
+  const includeDeleted = req.query.includeDeleted === "true" || req.query.includeDeleted === "1";
 
   const [gyms, subscriptions] = await Promise.all([
     prisma.gym.findMany({
