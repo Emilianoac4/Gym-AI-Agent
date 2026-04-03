@@ -1,13 +1,16 @@
 -- Create AssistanceRequest table for Fase 1 (Trainer operations)
 -- Safe to run multiple times
 
-CREATE TYPE assistance_request_status AS ENUM (
-  'CREATED',
-  'ASSIGNED',
-  'IN_PROGRESS',
-  'RESOLVED',
-  'RATED'
-);
+DO $$ BEGIN
+  CREATE TYPE assistance_request_status AS ENUM (
+    'CREATED',
+    'ASSIGNED',
+    'IN_PROGRESS',
+    'RESOLVED',
+    'RATED'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "assistance_requests" (
   "id"          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

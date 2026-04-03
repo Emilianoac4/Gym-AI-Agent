@@ -1,21 +1,24 @@
 -- Create AuditLog table for Fase 0 (Audit and permissions foundation)
 -- Safe to run multiple times
 
-CREATE TYPE audit_action AS ENUM (
-  'user_created',
-  'user_updated',
-  'user_deleted',
-  'user_role_changed',
-  'membership_renewed',
-  'membership_cancelled',
-  'payment_recorded',
-  'trainer_status_changed',
-  'assistance_request_created',
-  'assistance_request_resolved',
-  'gym_created',
-  'gym_deleted',
-  'platform_action'
-);
+DO $$ BEGIN
+  CREATE TYPE audit_action AS ENUM (
+    'user_created',
+    'user_updated',
+    'user_deleted',
+    'user_role_changed',
+    'membership_renewed',
+    'membership_cancelled',
+    'payment_recorded',
+    'trainer_status_changed',
+    'assistance_request_created',
+    'assistance_request_resolved',
+    'gym_created',
+    'gym_deleted',
+    'platform_action'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "audit_logs" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),

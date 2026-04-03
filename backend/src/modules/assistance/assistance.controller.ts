@@ -30,52 +30,61 @@ export const createAssistanceRequest = async (
   req: Request<Record<string, never>, unknown, CreateAssistanceRequestInput>,
   res: Response,
 ): Promise<void> => {
-  const auth = requireAuth(req);
-  const actor = await requireGymUser(auth.userId);
+  try {
+    const auth = requireAuth(req);
+    const actor = await requireGymUser(auth.userId);
 
-  if (actor.role !== "member") {
-    throw new HttpError(403, "Solo los miembros pueden crear solicitudes de asistencia");
-  }
+    if (actor.role !== "member") {
+      throw new HttpError(403, "Solo los miembros pueden crear solicitudes de asistencia");
+    }
 
-  // Un miembro solo puede tener 1 solicitud abierta a la vez
-  const open = await prisma.assistanceRequest.findFirst({
-    where: {
-      memberId: actor.id,
-      status: { in: [AssistanceRequestStatus.CREATED, AssistanceRequestStatus.ASSIGNED, AssistanceRequestStatus.IN_PROGRESS] },
-    },
-  });
-  if (open) {
-    throw new HttpError(409, "Ya tienes una solicitud de asistencia activa");
-  }
+    // Un miembro solo puede tener 1 solicitud abierta a la vez
+    const open = await prisma.assistanceRequest.findFirst({
+      where: {
+        memberId: actor.id,
+        status: { in: [AssistanceRequestStatus.CREATED, AssistanceRequestStatus.ASSIGNED, AssistanceRequestStatus.IN_PROGRESS] },
+      },
+    });
+    if (open) {
+      throw new HttpError(409, "Ya tienes una solicitud de asistencia activa");
+    }
 
-  const request = await prisma.assistanceRequest.create({
-    data: {
+    const request = await prisma.assistanceRequest.create({
+      data: {
+        gymId: actor.gymId,
+        memberId: actor.id,
+        description: req.body.description,
+      },
+      select: {
+        id: true,
+        gymId: true,
+        memberId: true,
+        status: true,
+        description: true,
+        createdAt: true,
+      },
+    });
+
+    await createAuditLog({
       gymId: actor.gymId,
-      memberId: actor.id,
-      description: req.body.description,
-    },
-    select: {
-      id: true,
-      gymId: true,
-      memberId: true,
-      status: true,
-      description: true,
-      createdAt: true,
-    },
-  });
+      actorUserId: actor.id,
+      action: AuditAction.assistance_request_created,
+      resourceType: "assistance_request",
+      resourceId: request.id,
+      changes: { description: req.body.description },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"] as string,
+    });
 
-  await createAuditLog({
-    gymId: actor.gymId,
-    actorUserId: actor.id,
-    action: AuditAction.assistance_request_created,
-    resourceType: "assistance_request",
-    resourceId: request.id,
-    changes: { description: req.body.description },
-    ipAddress: req.ip,
-    userAgent: req.headers["user-agent"] as string,
-  });
-
-  res.status(201).json({ message: "Solicitud de asistencia creada", request });
+    res.status(201).json({ message: "Solicitud de asistencia creada", request });
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    console.error("createAssistanceRequest failed", {
+      requestId: req.requestId,
+      error,
+    });
+    throw error;
+  }
 };
 
 // GET /assistance — trainer/admin lista solicitudes del gimnasio
