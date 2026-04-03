@@ -1,0 +1,5 @@
+[build]
+  publish = "platform-portal"
+
+[build.environment]
+  NODE_VERSION = "22"
