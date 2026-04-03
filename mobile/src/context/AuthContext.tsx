@@ -1,6 +1,19 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Platform } from "react-native";
+import * as Notifications from "expo-notifications";
 import { api } from "../services/api";
 import { AuthUser, UserRole } from "../types/api";
+
+// Show in-app notifications as banners
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -26,6 +39,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const pushTokenRef = useRef<string | null>(null);
+
+  // Register device push token whenever the user authenticates
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== "granted") return;
+        const projectId = (Notifications as any).getExpoPushTokenAsync
+          ? undefined
+          : undefined; // resolved from Constants at runtime by the SDK
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        if (!tokenData?.data) return;
+        pushTokenRef.current = tokenData.data;
+        const platform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
+        await api.registerPushToken(token, { token: tokenData.data, platform });
+      } catch (e) {
+        // push token registration is best-effort
+        console.warn("[PUSH] token registration failed:", e);
+      }
+    })();
+  }, [token]);
 
   const login = async (email: string, password: string, requestedRole: UserRole) => {
     setLoading(true);
@@ -115,6 +151,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
+    // Best-effort cleanup of push token
+    if (token && pushTokenRef.current) {
+      api.unregisterPushToken(token, { token: pushTokenRef.current }).catch(() => {});
+      pushTokenRef.current = null;
+    }
     setToken(null);
     setUser(null);
   };

@@ -314,3 +314,48 @@ export interface AIChatLog {
   aiResponse: string;
   createdAt: string;
 }
+
+/* ─── Notifications ──────────────────────────────────────── */
+
+export type NotificationCategory = "schedule" | "pricing" | "event" | "maintenance" | "general";
+
+export interface GeneralNotification {
+  id: string;
+  gymId: string;
+  sentByUserId: string;
+  title: string;
+  body: string;
+  category: NotificationCategory;
+  createdAt: string;
+}
+
+export interface MessageThread {
+  id: string;
+  adminUserId: string;
+  adminName: string;
+  memberId: string;
+  memberName: string;
+  expiresAt: string;
+  createdAt: string;
+  lastMessage: {
+    body: string;
+    senderUserId: string;
+    createdAt: string;
+  } | null;
+  unreadCount: number;
+}
+
+export interface DirectMessage {
+  id: string;
+  senderUserId: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface ThreadWithMessages {
+  thread: Omit<MessageThread, "lastMessage" | "unreadCount"> & {
+    memberName: string;
+  };
+  messages: DirectMessage[];
+}

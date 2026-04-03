@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
 
-export function ProfileScreen() {
+export function ProfileScreen({ navigation }: { navigation: any }) {
   const { user, token } = useAuth();
   const [goal, setGoal] = useState("");
   const [availability, setAvailability] = useState("");
@@ -64,6 +64,13 @@ export function ProfileScreen() {
         <TextInput style={styles.input} value={experienceLvl} onChangeText={setExperienceLvl} placeholder="Intermedio" placeholderTextColor={palette.textSoft} />
 
         <AppButton label="Guardar perfil" onPress={onSave} />
+
+        <TouchableOpacity
+          style={styles.messagesButton}
+          onPress={() => navigation.navigate("MyMessages")}
+        >
+          <Text style={styles.messagesButtonText}>💬 Mis mensajes</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -123,4 +130,14 @@ const styles = StyleSheet.create({
     backgroundColor: palette.cream,
     color: palette.ink,
   },
+  messagesButton: {
+    marginTop: 14,
+    backgroundColor: palette.sand,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  messagesButtonText: { fontSize: 14, fontWeight: "700", color: palette.cocoa },
 });

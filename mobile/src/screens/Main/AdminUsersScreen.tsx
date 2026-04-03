@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
@@ -68,6 +69,7 @@ export function AdminUsersScreen() {
   const [users, setUsers] = useState<GymUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterRole, setFilterRole] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createStep, setCreateStep] = useState<1 | 2>(1);
   const [creating, setCreating] = useState(false);
@@ -341,6 +343,10 @@ export function AdminUsersScreen() {
     if (isTrainer && u.role === "admin") {
       return false;
     }
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (normalizedQuery.length > 0 && !u.fullName.toLowerCase().includes(normalizedQuery)) {
+      return false;
+    }
     return true;
   });
 
@@ -374,6 +380,23 @@ export function AdminUsersScreen() {
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      <View style={styles.searchWrap}>
+        <MaterialCommunityIcons name="magnify" size={20} color={palette.cocoa + "99"} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar por nombre"
+          placeholderTextColor={palette.cocoa + "88"}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCapitalize="words"
+        />
+        {searchQuery.trim().length > 0 ? (
+          <TouchableOpacity onPress={() => setSearchQuery("")}>
+            <MaterialCommunityIcons name="close-circle" size={18} color={palette.cocoa + "99"} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       {/* Lista */}
       {loading ? (
@@ -889,6 +912,25 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: palette.moss },
   filterChipText: { color: palette.moss, fontWeight: "600", fontSize: 13 },
   filterChipTextActive: { color: palette.cream },
+  searchWrap: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.sand,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: palette.cocoa,
+    fontSize: 14,
+    paddingVertical: 0,
+  },
   list: { flex: 1, paddingHorizontal: 20 },
   emptyCard: {
     backgroundColor: palette.sand,

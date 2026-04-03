@@ -8,7 +8,22 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.gymai.mobile",
-      "usesAppleSignIn": true
-    }
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
+    },
+    "android": {
+      "permissions": ["NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "VIBRATE"]
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#463C33",
+          "sounds": []
+        }
+      ]
+    ]
   }
 }

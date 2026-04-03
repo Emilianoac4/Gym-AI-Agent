@@ -8,6 +8,7 @@ import { measurementsRouter } from "./modules/measurements/measurements.routes";
 import { aiRouter } from "./modules/ai/ai.routes";
 import { availabilityRouter } from "./modules/availability/availability.routes";
 import { operationsRouter } from "./modules/operations/operations.routes";
+import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { notFoundHandler } from "./middleware/not-found.middleware";
 import { errorHandler } from "./middleware/error.middleware";
 
@@ -53,6 +54,7 @@ app.use("/users", measurementsRouter);
 app.use("/ai", aiRouter);
 app.use("/availability", availabilityRouter);
 app.use("/operations", operationsRouter);
+app.use("/notifications", notificationsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

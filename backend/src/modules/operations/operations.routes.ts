@@ -5,12 +5,14 @@ import {
   exportMembershipReport,
   getMembershipReport,
   getMyTrainerPresenceStatus,
+  sendMembershipReport,
   getTrainerPresenceSummary,
   updateMyTrainerPresenceStatus,
 } from "./operations.controller";
 import {
   exportMembershipReportSchema,
   membershipReportQuerySchema,
+  sendMembershipReportSchema,
   updateTrainerPresenceSchema,
 } from "./operations.validation";
 
@@ -53,6 +55,14 @@ operationsRouter.post(
   authorizeAction("reports.membership.read"),
   validate(exportMembershipReportSchema),
   exportMembershipReport,
+);
+
+operationsRouter.post(
+  "/membership-report/send",
+  authenticate,
+  authorizeAction("reports.membership.read"),
+  validate(sendMembershipReportSchema),
+  sendMembershipReport,
 );
 
 export { operationsRouter };

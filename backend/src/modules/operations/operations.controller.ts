@@ -2,9 +2,11 @@ import { MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/clie
 import { Request, Response } from "express";
 import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
+import { sendPlatformEmail } from "../../utils/email-auth";
 import {
   ExportMembershipReportInput,
   MembershipReportQueryInput,
+  SendMembershipReportInput,
   UpdateTrainerPresenceInput,
 } from "./operations.validation";
 
@@ -30,7 +32,7 @@ const requireAuth = (req: Request<any, any, any, any>) => {
 const requireGymUser = async (userId: string) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, gymId: true, role: true, isActive: true, fullName: true },
+    select: { id: true, gymId: true, role: true, isActive: true, fullName: true, email: true },
   });
 
   if (!user || !user.isActive) {
@@ -316,6 +318,54 @@ const buildMembershipReport = async (gymId: string, days: number) => {
   };
 };
 
+const buildMembershipReportEmail = (report: Awaited<ReturnType<typeof buildMembershipReport>>) => {
+  const rowsHtml = report.rows.length
+    ? report.rows
+        .map(
+          (row) =>
+            `<tr><td>${row.date}</td><td>${row.typeLabel}</td><td>${row.memberName}</td><td>${row.paymentMethodLabel}</td><td>${row.actorName}</td><td>${row.amount.toFixed(2)}</td></tr>`,
+        )
+        .join("")
+    : "<tr><td colspan=\"6\">Sin movimientos en el periodo seleccionado.</td></tr>";
+
+  const html = `
+    <h2>Reporte de registros y renovaciones</h2>
+    <p>Periodo: ${report.periodDays} dias</p>
+    <p>Total movimientos: ${report.summary.rowCount}</p>
+    <p>Total registros: ${report.summary.totalRegistrations}</p>
+    <p>Total renovaciones: ${report.summary.totalRenewals}</p>
+    <p>Monto total: ${report.summary.totalAmount.toFixed(2)}</p>
+    <table border="1" cellspacing="0" cellpadding="6">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Tipo</th>
+          <th>Usuario</th>
+          <th>Metodo de pago</th>
+          <th>Registrado por</th>
+          <th>Monto</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <p>CSV:</p>
+    <pre>${report.csv.replace(/</g, "&lt;")}</pre>
+  `;
+
+  const text = [
+    "Reporte de registros y renovaciones",
+    `Periodo: ${report.periodDays} dias`,
+    `Movimientos: ${report.summary.rowCount}`,
+    `Registros: ${report.summary.totalRegistrations}`,
+    `Renovaciones: ${report.summary.totalRenewals}`,
+    `Monto total: ${report.summary.totalAmount.toFixed(2)}`,
+    "",
+    report.csv,
+  ].join("\n");
+
+  return { html, text };
+};
+
 export const getMembershipReport = async (
   req: Request,
   res: Response,
@@ -366,5 +416,49 @@ export const exportMembershipReport = async (
         .toISOString()
         .slice(0, 10)}.csv`,
     },
+  });
+};
+
+export const sendMembershipReport = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  if (actor.role !== UserRole.admin) {
+    throw new HttpError(403, "Solo el administrador puede enviar reportes");
+  }
+
+  const body = req.body as SendMembershipReportInput;
+  const targetEmail = body.delivery === "linked" ? actor.email : body.email;
+  if (!targetEmail) {
+    throw new HttpError(400, "No se encontro correo vinculado para este perfil");
+  }
+
+  const report = await buildMembershipReport(actor.gymId, body.days);
+  const emailContent = buildMembershipReportEmail(report);
+
+  await sendPlatformEmail({
+    to: targetEmail,
+    subject: `Reporte de registros y renovaciones (${body.days} dias)`,
+    html: emailContent.html,
+    text: emailContent.text,
+  });
+
+  await prisma.membershipReportExport.create({
+    data: {
+      gymId: actor.gymId,
+      generatedByUserId: actor.id,
+      periodDays: body.days,
+      rowCount: report.summary.rowCount,
+      csvContent: report.csv,
+    },
+  });
+
+  res.json({
+    message: `Reporte enviado correctamente a ${targetEmail}`,
+    report,
+    recipient: targetEmail,
   });
 };

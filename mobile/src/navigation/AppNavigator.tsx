@@ -16,9 +16,12 @@ import { ChatScreen } from "../screens/Main/ChatScreen";
 import { MeasurementsScreen } from "../screens/Main/MeasurementsScreen";
 import { AdminUsersScreen } from "../screens/Main/AdminUsersScreen";
 import { AdminProfileScreen } from "../screens/Main/AdminProfileScreen";
+import { AdminMessagesScreen } from "../screens/Main/AdminMessagesScreen";
 import { TrainerProfileScreen } from "../screens/Main/TrainerProfileScreen";
 import { GymAvailabilityScreen } from "../screens/Main/GymAvailabilityScreen";
 import { AvailabilityManagementScreen } from "../screens/Main/AvailabilityManagementScreen";
+import { MessagesConversationScreen } from "../screens/Main/MessagesConversationScreen";
+import { MyMessagesScreen } from "../screens/Main/MyMessagesScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -88,15 +91,7 @@ function TrainerTabs() {
       <Tab.Screen name="Inicio" component={HomeScreen} />
       <Tab.Screen name="Usuarios" component={AdminUsersScreen} />
       <Tab.Screen name="Horarios" component={AvailabilityManagementScreen} />
-      <Tab.Screen
-        name="Asistencia"
-        children={() => (
-          <PlaceholderScreen
-            title="Asistencia de usuarios"
-            description="Aqui recibiras solicitudes de ayuda de usuarios activos y podras gestionarlas en tiempo real."
-          />
-        )}
-      />
+      <Tab.Screen name="Mensajes" component={MyMessagesScreen} />
       <Tab.Screen name="Perfil" component={TrainerProfileScreen} />
     </Tab.Navigator>
   );
@@ -126,6 +121,7 @@ function AdminTabs() {
       <Tab.Screen name="Panel" component={HomeScreen} />
       <Tab.Screen name="Usuarios" component={AdminUsersScreen} />
       <Tab.Screen name="Operacion" component={AvailabilityManagementScreen} />
+      <Tab.Screen name="Mensajes" component={AdminMessagesScreen} />
       <Tab.Screen name="Perfil" component={AdminProfileScreen} />
     </Tab.Navigator>
   );
@@ -190,6 +186,16 @@ export function AppNavigator() {
                   headerStyle: { backgroundColor: palette.card },
                   headerTintColor: palette.cocoa,
                 }}
+              />
+              <Stack.Screen
+                name="MessageConversation"
+                component={MessagesConversationScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="MyMessages"
+                component={MyMessagesScreen}
+                options={{ headerShown: false }}
               />
             </>
           )

@@ -2,6 +2,8 @@ import {
   AIChatLog,
   AvailabilityTrainerPermission,
   CreateMeasurementPayload,
+  DirectMessage,
+  GeneralNotification,
   GeneratedRoutine,
   GymAvailabilityDay,
   GymAvailabilityExceptionDay,
@@ -11,11 +13,13 @@ import {
   Measurement,
   MembershipReport,
   MembershipReportExportInfo,
+  MessageThread,
   ProgressSummary,
   RoutineCheckin,
   RoutineExerciseCheckin,
   StrengthLog,
   StrengthProgressSummary,
+  ThreadWithMessages,
   TrainerPresenceStatus,
   TrainerPresenceSummaryDay,
   UserRole,
@@ -613,4 +617,75 @@ export const api = {
         body,
       },
     ),
+
+  sendMembershipReport: (
+    token: string,
+    body: { days: number; delivery: "linked" | "custom"; email?: string },
+  ) =>
+    request<{ message: string; report: MembershipReport; recipient: string }>(
+      "/operations/membership-report/send",
+      {
+        method: "POST",
+        token,
+        body,
+      },
+    ),
+
+  /* ─── Notifications ──────────────────────────────────────── */
+
+  registerPushToken: (token: string, body: { token: string; platform: string }) =>
+    request<{ ok: boolean }>("/notifications/push-token", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  unregisterPushToken: (token: string, body: { token: string }) =>
+    request<{ ok: boolean }>("/notifications/push-token", {
+      method: "DELETE",
+      token,
+      body,
+    }),
+
+  sendGeneralNotification: (
+    token: string,
+    body: { title: string; body: string; category: string },
+  ) =>
+    request<{ ok: boolean; notification: GeneralNotification }>("/notifications/general", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  listGeneralNotifications: (token: string) =>
+    request<{ notifications: GeneralNotification[] }>("/notifications/general", {
+      method: "GET",
+      token,
+    }),
+
+  getMyThreads: (token: string) =>
+    request<{ threads: MessageThread[] }>("/notifications/threads", {
+      method: "GET",
+      token,
+    }),
+
+  getOrCreateThread: (token: string, body: { targetUserId: string }) =>
+    request<ThreadWithMessages>("/notifications/threads", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  getThreadMessages: (token: string, threadId: string) =>
+    request<{ messages: DirectMessage[] }>(`/notifications/threads/${encodeURIComponent(threadId)}`, {
+      method: "GET",
+      token,
+    }),
+
+  sendThreadMessage: (token: string, threadId: string, body: { body: string }) =>
+    request<{ message: DirectMessage }>(`/notifications/threads/${encodeURIComponent(threadId)}/messages`, {
+      method: "POST",
+      token,
+      body,
+    }),
 };

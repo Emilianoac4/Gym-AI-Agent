@@ -268,3 +268,59 @@ model MembershipReportExport {
   @@index([gymId, createdAt])
   @@map("membership_report_exports")
 }
+
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  gymId     String   @map("gym_id")
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([gymId])
+  @@map("push_tokens")
+}
+
+model GeneralNotification {
+  id           String   @id @default(uuid())
+  gymId        String   @map("gym_id")
+  sentByUserId String   @map("sent_by_user_id")
+  title        String
+  body         String
+  category     String   @default("general")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([gymId, createdAt])
+  @@map("general_notifications")
+}
+
+model MessageThread {
+  id          String    @id @default(uuid())
+  gymId       String    @map("gym_id")
+  adminUserId String    @map("admin_user_id")
+  memberId    String    @map("member_id")
+  expiresAt   DateTime  @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  messages DirectMessage[]
+
+  @@index([gymId, memberId])
+  @@index([gymId, adminUserId])
+  @@map("message_threads")
+}
+
+model DirectMessage {
+  id           String    @id @default(uuid())
+  threadId     String    @map("thread_id")
+  senderUserId String    @map("sender_user_id")
+  body         String
+  readAt       DateTime? @map("read_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  thread MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("direct_messages")
+}

@@ -5,9 +5,9 @@ import {
   Alert,
   Modal,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -57,7 +57,10 @@ export function AdminProfileScreen() {
   const [presenceDays, setPresenceDays] = useState<TrainerPresenceSummaryDay[]>([]);
   const [report, setReport] = useState<MembershipReport | null>(null);
   const [reportRangeLabel, setReportRangeLabel] = useState("1 semana");
-  const [selectorVisible, setSelectorVisible] = useState(false);
+  const [rangeSelectorVisible, setRangeSelectorVisible] = useState(false);
+  const [sendModalVisible, setSendModalVisible] = useState(false);
+  const [customEmail, setCustomEmail] = useState("");
+  const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
 
   const loadDashboard = useCallback(async () => {
     if (!token) {
@@ -92,31 +95,81 @@ export function AdminProfileScreen() {
     [presenceDays],
   );
 
-  const onExportReport = async (days: number, label: string) => {
+  const onGenerateReport = async (days: number, label: string) => {
     if (!token) {
       return;
     }
 
-    setSelectorVisible(false);
+    setRangeSelectorVisible(false);
     setExporting(true);
     try {
-      const response = await api.exportMembershipReport(token, { days });
+      const response = await api.getMembershipReport(token, days);
       setReport(response.report);
       setReportRangeLabel(label);
-      await Share.share({
-        title: response.export.fileName,
-        message: response.report.csv,
-      });
-      Alert.alert(
-        "Reporte generado",
-        `Se genero ${response.export.fileName} con ${response.report.summary.rowCount} movimientos.`,
-      );
+      Alert.alert("Reporte generado", `Se actualizaron ${response.report.summary.rowCount} movimientos.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo exportar el reporte";
       Alert.alert("Error", message);
     } finally {
       setExporting(false);
     }
+  };
+
+  const onSendLinkedEmail = async () => {
+    if (!token || !report) {
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const response = await api.sendMembershipReport(token, {
+        days: report.periodDays,
+        delivery: "linked",
+      });
+      Alert.alert("Reporte enviado", response.message);
+      setSendModalVisible(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo enviar el reporte";
+      Alert.alert("Error", message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const onSendCustomEmail = async () => {
+    if (!token || !report) {
+      return;
+    }
+
+    const sanitizedEmail = customEmail.trim();
+    if (!sanitizedEmail) {
+      Alert.alert("Correo requerido", "Ingresa un correo para enviar el reporte.");
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const response = await api.sendMembershipReport(token, {
+        days: report.periodDays,
+        delivery: "custom",
+        email: sanitizedEmail,
+      });
+      Alert.alert("Reporte enviado", response.message);
+      setSendModalVisible(false);
+      setCustomEmail("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo enviar el reporte";
+      Alert.alert("Error", message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const toggleTrainerSessions = (key: string) => {
+    setExpandedSessions((previous) => ({
+      ...previous,
+      [key]: !(previous[key] ?? false),
+    }));
   };
 
   const onLogout = () => {
@@ -180,22 +233,43 @@ export function AdminProfileScreen() {
                 ) : (
                   day.trainers.map((trainer) => (
                     <View key={`${day.date}-${trainer.trainerId}`} style={styles.trainerBlock}>
-                      <Text style={styles.trainerName}>{trainer.trainerName}</Text>
-                      {trainer.sessions.map((session) => {
-                        const left = `${(session.startHour / 24) * 100}%` as const;
-                        const width = `${Math.max(((session.endHour - session.startHour) / 24) * 100, 4)}%` as const;
+                      {(() => {
+                        const trainerKey = `${day.date}-${trainer.trainerId}`;
+                        const canCollapse = trainer.sessions.length >= 3;
+                        const isExpanded = expandedSessions[trainerKey] ?? !canCollapse;
 
                         return (
-                          <View key={session.id} style={styles.timelineCard}>
-                            <Text style={styles.timelineLabel}>
-                              {formatHour(session.startedAt)} - {formatHour(session.endedAt)}
-                            </Text>
-                            <View style={styles.timelineTrack}>
-                              <View style={[styles.timelineBar, { left, width }]} />
-                            </View>
-                          </View>
+                          <>
+                            <TouchableOpacity
+                              style={styles.trainerHeaderBtn}
+                              onPress={() => canCollapse && toggleTrainerSessions(trainerKey)}
+                              activeOpacity={canCollapse ? 0.75 : 1}
+                            >
+                              <Text style={styles.trainerName}>{trainer.trainerName}</Text>
+                              {canCollapse ? (
+                                <Text style={styles.trainerChevron}>{isExpanded ? "▾" : "▸"}</Text>
+                              ) : null}
+                            </TouchableOpacity>
+                            {isExpanded
+                              ? trainer.sessions.map((session) => {
+                                  const left = `${(session.startHour / 24) * 100}%` as const;
+                                  const width = `${Math.max(((session.endHour - session.startHour) / 24) * 100, 4)}%` as const;
+
+                                  return (
+                                    <View key={session.id} style={styles.timelineCard}>
+                                      <Text style={styles.timelineLabel}>
+                                        {formatHour(session.startedAt)} - {formatHour(session.endedAt)}
+                                      </Text>
+                                      <View style={styles.timelineTrack}>
+                                        <View style={[styles.timelineBar, { left, width }]} />
+                                      </View>
+                                    </View>
+                                  );
+                                })
+                              : null}
+                          </>
                         );
-                      })}
+                      })()}
                     </View>
                   ))
                 )}
@@ -209,10 +283,10 @@ export function AdminProfileScreen() {
             <Text style={styles.sectionTitle}>Reporte de registros y renovaciones</Text>
             <TouchableOpacity
               style={[styles.primaryBtn, exporting && styles.primaryBtnDisabled]}
-              onPress={() => setSelectorVisible(true)}
+              onPress={() => setRangeSelectorVisible(true)}
               disabled={exporting}
             >
-              <Text style={styles.primaryBtnText}>{exporting ? "Generando..." : "Generar reporte"}</Text>
+              <Text style={styles.primaryBtnText}>{exporting ? "Procesando..." : "Generar reporte"}</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.infoCard}>
@@ -246,6 +320,15 @@ export function AdminProfileScreen() {
                 </View>
               </View>
             ))}
+            <View style={styles.reportActionsRow}>
+              <TouchableOpacity
+                style={[styles.secondaryBtn, (!report || exporting) && styles.primaryBtnDisabled]}
+                onPress={() => setSendModalVisible(true)}
+                disabled={!report || exporting}
+              >
+                <Text style={styles.secondaryBtnText}>Enviar reporte</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -254,22 +337,54 @@ export function AdminProfileScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      <Modal visible={selectorVisible} animationType="fade" transparent onRequestClose={() => setSelectorVisible(false)}>
+      <Modal
+        visible={rangeSelectorVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setRangeSelectorVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Generar reporte</Text>
-            <Text style={styles.modalSubtitle}>Selecciona el rango del reporte exportable</Text>
+            <Text style={styles.modalSubtitle}>Selecciona el rango para mostrar en pantalla</Text>
             {REPORT_OPTIONS.map((option) => (
               <TouchableOpacity
                 key={option.days}
                 style={styles.optionBtn}
-                onPress={() => void onExportReport(option.days, option.label)}
+                onPress={() => void onGenerateReport(option.days, option.label)}
               >
                 <Text style={styles.optionBtnText}>{option.label}</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity style={styles.optionCancelBtn} onPress={() => setSelectorVisible(false)}>
+            <TouchableOpacity style={styles.optionCancelBtn} onPress={() => setRangeSelectorVisible(false)}>
               <Text style={styles.optionCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={sendModalVisible} animationType="fade" transparent onRequestClose={() => setSendModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Enviar reporte</Text>
+            <Text style={styles.modalSubtitle}>Elige como deseas compartir el reporte actual</Text>
+            <TouchableOpacity style={styles.optionBtn} onPress={() => void onSendLinkedEmail()}>
+              <Text style={styles.optionBtnText}>Enviar al correo vinculado con este perfil</Text>
+            </TouchableOpacity>
+            <Text style={styles.inputLabel}>Enviar a un correo especifico</Text>
+            <TextInput
+              style={styles.input}
+              value={customEmail}
+              onChangeText={setCustomEmail}
+              placeholder="correo@dominio.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <TouchableOpacity style={styles.optionBtn} onPress={() => void onSendCustomEmail()}>
+              <Text style={styles.optionBtnText}>Enviar a este correo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.optionCancelBtn} onPress={() => setSendModalVisible(false)}>
+              <Text style={styles.optionCancelText}>Cerrar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -372,7 +487,14 @@ const styles = StyleSheet.create({
   dayTitle: { color: palette.cocoa, fontWeight: "800", fontSize: 15 },
   daySubtitle: { color: palette.moss, fontWeight: "700", fontSize: 12 },
   trainerBlock: { marginTop: 10 },
-  trainerName: { color: palette.cocoa, fontWeight: "700", marginBottom: 8 },
+  trainerHeaderBtn: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  trainerName: { color: palette.cocoa, fontWeight: "700", flex: 1 },
+  trainerChevron: { color: palette.cocoa, fontSize: 16, fontWeight: "800", marginLeft: 8 },
   timelineCard: { marginBottom: 8 },
   timelineLabel: { color: palette.cocoa + "AA", fontSize: 12, marginBottom: 4 },
   timelineTrack: {
@@ -415,6 +537,19 @@ const styles = StyleSheet.create({
   reportRowMeta: { color: palette.cocoa + "88", fontSize: 12, marginTop: 3 },
   reportRowRight: { alignItems: "flex-end" },
   reportRowAmount: { color: palette.moss, fontWeight: "800" },
+  reportActionsRow: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: palette.sand,
+    paddingTop: 12,
+  },
+  secondaryBtn: {
+    backgroundColor: palette.moss,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  secondaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   logoutBtn: {
     backgroundColor: palette.coral,
     borderRadius: 12,
@@ -444,6 +579,17 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   optionBtnText: { color: palette.cocoa, fontWeight: "700" },
+  inputLabel: { color: palette.cocoa, marginTop: 8, marginBottom: 6, fontWeight: "700" },
+  input: {
+    borderWidth: 1,
+    borderColor: palette.sand,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    color: palette.cocoa,
+    backgroundColor: "#fff",
+  },
   optionCancelBtn: { alignItems: "center", paddingTop: 8 },
   optionCancelText: { color: palette.coral, fontWeight: "700" },
 });
