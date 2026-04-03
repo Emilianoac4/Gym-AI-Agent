@@ -398,6 +398,7 @@ model PlatformAdminUser {
   email       String   @unique
   passwordHash String  @map("password_hash")
   fullName    String   @map("full_name")
+  usernames   String[] @default([])
   isActive    Boolean  @default(true) @map("is_active")
   createdById String?  @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")

@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS "platform_admin_users" (
   "email" TEXT NOT NULL,
   "password_hash" TEXT NOT NULL,
   "full_name" TEXT NOT NULL,
+  "usernames" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   "is_active" BOOLEAN NOT NULL DEFAULT TRUE,
   "created_by_id" TEXT,
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -13,6 +14,9 @@ CREATE TABLE IF NOT EXISTS "platform_admin_users" (
   CONSTRAINT "platform_admin_users_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "platform_admin_users_email_key" UNIQUE ("email")
 );
+
+ALTER TABLE "platform_admin_users"
+ADD COLUMN IF NOT EXISTS "usernames" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 
 CREATE INDEX IF NOT EXISTS "platform_admin_users_is_active_idx"
 ON "platform_admin_users" ("is_active");

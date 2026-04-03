@@ -26,6 +26,7 @@ export const platformAdminUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(120),
   fullName: z.string().min(2).max(120),
+  usernames: z.array(z.string().min(2).max(40)).max(10).optional(),
 });
 
 export const createCompanyAdminSchema = z.object({

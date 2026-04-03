@@ -68,6 +68,14 @@ const requirePlatformSession = (req: Request) => {
   return req.platformAuth;
 };
 
+const normalizeUsernames = (fullName: string, usernames?: string[]) => {
+  const seed = [fullName, ...(usernames ?? [])]
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
+
+  return Array.from(new Set(seed));
+};
+
 export const loginPlatform = async (req: Request, res: Response): Promise<void> => {
   const body = req.body as PlatformLoginInput;
 
@@ -104,7 +112,7 @@ export const getPlatformSession = async (req: Request, res: Response): Promise<v
   const session = requirePlatformSession(req);
   const user = await prisma.platformAdminUser.findUnique({
     where: { id: session.platformUserId },
-    select: { id: true, email: true, fullName: true, isActive: true },
+    select: { id: true, email: true, fullName: true, usernames: true, isActive: true },
   });
 
   if (!user || !user.isActive) {
@@ -130,10 +138,11 @@ export const bootstrapPlatformAdmin = async (req: Request, res: Response): Promi
       email: body.email.toLowerCase(),
       passwordHash,
       fullName: body.fullName,
+      usernames: normalizeUsernames(body.fullName, body.usernames),
       isActive: true,
       createdById: null,
     },
-    select: { id: true, email: true, fullName: true, createdAt: true },
+    select: { id: true, email: true, fullName: true, usernames: true, createdAt: true },
   });
 
   res.status(201).json({
@@ -162,10 +171,11 @@ export const createPlatformAdminUser = async (req: Request, res: Response): Prom
       email: body.email.toLowerCase(),
       passwordHash,
       fullName: body.fullName,
+      usernames: normalizeUsernames(body.fullName, body.usernames),
       isActive: true,
       createdById: session.platformUserId,
     },
-    select: { id: true, email: true, fullName: true, createdAt: true },
+    select: { id: true, email: true, fullName: true, usernames: true, createdAt: true },
   });
 
   res.status(201).json({
@@ -185,6 +195,7 @@ export const listPlatformAdminUsers = async (req: Request, res: Response): Promi
       id: true,
       email: true,
       fullName: true,
+      usernames: true,
       isActive: true,
       createdAt: true,
       createdById: true,
