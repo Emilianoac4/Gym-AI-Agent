@@ -583,6 +583,24 @@ export const api = {
       },
     ),
 
+  grantNotificationsSend: (token: string, userId: string) =>
+    request<{ message: string; trainer: AvailabilityTrainerPermission }>(
+      `/availability/permissions/${userId}/notifications/grant`,
+      {
+        method: "POST",
+        token,
+      },
+    ),
+
+  revokeNotificationsSend: (token: string, userId: string) =>
+    request<{ message: string; trainer: AvailabilityTrainerPermission }>(
+      `/availability/permissions/${userId}/notifications/grant`,
+      {
+        method: "DELETE",
+        token,
+      },
+    ),
+
   getMyTrainerPresenceStatus: (token: string) =>
     request<{ status: TrainerPresenceStatus }>("/operations/trainer-presence/me", {
       token,
@@ -603,12 +621,17 @@ export const api = {
       },
     ),
 
-  getMembershipReport: (token: string, days: number) =>
-    request<{ report: MembershipReport }>(`/operations/membership-report?days=${days}`, {
-      token,
-    }),
+  getMembershipReport: (token: string, days: number, specificDate?: string) =>
+    request<{ report: MembershipReport }>(
+      `/operations/membership-report?days=${days}${
+        specificDate ? `&specificDate=${encodeURIComponent(specificDate)}` : ""
+      }`,
+      {
+        token,
+      },
+    ),
 
-  exportMembershipReport: (token: string, body: { days: number }) =>
+  exportMembershipReport: (token: string, body: { days: number; specificDate?: string }) =>
     request<{ message: string; report: MembershipReport; export: MembershipReportExportInfo }>(
       "/operations/membership-report/export",
       {
@@ -620,7 +643,12 @@ export const api = {
 
   sendMembershipReport: (
     token: string,
-    body: { days: number; delivery: "linked" | "custom"; email?: string },
+    body: {
+      days: number;
+      specificDate?: string;
+      delivery: "linked" | "custom";
+      email?: string;
+    },
   ) =>
     request<{ message: string; report: MembershipReport; recipient: string }>(
       "/operations/membership-report/send",

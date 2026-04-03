@@ -99,9 +99,16 @@ export function MyMessagesScreen({ navigation }: { navigation: any }) {
                     <Text style={styles.threadLast}>Sin mensajes aún</Text>
                   )}
                 </View>
-                <Text style={styles.threadTime}>
-                  {thread.lastMessage ? formatRelativeTime(thread.lastMessage.createdAt) : ""}
-                </Text>
+                <View style={styles.threadMetaCol}>
+                  {thread.unreadCount > 0 ? (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadBadgeText}>{thread.unreadCount}</Text>
+                    </View>
+                  ) : null}
+                  <Text style={styles.threadTime}>
+                    {thread.lastMessage ? formatRelativeTime(thread.lastMessage.createdAt) : ""}
+                  </Text>
+                </View>
               </TouchableOpacity>
             );
           })}
@@ -161,5 +168,20 @@ const styles = StyleSheet.create({
   threadInfo: { flex: 1 },
   threadName: { fontSize: 14, fontWeight: "700", color: palette.ink },
   threadLast: { fontSize: 12, color: palette.textMuted, marginTop: 2 },
+  threadMetaCol: { alignItems: "flex-end", gap: 4 },
   threadTime: { fontSize: 11, color: palette.textMuted },
+  unreadBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: palette.coral,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unreadBadgeText: {
+    color: palette.white,
+    fontSize: 11,
+    fontWeight: "800",
+  },
 });

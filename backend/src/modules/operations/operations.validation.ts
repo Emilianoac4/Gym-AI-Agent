@@ -6,15 +6,18 @@ export const updateTrainerPresenceSchema = z.object({
 
 export const membershipReportQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(180).default(7),
+  specificDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 export const exportMembershipReportSchema = z.object({
   days: z.number().int().min(1).max(180),
+  specificDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 export const sendMembershipReportSchema = z
   .object({
     days: z.number().int().min(1).max(180),
+    specificDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     delivery: z.enum(["linked", "custom"]),
     email: z.string().email().optional(),
   })

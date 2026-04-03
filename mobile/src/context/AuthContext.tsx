@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { api } from "../services/api";
 import { AuthUser, UserRole } from "../types/api";
 
@@ -46,12 +47,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!token) return;
     (async () => {
       try {
+        if (Platform.OS === "android") {
+          await Notifications.setNotificationChannelAsync("default", {
+            name: "default",
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: "#463C33",
+          });
+        }
+
         const { status } = await Notifications.requestPermissionsAsync();
         if (status !== "granted") return;
-        const projectId = (Notifications as any).getExpoPushTokenAsync
-          ? undefined
-          : undefined; // resolved from Constants at runtime by the SDK
-        const tokenData = await Notifications.getExpoPushTokenAsync();
+        const projectId =
+          Constants.expoConfig?.extra?.eas?.projectId ??
+          Constants.easConfig?.projectId ??
+          undefined;
+        const tokenData = await Notifications.getExpoPushTokenAsync(
+          projectId ? { projectId } : undefined,
+        );
         if (!tokenData?.data) return;
         pushTokenRef.current = tokenData.data;
         const platform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";

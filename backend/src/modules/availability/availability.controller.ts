@@ -5,10 +5,12 @@ import {
   getAvailabilityTemplate,
   getAvailabilityToday,
   grantTrainerAvailabilityWrite,
+  grantTrainerNotificationsSend,
   listAvailabilityExceptions,
   listTrainerAvailabilityPermissions,
   removeAvailabilityException,
   revokeTrainerAvailabilityWrite,
+  revokeTrainerNotificationsSend,
   saveAvailabilityException,
   saveAvailabilityTemplateDay,
   saveAvailabilityTemplateWeek,
@@ -116,4 +118,20 @@ export const revokeAvailabilityWriteFromTrainer = async (
 ): Promise<void> => {
   const auth = requireAuth(req);
   res.json(await revokeTrainerAvailabilityWrite(auth, req.params.userId));
+};
+
+export const grantNotificationsSendToTrainer = async (
+  req: Request<AvailabilityPermissionParamsInput>,
+  res: Response,
+): Promise<void> => {
+  const auth = requireAuth(req);
+  res.json(await grantTrainerNotificationsSend(auth, req.params.userId));
+};
+
+export const revokeNotificationsSendFromTrainer = async (
+  req: Request<AvailabilityPermissionParamsInput>,
+  res: Response,
+): Promise<void> => {
+  const auth = requireAuth(req);
+  res.json(await revokeTrainerNotificationsSend(auth, req.params.userId));
 };

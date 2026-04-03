@@ -79,8 +79,8 @@ export const sendGeneralNotification = async (req: Request, res: Response): Prom
   const auth = requireAuth(req);
   const actor = await requireGymUser(auth.userId);
 
-  if (actor.role !== UserRole.admin) {
-    throw new HttpError(403, "Solo el administrador puede enviar notificaciones generales");
+  if (actor.role === UserRole.member) {
+    throw new HttpError(403, "No tienes permiso para enviar notificaciones generales");
   }
 
   const { title, body, category } = req.body as SendGeneralNotificationInput;
@@ -182,6 +182,20 @@ export const getMyThreads = async (req: Request, res: Response): Promise<void> =
   });
   const nameMap = Object.fromEntries(users.map((u) => [u.id, u.fullName]));
 
+  const unreadRows = await prisma.directMessage.findMany({
+    where: {
+      threadId: { in: threads.map((item) => item.id) },
+      senderUserId: { not: actor.id },
+      readAt: null,
+    },
+    select: { threadId: true },
+  });
+
+  const unreadCountByThread = unreadRows.reduce<Map<string, number>>((acc, row) => {
+    acc.set(row.threadId, (acc.get(row.threadId) ?? 0) + 1);
+    return acc;
+  }, new Map());
+
   const result = threads.map((t) => ({
     id: t.id,
     adminUserId: t.adminUserId,
@@ -197,7 +211,7 @@ export const getMyThreads = async (req: Request, res: Response): Promise<void> =
           createdAt: t.messages[0].createdAt.toISOString(),
         }
       : null,
-    unreadCount: 0, // placeholder; can be derived client-side
+    unreadCount: unreadCountByThread.get(t.id) ?? 0,
   }));
 
   res.json({ threads: result });

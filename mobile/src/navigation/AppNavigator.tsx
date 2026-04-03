@@ -17,6 +17,7 @@ import { MeasurementsScreen } from "../screens/Main/MeasurementsScreen";
 import { AdminUsersScreen } from "../screens/Main/AdminUsersScreen";
 import { AdminProfileScreen } from "../screens/Main/AdminProfileScreen";
 import { AdminMessagesScreen } from "../screens/Main/AdminMessagesScreen";
+import { ActiveTrainersScreen } from "../screens/Main/ActiveTrainersScreen";
 import { TrainerProfileScreen } from "../screens/Main/TrainerProfileScreen";
 import { GymAvailabilityScreen } from "../screens/Main/GymAvailabilityScreen";
 import { AvailabilityManagementScreen } from "../screens/Main/AvailabilityManagementScreen";
@@ -119,6 +120,7 @@ function AdminTabs() {
       }}
     >
       <Tab.Screen name="Panel" component={HomeScreen} />
+      <Tab.Screen name="Activos" component={ActiveTrainersScreen} />
       <Tab.Screen name="Usuarios" component={AdminUsersScreen} />
       <Tab.Screen name="Operacion" component={AvailabilityManagementScreen} />
       <Tab.Screen name="Mensajes" component={AdminMessagesScreen} />

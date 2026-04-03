@@ -232,8 +232,11 @@ export interface AvailabilityTrainerPermission {
   fullName: string;
   email: string;
   hasAvailabilityWrite: boolean;
+  hasNotificationsSend?: boolean;
   grantedAt: string | null;
   grantedBy: GymAvailabilityActor | null;
+  notificationsGrantedAt?: string | null;
+  notificationsGrantedBy?: GymAvailabilityActor | null;
 }
 
 export interface TrainerPresenceSession {
@@ -292,6 +295,8 @@ export interface MembershipReportSummary {
 
 export interface MembershipReport {
   periodDays: number;
+  reportLabel?: string;
+  specificDate?: string | null;
   generatedAt: string;
   summary: MembershipReportSummary;
   rows: MembershipReportRow[];

@@ -9,6 +9,7 @@ import { palette } from "../../theme/palette";
 import {
   GymAvailabilityDay,
   GeneratedRoutine,
+  MessageThread,
   ProgressSummary,
   RoutineCheckin,
   StrengthProgressSummary,
@@ -80,6 +81,8 @@ export function HomeScreen() {
   const [routine, setRoutine] = useState<GeneratedRoutine | null>(null);
   const [checkins, setCheckins] = useState<RoutineCheckin[]>([]);
   const [todayAvailability, setTodayAvailability] = useState<GymAvailabilityDay | null>(null);
+  const [unreadThreads, setUnreadThreads] = useState<MessageThread[]>([]);
+  const [activeTrainers, setActiveTrainers] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -91,9 +94,21 @@ export function HomeScreen() {
 
       const load = async () => {
         const availabilityPromise = api.getAvailabilityToday(token).catch(() => null);
+        const threadsPromise = api.getMyThreads(token).catch(() => ({ threads: [] as MessageThread[] }));
 
         if (isAdmin) {
-          const availabilityData = await availabilityPromise;
+          const [availabilityData, threadsData, presenceData] = await Promise.all([
+            availabilityPromise,
+            threadsPromise,
+            api.getTrainerPresenceSummary(token, 1).catch(() => ({ days: [] as any[] })),
+          ]);
+
+          const todayPresence = presenceData.days[0];
+          const activeTrainerNames = todayPresence
+            ? todayPresence.trainers
+                .filter((trainer: any) => trainer.sessions.some((session: any) => session.isActive))
+                .map((trainer: any) => trainer.trainerName)
+            : [];
 
           if (!cancelled) {
             setSummary(null);
@@ -101,17 +116,20 @@ export function HomeScreen() {
             setRoutine(null);
             setCheckins([]);
             setTodayAvailability(availabilityData?.availability ?? null);
+            setUnreadThreads(threadsData.threads.filter((thread) => thread.unreadCount > 0));
+            setActiveTrainers(activeTrainerNames);
           }
           return;
         }
 
         try {
-          const [availabilityData, progress, strength, latestRoutine, checkinData] = await Promise.all([
+          const [availabilityData, progress, strength, latestRoutine, checkinData, threadsData] = await Promise.all([
             availabilityPromise,
             api.getProgressSummary(user.id, token),
             api.getStrengthProgress(user.id, token, 120),
             api.getLatestRoutine(user.id, token).catch(() => null),
             api.getRoutineCheckins(user.id, token, 28),
+            threadsPromise,
           ]);
 
           if (cancelled) {
@@ -123,6 +141,8 @@ export function HomeScreen() {
           setStrengthSummary(strength.summary);
           setRoutine(latestRoutine?.routine ?? null);
           setCheckins(checkinData.checkins);
+          setUnreadThreads(threadsData.threads.filter((thread) => thread.unreadCount > 0));
+          setActiveTrainers([]);
         } catch {
           if (!cancelled) {
             setTodayAvailability(null);
@@ -130,6 +150,8 @@ export function HomeScreen() {
             setStrengthSummary(null);
             setRoutine(null);
             setCheckins([]);
+            setUnreadThreads([]);
+            setActiveTrainers([]);
           }
         }
       };
@@ -181,6 +203,56 @@ export function HomeScreen() {
           </Text>
         </View>
 
+        {unreadThreads.length > 0 ? (
+          <View style={styles.priorityCard}>
+            <Text style={styles.priorityEyebrow}>Prioridad</Text>
+            <Text style={styles.priorityTitle}>Tienes {unreadThreads.length} conversación(es) sin leer</Text>
+            <Text style={styles.priorityCopy}>
+              Revisa tus mensajes directos para responder a tiempo.
+            </Text>
+            <Pressable
+              style={styles.priorityButton}
+              onPress={() => navigation.navigate(user?.role === "member" ? "MyMessages" : "Mensajes")}
+            >
+              <Text style={styles.priorityButtonText}>Ir a mensajes</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionEyebrow}>Accesos rapidos</Text>
+          <View style={styles.quickGrid}>
+            <Pressable style={styles.quickButton} onPress={() => navigation.navigate("GymAvailability")}>
+              <Text style={styles.quickButtonText}>Disponibilidad</Text>
+            </Pressable>
+            {canManageAvailability ? (
+              <Pressable style={styles.quickButton} onPress={() => navigation.navigate("AvailabilityManagement")}>
+                <Text style={styles.quickButtonText}>Operacion</Text>
+              </Pressable>
+            ) : null}
+            {user?.role === "admin" ? (
+              <Pressable style={styles.quickButton} onPress={() => navigation.navigate("Mensajes")}>
+                <Text style={styles.quickButtonText}>Mensajes</Text>
+              </Pressable>
+            ) : null}
+            {user?.role === "trainer" ? (
+              <Pressable style={styles.quickButton} onPress={() => navigation.navigate("Mensajes")}>
+                <Text style={styles.quickButtonText}>Mensajes</Text>
+              </Pressable>
+            ) : null}
+            {user?.role === "member" ? (
+              <Pressable style={styles.quickButton} onPress={() => navigation.navigate("MyMessages")}>
+                <Text style={styles.quickButtonText}>Mis mensajes</Text>
+              </Pressable>
+            ) : null}
+            {user?.role !== "admin" ? (
+              <Pressable style={styles.quickButton} onPress={() => navigation.navigate("Perfil")}>
+                <Text style={styles.quickButtonText}>Mi perfil</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+
         <View style={styles.sectionCard}>
           <Text style={styles.sectionEyebrow}>Disponibilidad del gimnasio</Text>
           <Text style={styles.sectionTitle}>Hoy</Text>
@@ -202,16 +274,38 @@ export function HomeScreen() {
         </View>
 
         {isAdmin ? (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionEyebrow}>Vision del administrador</Text>
-            <Text style={styles.sectionTitle}>Indicadores a validar</Text>
-            {adminHighlights.map((item) => (
-              <View key={item} style={styles.featureItem}>
-                <View style={styles.featureDot} />
-                <Text style={styles.featureTitle}>{item}</Text>
+          <>
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionEyebrow}>Entrenadores activos</Text>
+              <Text style={styles.sectionTitle}>En este momento</Text>
+              {activeTrainers.length === 0 ? (
+                <Text style={styles.featureDetail}>No hay entrenadores activos ahora.</Text>
+              ) : (
+                activeTrainers.map((name) => (
+                  <View key={name} style={styles.featureItem}>
+                    <View style={styles.featureDot} />
+                    <Text style={styles.featureTitle}>{name}</Text>
+                  </View>
+                ))
+              )}
+              <View style={styles.inlineActionsRow}>
+                <Pressable style={styles.inlineActionPrimary} onPress={() => navigation.navigate("Perfil")}>
+                  <Text style={styles.inlineActionPrimaryText}>Ver reporte operativo</Text>
+                </Pressable>
               </View>
-            ))}
-          </View>
+            </View>
+
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionEyebrow}>Vision del administrador</Text>
+              <Text style={styles.sectionTitle}>Indicadores a validar</Text>
+              {adminHighlights.map((item) => (
+                <View key={item} style={styles.featureItem}>
+                  <View style={styles.featureDot} />
+                  <Text style={styles.featureTitle}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          </>
         ) : (
           <>
             <View style={styles.kpiRow}>
@@ -320,6 +414,61 @@ const styles = StyleSheet.create({
     color: "#6B5B4B",
     lineHeight: 21,
     fontSize: 14,
+  },
+  priorityCard: {
+    marginTop: 18,
+    backgroundColor: "#FFF1EA",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#F7C4AA",
+  },
+  priorityEyebrow: {
+    color: palette.coral,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  priorityTitle: {
+    color: palette.cocoa,
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: 6,
+  },
+  priorityCopy: {
+    color: palette.textMuted,
+    marginTop: 6,
+    lineHeight: 19,
+  },
+  priorityButton: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    backgroundColor: palette.cocoa,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  priorityButtonText: {
+    color: palette.card,
+    fontWeight: "700",
+  },
+  quickGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  quickButton: {
+    backgroundColor: palette.surfaceMuted,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  quickButtonText: {
+    color: palette.cocoa,
+    fontWeight: "700",
+    fontSize: 13,
   },
   kpiRow: {
     flexDirection: "column",

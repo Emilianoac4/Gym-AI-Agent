@@ -671,28 +671,45 @@ export const listTrainerAvailabilityPermissions = async (auth: AuthContext) => {
   const grants = await prisma.userPermissionGrant.findMany({
     where: {
       userId: { in: trainers.map((trainer) => trainer.id) },
-      permissionAction: PermissionGrantAction.availability_write,
+      permissionAction: {
+        in: [PermissionGrantAction.availability_write, PermissionGrantAction.notifications_send],
+      },
     },
     select: {
       userId: true,
+      permissionAction: true,
       grantedByUserId: true,
       createdAt: true,
     },
   });
 
   const grantedByMap = await getUpdaterMap(grants.map((grant) => grant.grantedByUserId));
-  const grantsByUserId = new Map(grants.map((grant) => [grant.userId, grant]));
+  const grantsByKey = new Map(
+    grants.map((grant) => [`${grant.userId}:${grant.permissionAction}`, grant]),
+  );
 
   return {
     trainers: trainers.map((trainer) => {
-      const grant = grantsByUserId.get(trainer.id);
+      const availabilityGrant = grantsByKey.get(
+        `${trainer.id}:${PermissionGrantAction.availability_write}`,
+      );
+      const notificationGrant = grantsByKey.get(
+        `${trainer.id}:${PermissionGrantAction.notifications_send}`,
+      );
       return {
         id: trainer.id,
         fullName: trainer.fullName,
         email: trainer.email,
-        hasAvailabilityWrite: Boolean(grant),
-        grantedAt: grant?.createdAt.toISOString() ?? null,
-        grantedBy: grant ? grantedByMap.get(grant.grantedByUserId) ?? null : null,
+        hasAvailabilityWrite: Boolean(availabilityGrant),
+        hasNotificationsSend: Boolean(notificationGrant),
+        grantedAt: availabilityGrant?.createdAt.toISOString() ?? null,
+        grantedBy: availabilityGrant
+          ? grantedByMap.get(availabilityGrant.grantedByUserId) ?? null
+          : null,
+        notificationsGrantedAt: notificationGrant?.createdAt.toISOString() ?? null,
+        notificationsGrantedBy: notificationGrant
+          ? grantedByMap.get(notificationGrant.grantedByUserId) ?? null
+          : null,
       };
     }),
   };
@@ -776,6 +793,60 @@ export const revokeTrainerAvailabilityWrite = async (auth: AuthContext, userId: 
       fullName: trainer.fullName,
       email: trainer.email,
       hasAvailabilityWrite: false,
+    },
+  };
+};
+
+export const grantTrainerNotificationsSend = async (auth: AuthContext, userId: string) => {
+  const requester = await getRequester(auth);
+  const trainer = await getTargetTrainer(requester, userId);
+
+  await prisma.userPermissionGrant.upsert({
+    where: {
+      userId_permissionAction: {
+        userId: trainer.id,
+        permissionAction: PermissionGrantAction.notifications_send,
+      },
+    },
+    create: {
+      userId: trainer.id,
+      permissionAction: PermissionGrantAction.notifications_send,
+      grantedByUserId: requester.id,
+    },
+    update: {
+      grantedByUserId: requester.id,
+    },
+  });
+
+  return {
+    message: "Trainer authorized to send notifications",
+    trainer: {
+      id: trainer.id,
+      fullName: trainer.fullName,
+      email: trainer.email,
+      hasNotificationsSend: true,
+    },
+  };
+};
+
+export const revokeTrainerNotificationsSend = async (auth: AuthContext, userId: string) => {
+  const requester = await getRequester(auth);
+  const trainer = await getTargetTrainer(requester, userId);
+
+  await prisma.userPermissionGrant.deleteMany({
+    where: {
+      userId: trainer.id,
+      permissionAction: PermissionGrantAction.notifications_send,
+    },
+  });
+
+  return {
+    message: "Trainer notification authorization removed",
+    trainer: {
+      id: trainer.id,
+      fullName: trainer.fullName,
+      email: trainer.email,
+      hasNotificationsSend: false,
     },
   };
 };

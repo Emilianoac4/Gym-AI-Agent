@@ -210,6 +210,15 @@ export function AvailabilityManagementScreen() {
   });
   const [exceptionForm, setExceptionForm] = useState<ExceptionDraft>(emptyExceptionForm);
   const [timePickerTarget, setTimePickerTarget] = useState<TimePickerTarget>(null);
+  const [expandedTemplateDays, setExpandedTemplateDays] = useState<Record<GymDayOfWeek, boolean>>({
+    monday: false,
+    tuesday: false,
+    wednesday: false,
+    thursday: false,
+    friday: false,
+    saturday: false,
+    sunday: false,
+  });
 
   const calendarDays = useMemo(() => buildMonthMatrix(calendarMonth), [calendarMonth]);
 
@@ -294,26 +303,39 @@ export function AvailabilityManagementScreen() {
     );
   };
 
+  const toggleTemplateExpanded = (dayOfWeek: GymDayOfWeek) => {
+    setExpandedTemplateDays((current) => ({
+      ...current,
+      [dayOfWeek]: !current[dayOfWeek],
+    }));
+  };
+
   const onToggleTemplateOpen = (draft: TemplateDraft) => {
     if (!permissions.canWrite) {
       return;
     }
 
     if (draft.isOpen) {
-      updateTemplateDraft(draft.dayOfWeek, {
+      const nextDraft: TemplateDraft = {
+        ...draft,
         isOpen: false,
         hasSplitSchedule: false,
         opensAtSecondary: "",
         closesAtSecondary: "",
-      });
+      };
+      updateTemplateDraft(draft.dayOfWeek, nextDraft);
+      void onSaveTemplateDay(nextDraft);
       return;
     }
 
-    updateTemplateDraft(draft.dayOfWeek, {
+    const nextDraft: TemplateDraft = {
+      ...draft,
       isOpen: true,
       opensAt: draft.opensAt || "06:00",
       closesAt: draft.closesAt || "22:00",
-    });
+    };
+    updateTemplateDraft(draft.dayOfWeek, nextDraft);
+    void onSaveTemplateDay(nextDraft);
   };
 
   const onToggleTemplateSplitSchedule = (draft: TemplateDraft) => {
@@ -322,19 +344,25 @@ export function AvailabilityManagementScreen() {
     }
 
     if (draft.hasSplitSchedule) {
-      updateTemplateDraft(draft.dayOfWeek, {
+      const nextDraft: TemplateDraft = {
+        ...draft,
         hasSplitSchedule: false,
         opensAtSecondary: "",
         closesAtSecondary: "",
-      });
+      };
+      updateTemplateDraft(draft.dayOfWeek, nextDraft);
+      void onSaveTemplateDay(nextDraft);
       return;
     }
 
-    updateTemplateDraft(draft.dayOfWeek, {
+    const nextDraft: TemplateDraft = {
+      ...draft,
       hasSplitSchedule: true,
       opensAtSecondary: draft.opensAtSecondary || "14:00",
       closesAtSecondary: draft.closesAtSecondary || "21:00",
-    });
+    };
+    updateTemplateDraft(draft.dayOfWeek, nextDraft);
+    void onSaveTemplateDay(nextDraft);
   };
 
   const onToggleExceptionClosed = () => {
@@ -386,9 +414,15 @@ export function AvailabilityManagementScreen() {
     }
 
     if (timePickerTarget.kind === "template") {
-      updateTemplateDraft(timePickerTarget.dayOfWeek, {
-        [timePickerTarget.field]: value,
-      });
+      const targetDraft = templateDrafts.find((item) => item.dayOfWeek === timePickerTarget.dayOfWeek);
+      if (targetDraft) {
+        const nextDraft = {
+          ...targetDraft,
+          [timePickerTarget.field]: value,
+        } as TemplateDraft;
+        updateTemplateDraft(timePickerTarget.dayOfWeek, nextDraft);
+        void onSaveTemplateDay(nextDraft);
+      }
     } else {
       setExceptionForm((current) => ({
         ...current,
@@ -501,6 +535,28 @@ export function AvailabilityManagementScreen() {
     }
   };
 
+  const onToggleTrainerNotifications = async (trainer: AvailabilityTrainerPermission) => {
+    if (!token || !permissions.canGrant) {
+      return;
+    }
+
+    setTogglingTrainerId(trainer.id);
+    try {
+      if (trainer.hasNotificationsSend) {
+        await api.revokeNotificationsSend(token, trainer.id);
+      } else {
+        await api.grantNotificationsSend(token, trainer.id);
+      }
+
+      const trainersResponse = await api.listAvailabilityPermissionTrainers(token);
+      setTrainers(trainersResponse.trainers);
+    } catch (error) {
+      Alert.alert("Error", error instanceof Error ? error.message : "No se pudo actualizar la autorizacion");
+    } finally {
+      setTogglingTrainerId(null);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -543,20 +599,24 @@ export function AvailabilityManagementScreen() {
 
         {orderedTemplateDrafts.map((draft) => (
           <View key={draft.dayOfWeek} style={styles.dayCard}>
-            <View style={styles.dayHeader}>
+            <TouchableOpacity style={styles.dayHeader} onPress={() => toggleTemplateExpanded(draft.dayOfWeek)}>
               <Text style={styles.dayLabel}>{dayLabels[draft.dayOfWeek]}</Text>
-              <TouchableOpacity
-                style={[styles.toggleChip, draft.isOpen ? styles.toggleChipOn : styles.toggleChipOff]}
-                disabled={!permissions.canWrite}
-                onPress={() => onToggleTemplateOpen(draft)}
-              >
-                <Text style={[styles.toggleChipText, !draft.isOpen && styles.toggleChipTextOff]}>
-                  {draft.isOpen ? "Abierto" : "Cerrado"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+              <View style={styles.dayHeaderRight}>
+                <TouchableOpacity
+                  style={[styles.toggleChip, draft.isOpen ? styles.toggleChipOn : styles.toggleChipOff]}
+                  disabled={!permissions.canWrite}
+                  onPress={() => onToggleTemplateOpen(draft)}
+                >
+                  <Text style={[styles.toggleChipText, !draft.isOpen && styles.toggleChipTextOff]}>
+                    {draft.isOpen ? "Abierto" : "Cerrado"}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.expandIndicator}>{expandedTemplateDays[draft.dayOfWeek] ? "▾" : "▸"}</Text>
+              </View>
+            </TouchableOpacity>
 
-            <View style={styles.fieldRow}>
+            {expandedTemplateDays[draft.dayOfWeek] ? (
+              <View style={styles.fieldRow}>
               <View style={styles.fieldHalf}>
                 <Text style={styles.fieldLabel}>Apertura</Text>
                 <Pressable
@@ -589,9 +649,10 @@ export function AvailabilityManagementScreen() {
                   <Text style={styles.selectInputText}>{draft.closesAt || "Seleccionar"}</Text>
                 </Pressable>
               </View>
-            </View>
+              </View>
+            ) : null}
 
-            {draft.isOpen ? (
+            {draft.isOpen && expandedTemplateDays[draft.dayOfWeek] ? (
               <>
                 <TouchableOpacity
                   style={[
@@ -652,17 +713,7 @@ export function AvailabilityManagementScreen() {
               <Text style={styles.auditText}>Aun no publicado</Text>
             )}
 
-            {permissions.canWrite ? (
-              <TouchableOpacity
-                style={styles.saveInlineButton}
-                disabled={savingDay === draft.dayOfWeek}
-                onPress={() => void onSaveTemplateDay(draft)}
-              >
-                <Text style={styles.saveInlineButtonText}>
-                  {savingDay === draft.dayOfWeek ? "Guardando..." : "Guardar dia"}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
+            {savingDay === draft.dayOfWeek ? <Text style={styles.savingHint}>Guardando cambios...</Text> : null}
           </View>
         ))}
       </View>
@@ -814,30 +865,60 @@ export function AvailabilityManagementScreen() {
                     ? `Autorizado${trainer.grantedBy ? ` por ${trainer.grantedBy.fullName}` : ""}`
                     : "Sin autorizacion de edicion"}
                 </Text>
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.permissionButton,
-                  trainer.hasAvailabilityWrite ? styles.permissionButtonRevoke : styles.permissionButtonGrant,
-                ]}
-                disabled={togglingTrainerId === trainer.id}
-                onPress={() => void onToggleTrainer(trainer)}
-              >
-                <Text
-                  style={[
-                    styles.permissionButtonText,
-                    trainer.hasAvailabilityWrite
-                      ? styles.permissionButtonTextLight
-                      : styles.permissionButtonTextDark,
-                  ]}
-                >
-                  {togglingTrainerId === trainer.id
-                    ? "Actualizando..."
-                    : trainer.hasAvailabilityWrite
-                      ? "Revocar"
-                      : "Autorizar"}
+                <Text style={styles.auditText}>
+                  {trainer.hasNotificationsSend
+                    ? `Puede enviar notificaciones${trainer.notificationsGrantedBy ? ` (por ${trainer.notificationsGrantedBy.fullName})` : ""}`
+                    : "Sin autorizacion para enviar notificaciones"}
                 </Text>
-              </TouchableOpacity>
+              </View>
+              <View style={styles.permissionButtonsWrap}>
+                <TouchableOpacity
+                  style={[
+                    styles.permissionButton,
+                    trainer.hasAvailabilityWrite ? styles.permissionButtonRevoke : styles.permissionButtonGrant,
+                  ]}
+                  disabled={togglingTrainerId === trainer.id}
+                  onPress={() => void onToggleTrainer(trainer)}
+                >
+                  <Text
+                    style={[
+                      styles.permissionButtonText,
+                      trainer.hasAvailabilityWrite
+                        ? styles.permissionButtonTextLight
+                        : styles.permissionButtonTextDark,
+                    ]}
+                  >
+                    {togglingTrainerId === trainer.id
+                      ? "Actualizando..."
+                      : trainer.hasAvailabilityWrite
+                        ? "Revocar horario"
+                        : "Autorizar horario"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.permissionButton,
+                    trainer.hasNotificationsSend ? styles.permissionButtonRevoke : styles.permissionButtonGrant,
+                  ]}
+                  disabled={togglingTrainerId === trainer.id}
+                  onPress={() => void onToggleTrainerNotifications(trainer)}
+                >
+                  <Text
+                    style={[
+                      styles.permissionButtonText,
+                      trainer.hasNotificationsSend
+                        ? styles.permissionButtonTextLight
+                        : styles.permissionButtonTextDark,
+                    ]}
+                  >
+                    {togglingTrainerId === trainer.id
+                      ? "Actualizando..."
+                      : trainer.hasNotificationsSend
+                        ? "Revocar notificaciones"
+                        : "Autorizar notificaciones"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
         </View>
@@ -1015,6 +1096,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
+  dayHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  expandIndicator: {
+    color: palette.cocoa,
+    fontSize: 16,
+    fontWeight: "800",
+  },
   dayLabel: {
     color: palette.cocoa,
     fontSize: 18,
@@ -1084,16 +1175,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-  saveInlineButton: {
-    alignSelf: "flex-start",
-    backgroundColor: palette.cocoa,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  saveInlineButtonText: {
-    color: palette.gold,
-    fontWeight: "800",
+  savingHint: {
+    color: palette.cocoa,
+    fontWeight: "700",
+    fontSize: 12,
   },
   exceptionActions: {
     gap: 12,
@@ -1153,6 +1238,10 @@ const styles = StyleSheet.create({
   },
   permissionButtonTextLight: {
     color: palette.card,
+  },
+  permissionButtonsWrap: {
+    width: 190,
+    gap: 8,
   },
   modalOverlay: {
     flex: 1,

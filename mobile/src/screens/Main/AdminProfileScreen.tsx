@@ -50,6 +50,57 @@ const formatHour = (value: string | null) => {
   });
 };
 
+const monthLabels = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+const weekHeaders = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
+
+const toDateKey = (value: Date) => value.toISOString().slice(0, 10);
+
+const parseDateKey = (value: string) => {
+  const [year, month, day] = value.split("-").map((part) => Number(part));
+  return new Date(Date.UTC(year, month - 1, day));
+};
+
+const shiftMonth = (base: Date, amount: number) =>
+  new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + amount, 1));
+
+const buildMonthMatrix = (monthStart: Date) => {
+  const start = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1));
+  const firstWeekday = (start.getUTCDay() + 6) % 7;
+  const daysInMonth = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+
+  const result: Array<Date | null> = [];
+
+  for (let i = 0; i < firstWeekday; i += 1) {
+    result.push(null);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    result.push(new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), day)));
+  }
+
+  while (result.length % 7 !== 0) {
+    result.push(null);
+  }
+
+  return result;
+};
+
 export function AdminProfileScreen() {
   const { user, token, logout } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -58,9 +109,17 @@ export function AdminProfileScreen() {
   const [report, setReport] = useState<MembershipReport | null>(null);
   const [reportRangeLabel, setReportRangeLabel] = useState("1 semana");
   const [rangeSelectorVisible, setRangeSelectorVisible] = useState(false);
+  const [dateSelectorVisible, setDateSelectorVisible] = useState(false);
   const [sendModalVisible, setSendModalVisible] = useState(false);
   const [customEmail, setCustomEmail] = useState("");
   const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
+  const [expandedPresenceMonth, setExpandedPresenceMonth] = useState(false);
+  const [selectedReportDate, setSelectedReportDate] = useState(() => toDateKey(new Date()));
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  });
+  const calendarDays = useMemo(() => buildMonthMatrix(calendarMonth), [calendarMonth]);
 
   const loadDashboard = useCallback(async () => {
     if (!token) {
@@ -70,7 +129,7 @@ export function AdminProfileScreen() {
     setLoading(true);
     try {
       const [presenceResponse, reportResponse] = await Promise.all([
-        api.getTrainerPresenceSummary(token, 7),
+        api.getTrainerPresenceSummary(token, 30),
         api.getMembershipReport(token, 7),
       ]);
       setPresenceDays(presenceResponse.days);
@@ -91,21 +150,27 @@ export function AdminProfileScreen() {
   );
 
   const activeCoaches = useMemo(
-    () => presenceDays.reduce((count, day) => count + day.activeCount, 0),
+    () => presenceDays.slice(-7).reduce((count, day) => count + day.activeCount, 0),
     [presenceDays],
   );
 
-  const onGenerateReport = async (days: number, label: string) => {
+  const visiblePresenceDays = useMemo(
+    () => (expandedPresenceMonth ? presenceDays : presenceDays.slice(-7)),
+    [expandedPresenceMonth, presenceDays],
+  );
+
+  const onGenerateReport = async (days: number, label: string, specificDate?: string) => {
     if (!token) {
       return;
     }
 
     setRangeSelectorVisible(false);
+    setDateSelectorVisible(false);
     setExporting(true);
     try {
-      const response = await api.getMembershipReport(token, days);
+      const response = await api.getMembershipReport(token, days, specificDate);
       setReport(response.report);
-      setReportRangeLabel(label);
+      setReportRangeLabel(specificDate ? `Dia especifico (${specificDate})` : label);
       Alert.alert("Reporte generado", `Se actualizaron ${response.report.summary.rowCount} movimientos.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo exportar el reporte";
@@ -124,6 +189,7 @@ export function AdminProfileScreen() {
     try {
       const response = await api.sendMembershipReport(token, {
         days: report.periodDays,
+        specificDate: report.specificDate ?? undefined,
         delivery: "linked",
       });
       Alert.alert("Reporte enviado", response.message);
@@ -151,6 +217,7 @@ export function AdminProfileScreen() {
     try {
       const response = await api.sendMembershipReport(token, {
         days: report.periodDays,
+        specificDate: report.specificDate ?? undefined,
         delivery: "custom",
         email: sanitizedEmail,
       });
@@ -209,9 +276,19 @@ export function AdminProfileScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Horas de entrada y salida</Text>
-            <TouchableOpacity style={styles.refreshChip} onPress={() => void loadDashboard()}>
-              <Text style={styles.refreshChipText}>Actualizar</Text>
-            </TouchableOpacity>
+            <View style={styles.sectionHeaderActions}>
+              <TouchableOpacity
+                style={styles.refreshChip}
+                onPress={() => setExpandedPresenceMonth((current) => !current)}
+              >
+                <Text style={styles.refreshChipText}>
+                  {expandedPresenceMonth ? "Ver ultima semana" : "Ver ultimo mes"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.refreshChip} onPress={() => void loadDashboard()}>
+                <Text style={styles.refreshChipText}>Actualizar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           {loading ? (
             <View style={styles.loadingCard}>
@@ -222,7 +299,7 @@ export function AdminProfileScreen() {
               <Text style={styles.emptyText}>Todavia no hay actividad registrada de entrenadores.</Text>
             </View>
           ) : (
-            presenceDays.map((day) => (
+            visiblePresenceDays.map((day) => (
               <View key={day.date} style={styles.dayCard}>
                 <View style={styles.dayHeader}>
                   <Text style={styles.dayTitle}>{formatDate(day.date)}</Text>
@@ -290,7 +367,7 @@ export function AdminProfileScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.infoCard}>
-            <Text style={styles.reportCaption}>Rango actual: {reportRangeLabel}</Text>
+            <Text style={styles.reportCaption}>Rango actual: {report?.reportLabel ?? reportRangeLabel}</Text>
             <Text style={styles.reportAmount}>${report?.summary.totalAmount.toFixed(2) ?? "0.00"}</Text>
             <View style={styles.reportStatsRow}>
               <View style={styles.reportStatChip}>
@@ -356,7 +433,83 @@ export function AdminProfileScreen() {
                 <Text style={styles.optionBtnText}>{option.label}</Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={styles.optionBtn}
+              onPress={() => {
+                setRangeSelectorVisible(false);
+                const current = parseDateKey(selectedReportDate);
+                setCalendarMonth(new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1)));
+                setDateSelectorVisible(true);
+              }}
+            >
+              <Text style={styles.optionBtnText}>Dia especifico</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.optionCancelBtn} onPress={() => setRangeSelectorVisible(false)}>
+              <Text style={styles.optionCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={dateSelectorVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setDateSelectorVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Seleccionar dia</Text>
+            <Text style={styles.modalSubtitle}>El reporte se filtrara solo para este dia</Text>
+
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity style={styles.calendarArrowButton} onPress={() => setCalendarMonth((prev) => shiftMonth(prev, -1))}>
+                <Text style={styles.calendarArrowText}>‹</Text>
+              </TouchableOpacity>
+              <Text style={styles.calendarTitle}>
+                {monthLabels[calendarMonth.getUTCMonth()]} {calendarMonth.getUTCFullYear()}
+              </Text>
+              <TouchableOpacity style={styles.calendarArrowButton} onPress={() => setCalendarMonth((prev) => shiftMonth(prev, 1))}>
+                <Text style={styles.calendarArrowText}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.weekHeaderRow}>
+              {weekHeaders.map((header) => (
+                <Text key={header} style={styles.weekHeaderCell}>{header}</Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarGrid}>
+              {calendarDays.map((day, index) => {
+                if (!day) {
+                  return <View key={`empty-${index}`} style={styles.calendarCell} />;
+                }
+
+                const dateKey = toDateKey(day);
+                const isSelected = dateKey === selectedReportDate;
+
+                return (
+                  <TouchableOpacity
+                    key={dateKey}
+                    style={[styles.calendarCell, isSelected && styles.calendarCellSelected]}
+                    onPress={() => setSelectedReportDate(dateKey)}
+                  >
+                    <Text style={[styles.calendarCellText, isSelected && styles.calendarCellTextSelected]}>
+                      {day.getUTCDate()}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={styles.optionBtn}
+              onPress={() => void onGenerateReport(1, "Dia especifico", selectedReportDate)}
+            >
+              <Text style={styles.optionBtnText}>Generar para {selectedReportDate}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.optionCancelBtn} onPress={() => setDateSelectorVisible(false)}>
               <Text style={styles.optionCancelText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
@@ -440,6 +593,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
     gap: 12,
+  },
+  sectionHeaderActions: {
+    flexDirection: "row",
+    gap: 8,
   },
   sectionTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: palette.cocoa },
   refreshChip: {
@@ -579,6 +736,65 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   optionBtnText: { color: palette.cocoa, fontWeight: "700" },
+  calendarHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  calendarArrowButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: palette.cream,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calendarArrowText: {
+    color: palette.cocoa,
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: "700",
+  },
+  calendarTitle: {
+    color: palette.cocoa,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  weekHeaderRow: {
+    flexDirection: "row",
+    marginBottom: 6,
+  },
+  weekHeaderCell: {
+    flex: 1,
+    textAlign: "center",
+    color: palette.cocoa + "99",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  calendarGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 10,
+  },
+  calendarCell: {
+    width: "14.285%",
+    aspectRatio: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
+  calendarCellSelected: {
+    backgroundColor: palette.cocoa,
+  },
+  calendarCellText: {
+    color: palette.cocoa,
+    fontWeight: "600",
+  },
+  calendarCellTextSelected: {
+    color: palette.cream,
+    fontWeight: "800",
+  },
   inputLabel: { color: palette.cocoa, marginTop: 8, marginBottom: 6, fontWeight: "700" },
   input: {
     borderWidth: 1,

@@ -77,6 +77,7 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
 
 const permissionGrantMap: Partial<Record<PermissionAction, PermissionGrantAction>> = {
   "availability.write": PermissionGrantAction.availability_write,
+  "notifications.general.send": PermissionGrantAction.notifications_send,
 };
 
 export const hasPermission = (role: string, action: PermissionAction): boolean => {

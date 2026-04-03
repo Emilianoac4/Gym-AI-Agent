@@ -229,15 +229,33 @@ export const getTrainerPresenceSummary = async (
   });
 };
 
-const buildMembershipReport = async (gymId: string, days: number) => {
+const buildMembershipReport = async (
+  gymId: string,
+  days: number,
+  specificDate?: string,
+) => {
   const rangeStart = new Date();
   rangeStart.setHours(0, 0, 0, 0);
   rangeStart.setDate(rangeStart.getDate() - (days - 1));
 
+  let createdAtFilter: { gte: Date; lt?: Date } = { gte: rangeStart };
+  let reportLabel = `${days} dias`;
+  if (specificDate) {
+    const dayStart = new Date(`${specificDate}T00:00:00.000Z`);
+    if (Number.isNaN(dayStart.getTime())) {
+      throw new HttpError(400, "Fecha invalida para el reporte");
+    }
+
+    const dayEnd = new Date(dayStart);
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    createdAtFilter = { gte: dayStart, lt: dayEnd };
+    reportLabel = specificDate;
+  }
+
   const rows = await prisma.membershipTransaction.findMany({
     where: {
       gymId,
-      createdAt: { gte: rangeStart },
+      createdAt: createdAtFilter,
     },
     orderBy: { createdAt: "desc" },
     select: {
@@ -311,6 +329,8 @@ const buildMembershipReport = async (gymId: string, days: number) => {
 
   return {
     periodDays: days,
+    reportLabel,
+    specificDate: specificDate ?? null,
     generatedAt: new Date().toISOString(),
     summary,
     rows: normalizedRows,
@@ -379,7 +399,7 @@ export const getMembershipReport = async (
 
   const query = req.query as unknown as MembershipReportQueryInput;
   const days = Number(query.days ?? 7);
-  const report = await buildMembershipReport(actor.gymId, days);
+  const report = await buildMembershipReport(actor.gymId, days, query.specificDate);
   res.json({ report });
 };
 
@@ -395,7 +415,7 @@ export const exportMembershipReport = async (
   }
 
   const body = req.body as ExportMembershipReportInput;
-  const report = await buildMembershipReport(actor.gymId, body.days);
+  const report = await buildMembershipReport(actor.gymId, body.days, body.specificDate);
   const exportRecord = await prisma.membershipReportExport.create({
     data: {
       gymId: actor.gymId,
@@ -436,7 +456,7 @@ export const sendMembershipReport = async (
     throw new HttpError(400, "No se encontro correo vinculado para este perfil");
   }
 
-  const report = await buildMembershipReport(actor.gymId, body.days);
+  const report = await buildMembershipReport(actor.gymId, body.days, body.specificDate);
   const emailContent = buildMembershipReportEmail(report);
 
   await sendPlatformEmail({

@@ -8,9 +8,11 @@ import {
   getTemplateAvailability,
   getTodayAvailability,
   grantAvailabilityWriteToTrainer,
+  grantNotificationsSendToTrainer,
   listTrainerAvailabilityWritePermissions,
   replaceTemplateAvailabilityWeek,
   revokeAvailabilityWriteFromTrainer,
+  revokeNotificationsSendFromTrainer,
   upsertAvailabilityExceptionByDate,
   upsertTemplateAvailabilityDay,
 } from "./availability.controller";
@@ -92,6 +94,20 @@ availabilityRouter.delete(
   authorizeAction("permissions.grant"),
   validate(availabilityPermissionParamsSchema),
   revokeAvailabilityWriteFromTrainer,
+);
+availabilityRouter.post(
+  "/permissions/:userId/notifications/grant",
+  authenticate,
+  authorizeAction("permissions.grant"),
+  validate(availabilityPermissionParamsSchema),
+  grantNotificationsSendToTrainer,
+);
+availabilityRouter.delete(
+  "/permissions/:userId/notifications/grant",
+  authenticate,
+  authorizeAction("permissions.grant"),
+  validate(availabilityPermissionParamsSchema),
+  revokeNotificationsSendFromTrainer,
 );
 
 export { availabilityRouter };
