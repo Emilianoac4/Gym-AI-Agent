@@ -105,30 +105,57 @@ export const listAssistanceRequests = async (
     where["status"] = query.status as AssistanceRequestStatus;
   }
 
-  const [requests, total] = await Promise.all([
-    prisma.assistanceRequest.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: query.limit ?? 20,
-      skip: query.offset ?? 0,
-      select: {
-        id: true,
-        gymId: true,
-        memberId: true,
-        trainerId: true,
-        status: true,
-        description: true,
-        resolution: true,
-        rating: true,
-        ratedAt: true,
-        assignedAt: true,
-        resolvedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    }),
-    prisma.assistanceRequest.count({ where }),
-  ]);
+  let requests: Array<{
+    id: string;
+    gymId: string;
+    memberId: string;
+    trainerId: string | null;
+    status: AssistanceRequestStatus;
+    description: string;
+    resolution: string | null;
+    rating: number | null;
+    ratedAt: Date | null;
+    assignedAt: Date | null;
+    resolvedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> = [];
+  let total = 0;
+
+  try {
+    [requests, total] = await Promise.all([
+      prisma.assistanceRequest.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: query.limit ?? 20,
+        skip: query.offset ?? 0,
+        select: {
+          id: true,
+          gymId: true,
+          memberId: true,
+          trainerId: true,
+          status: true,
+          description: true,
+          resolution: true,
+          rating: true,
+          ratedAt: true,
+          assignedAt: true,
+          resolvedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.assistanceRequest.count({ where }),
+    ]);
+  } catch (error) {
+    console.error("Assistance list query failed", {
+      requestId: req.requestId,
+      actorUserId: actor.id,
+      actorRole: actor.role,
+      gymId: actor.gymId,
+      error,
+    });
+  }
 
   res.json({ requests, total });
 };
@@ -277,30 +304,57 @@ export const listMyAssistanceRequests = async (
   const limit = Math.min(Number(req.query["limit"]) || 20, 50);
   const offset = Number(req.query["offset"]) || 0;
 
-  const [requests, total] = await Promise.all([
-    prisma.assistanceRequest.findMany({
-      where: { memberId: actor.id, gymId: actor.gymId },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      skip: offset,
-      select: {
-        id: true,
-        gymId: true,
-        memberId: true,
-        trainerId: true,
-        status: true,
-        description: true,
-        resolution: true,
-        rating: true,
-        ratedAt: true,
-        assignedAt: true,
-        resolvedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    }),
-    prisma.assistanceRequest.count({ where: { memberId: actor.id, gymId: actor.gymId } }),
-  ]);
+  let requests: Array<{
+    id: string;
+    gymId: string;
+    memberId: string;
+    trainerId: string | null;
+    status: AssistanceRequestStatus;
+    description: string;
+    resolution: string | null;
+    rating: number | null;
+    ratedAt: Date | null;
+    assignedAt: Date | null;
+    resolvedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> = [];
+  let total = 0;
+
+  try {
+    [requests, total] = await Promise.all([
+      prisma.assistanceRequest.findMany({
+        where: { memberId: actor.id, gymId: actor.gymId },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset,
+        select: {
+          id: true,
+          gymId: true,
+          memberId: true,
+          trainerId: true,
+          status: true,
+          description: true,
+          resolution: true,
+          rating: true,
+          ratedAt: true,
+          assignedAt: true,
+          resolvedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.assistanceRequest.count({ where: { memberId: actor.id, gymId: actor.gymId } }),
+    ]);
+  } catch (error) {
+    console.error("Assistance member list query failed", {
+      requestId: req.requestId,
+      actorUserId: actor.id,
+      actorRole: actor.role,
+      gymId: actor.gymId,
+      error,
+    });
+  }
 
   res.json({ requests, total });
 };
