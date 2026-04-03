@@ -3,7 +3,9 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -279,34 +281,44 @@ export function AssistanceRequestsScreen() {
       {/* Resolve modal */}
       <Modal visible={resolveModalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Resolver solicitud</Text>
-            <Text style={styles.modalLabel}>Describe cómo resolviste el problema:</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="Ej: Enseñé la técnica correcta para sentadillas..."
-              placeholderTextColor={palette.textMuted}
-              multiline
-              numberOfLines={4}
-              value={resolution}
-              onChangeText={setResolution}
-            />
-            <TouchableOpacity
-              style={[styles.submitButton, resolving && styles.buttonDisabled]}
-              onPress={() => void onSubmitResolve()}
-              disabled={resolving}
+          <KeyboardAvoidingView
+            style={styles.modalKeyboard}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <ScrollView
+              contentContainerStyle={styles.modalScrollContent}
+              keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.submitButtonText}>
-                {resolving ? "Guardando..." : "Marcar resuelta"}
-              </Text>
-            </TouchableOpacity>
-            <Pressable
-              onPress={() => setResolveModalVisible(false)}
-              style={styles.cancelLink}
-            >
-              <Text style={styles.cancelLinkText}>Cancelar</Text>
-            </Pressable>
-          </View>
+              <View style={styles.modalCard}>
+                <Text style={styles.modalTitle}>Resolver solicitud</Text>
+                <Text style={styles.modalLabel}>Describe cómo resolviste el problema:</Text>
+                <TextInput
+                  style={styles.textArea}
+                  placeholder="Ej: Enseñé la técnica correcta para sentadillas..."
+                  placeholderTextColor={palette.textMuted}
+                  multiline
+                  numberOfLines={4}
+                  value={resolution}
+                  onChangeText={setResolution}
+                />
+                <TouchableOpacity
+                  style={[styles.submitButton, resolving && styles.buttonDisabled]}
+                  onPress={() => void onSubmitResolve()}
+                  disabled={resolving}
+                >
+                  <Text style={styles.submitButtonText}>
+                    {resolving ? "Guardando..." : "Marcar resuelta"}
+                  </Text>
+                </TouchableOpacity>
+                <Pressable
+                  onPress={() => setResolveModalVisible(false)}
+                  style={styles.cancelLink}
+                >
+                  <Text style={styles.cancelLinkText}>Cancelar</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>
@@ -456,6 +468,14 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalKeyboard: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  modalScrollContent: {
+    flexGrow: 1,
     justifyContent: "flex-end",
   },
   modalCard: {

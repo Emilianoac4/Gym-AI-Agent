@@ -13,25 +13,33 @@ export interface AuditLogInput {
   userAgent?: string;
 }
 
-/**
- * Log an audit event
- * @param input - Audit log data
- * @returns Created audit log
- */
 export async function createAuditLog(input: AuditLogInput) {
-  return prisma.auditLog.create({
-    data: {
-      gymId: input.gymId,
-      actorUserId: input.actorUserId,
+  try {
+    return await prisma.auditLog.create({
+      data: {
+        gymId: input.gymId,
+        actorUserId: input.actorUserId,
+        action: input.action,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        changes: input.changes ? JSON.stringify(input.changes) : null,
+        metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      },
+    });
+  } catch (error) {
+    console.error("Audit log write failed", {
       action: input.action,
       resourceType: input.resourceType,
       resourceId: input.resourceId,
-      changes: input.changes ? JSON.stringify(input.changes) : null,
-      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
-      ipAddress: input.ipAddress,
-      userAgent: input.userAgent,
-    },
-  });
+      gymId: input.gymId,
+      actorUserId: input.actorUserId,
+      error,
+    });
+
+    return null;
+  }
 }
 
 /**

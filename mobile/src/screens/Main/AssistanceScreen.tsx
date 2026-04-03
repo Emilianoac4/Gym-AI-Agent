@@ -3,7 +3,9 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -206,31 +208,41 @@ export function AssistanceScreen() {
       {/* New request modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nueva solicitud</Text>
-            <Text style={styles.modalLabel}>¿En qué necesitas ayuda?</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="Describe tu solicitud..."
-              placeholderTextColor={palette.textMuted}
-              multiline
-              numberOfLines={4}
-              value={description}
-              onChangeText={setDescription}
-            />
-            <TouchableOpacity
-              style={[styles.submitButton, submitting && styles.buttonDisabled]}
-              onPress={() => void onSubmit()}
-              disabled={submitting}
+          <KeyboardAvoidingView
+            style={styles.modalKeyboard}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <ScrollView
+              contentContainerStyle={styles.modalScrollContent}
+              keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.submitButtonText}>
-                {submitting ? "Enviando..." : "Enviar solicitud"}
-              </Text>
-            </TouchableOpacity>
-            <Pressable onPress={() => setModalVisible(false)} style={styles.cancelLink}>
-              <Text style={styles.cancelLinkText}>Cancelar</Text>
-            </Pressable>
-          </View>
+              <View style={styles.modalCard}>
+                <Text style={styles.modalTitle}>Nueva solicitud</Text>
+                <Text style={styles.modalLabel}>¿En qué necesitas ayuda?</Text>
+                <TextInput
+                  style={styles.textArea}
+                  placeholder="Describe tu solicitud..."
+                  placeholderTextColor={palette.textMuted}
+                  multiline
+                  numberOfLines={4}
+                  value={description}
+                  onChangeText={setDescription}
+                />
+                <TouchableOpacity
+                  style={[styles.submitButton, submitting && styles.buttonDisabled]}
+                  onPress={() => void onSubmit()}
+                  disabled={submitting}
+                >
+                  <Text style={styles.submitButtonText}>
+                    {submitting ? "Enviando..." : "Enviar solicitud"}
+                  </Text>
+                </TouchableOpacity>
+                <Pressable onPress={() => setModalVisible(false)} style={styles.cancelLink}>
+                  <Text style={styles.cancelLinkText}>Cancelar</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -414,6 +426,14 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalKeyboard: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  modalScrollContent: {
+    flexGrow: 1,
     justifyContent: "flex-end",
   },
   modalCard: {
