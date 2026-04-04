@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const createAssistanceRequestSchema = z.object({
-  description: z.string().min(5, "La descripcion debe tener al menos 5 caracteres").max(500),
+  description: z.string().min(1, "La descripcion no puede estar vacia").max(500),
 });
 
 export const resolveAssistanceRequestSchema = z.object({

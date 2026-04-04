@@ -141,6 +141,7 @@ export const updateUserProfileById = async (
   const profile = await prisma.userProfile.upsert({
     where: { userId: id },
     create: {
+      id: randomUUID(),
       userId: id,
       gender: req.body.gender,
       birthDate: req.body.birthDate ? new Date(req.body.birthDate) : undefined,
