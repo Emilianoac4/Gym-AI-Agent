@@ -11,6 +11,7 @@ import { operationsRouter } from "./modules/operations/operations.routes";
 import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { platformRouter } from "./modules/platform/platform.routes";
 import { assistanceRouter } from "./modules/assistance/assistance.routes";
+import { trainerRoutinesRouter } from "./modules/trainer-routines/trainer-routines.routes";
 import { notFoundHandler } from "./middleware/not-found.middleware";
 import { errorHandler } from "./middleware/error.middleware";
 
@@ -59,6 +60,7 @@ app.use("/operations", operationsRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/platform", platformRouter);
 app.use("/assistance", assistanceRouter);
+app.use("/trainer-routines", trainerRoutinesRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

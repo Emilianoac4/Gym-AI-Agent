@@ -73,7 +73,7 @@ const GOAL_OPTIONS = [
   "Rendimiento deportivo",
 ];
 
-export function AdminUsersScreen() {
+export function AdminUsersScreen({ navigation }: { navigation: any }) {
   const { user, token } = useAuth();
   const isTrainer = user?.role === "trainer";
   const [users, setUsers] = useState<GymUser[]>([]);
@@ -439,6 +439,20 @@ export function AdminUsersScreen() {
                   )}
                 </View>
                 <View style={styles.userActions}>
+                  {isTrainer && u.role === "member" && u.isActive && (
+                    <TouchableOpacity
+                      style={styles.routineBtn}
+                      onPress={() =>
+                        navigation.navigate("TrainerRoutineBuilder", {
+                          mode: "assign",
+                          memberId: u.id,
+                          memberName: u.fullName,
+                        })
+                      }
+                    >
+                      <Text style={styles.routineBtnText}>📋 Rutina</Text>
+                    </TouchableOpacity>
+                  )}
                   {u.role === "member" && (
                     <TouchableOpacity style={styles.renewBtn} onPress={() => onOpenRenewModal(u)}>
                       <Text style={styles.renewBtnText}>Renovar</Text>
@@ -998,6 +1012,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   renewBtnText: { color: palette.cocoa, fontWeight: "700", fontSize: 12 },
+  routineBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: palette.moss,
+    marginBottom: 8,
+  },
+  routineBtnText: { color: palette.moss, fontWeight: "700", fontSize: 12 },
   membershipText: {
     marginTop: 6,
     fontSize: 12,

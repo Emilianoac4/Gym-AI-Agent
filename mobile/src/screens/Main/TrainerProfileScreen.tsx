@@ -186,6 +186,16 @@ export function TrainerProfileScreen({ navigation }: { navigation: any }) {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Rutinas</Text>
+        <TouchableOpacity
+          style={styles.messagesButton}
+          onPress={() => navigation.navigate("TrainerPresets")}
+        >
+          <Text style={styles.messagesButtonText}>📋 Rutinas guardadas</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Sesiones de hoy</Text>
         <View style={styles.infoCard}>
           {status?.sessionsToday?.length ? (

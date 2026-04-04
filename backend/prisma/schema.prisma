@@ -502,3 +502,75 @@ model AssistanceRequest {
   @@index([trainerId, status])
   @@map("assistance_requests")
 }
+
+// ─── Trainer Routine System ───────────────────────────────────
+
+model TrainerRoutineTemplate {
+  id        String   @id @default(uuid())
+  trainerId String   @map("trainer_id")
+  gymId     String   @map("gym_id")
+  name      String
+  purpose   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  exercises TrainerRoutineTemplateExercise[]
+
+  @@index([trainerId])
+  @@index([gymId])
+  @@map("trainer_routine_templates")
+}
+
+model TrainerRoutineTemplateExercise {
+  id           String  @id @default(uuid())
+  templateId   String  @map("template_id")
+  name         String
+  originalName String? @map("original_name")
+  reps         Int
+  sets         Int
+  restSeconds  Int     @map("rest_seconds")
+  tips         String?
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  template TrainerRoutineTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("trainer_routine_template_exercises")
+}
+
+model TrainerAssignedRoutine {
+  id         String   @id @default(uuid())
+  trainerId  String   @map("trainer_id")
+  memberId   String   @map("member_id")
+  gymId      String   @map("gym_id")
+  templateId String?  @map("template_id")
+  name       String
+  purpose    String
+  aiWarnings Json?    @map("ai_warnings")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  exercises TrainerAssignedExercise[]
+
+  @@index([trainerId])
+  @@index([memberId])
+  @@index([gymId])
+  @@map("trainer_assigned_routines")
+}
+
+model TrainerAssignedExercise {
+  id           String  @id @default(uuid())
+  routineId    String  @map("routine_id")
+  name         String
+  originalName String? @map("original_name")
+  reps         Int
+  sets         Int
+  restSeconds  Int     @map("rest_seconds")
+  tips         String?
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  routine TrainerAssignedRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+
+  @@index([routineId])
+  @@map("trainer_assigned_exercises")
+}

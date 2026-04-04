@@ -360,6 +360,54 @@ export interface GymAdminEntry {
   avatarUrl: string | null;
 }
 
+/* ─── Trainer Routines ──────────────────────────────────── */
+
+export interface TrainerExercise {
+  id: string;
+  name: string;
+  originalName: string | null;
+  reps: number;
+  sets: number;
+  restSeconds: number;
+  tips: string | null;
+  sortOrder: number;
+}
+
+export interface TrainerRoutineTemplate {
+  id: string;
+  trainerId: string;
+  gymId: string;
+  name: string;
+  purpose: string;
+  createdAt: string;
+  updatedAt: string;
+  exercises: TrainerExercise[];
+}
+
+export interface TrainerAssignedRoutine {
+  id: string;
+  trainerId: string;
+  memberId: string;
+  gymId: string;
+  templateId: string | null;
+  name: string;
+  purpose: string;
+  aiWarnings: string[] | null;
+  isActive: boolean;
+  createdAt: string;
+  exercises: TrainerExercise[];
+}
+
+export interface ExerciseInput {
+  name: string;
+  originalName?: string;
+  reps: number;
+  sets: number;
+  restSeconds: number;
+  tips?: string;
+  sortOrder?: number;
+}
+
 export interface MessageThread {
   id: string;
   adminUserId: string;

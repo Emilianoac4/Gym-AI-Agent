@@ -25,7 +25,10 @@ import {
   RoutineExerciseCheckin,
   StrengthLog,
   StrengthProgressSummary,
+  ExerciseInput,
   GymAdminEntry,
+  TrainerRoutineTemplate,
+  TrainerAssignedRoutine,
   ThreadWithMessages,
   TrainerPresenceStatus,
   TrainerPresenceSummaryDay,
@@ -858,4 +861,73 @@ export const api = {
 
   getChurnRisk: (token: string) =>
     request<{ churnRisk: ChurnRiskEntry[] }>("/operations/churn-risk", { token }),
+
+  /* ─── Trainer Routines ───────────────────────────────────── */
+
+  listTrainerTemplates: (token: string) =>
+    request<{ templates: TrainerRoutineTemplate[] }>("/trainer-routines/templates", { token }),
+
+  createTrainerTemplate: (
+    token: string,
+    body: { name: string; purpose: string; exercises: ExerciseInput[] },
+  ) =>
+    request<{ template: TrainerRoutineTemplate }>("/trainer-routines/templates", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  deleteTrainerTemplate: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/trainer-routines/templates/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      token,
+    }),
+
+  standardizeExerciseName: (token: string, name: string) =>
+    request<{ original: string; standardized: string }>("/trainer-routines/standardize", {
+      method: "POST",
+      token,
+      body: { name },
+    }),
+
+  validateTrainerRoutine: (
+    token: string,
+    body: {
+      memberId: string;
+      routineName: string;
+      purpose: string;
+      exercises: ExerciseInput[];
+    },
+  ) =>
+    request<{ warnings: string[] }>("/trainer-routines/validate", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  assignTrainerRoutine: (
+    token: string,
+    body: {
+      memberId: string;
+      name: string;
+      purpose: string;
+      exercises: ExerciseInput[];
+      templateId?: string;
+      aiWarnings?: string[];
+    },
+  ) =>
+    request<{ routine: TrainerAssignedRoutine }>("/trainer-routines/assign", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  getRoutineForMember: (token: string, memberId: string) =>
+    request<{ routine: TrainerAssignedRoutine | null }>(
+      `/trainer-routines/for-member/${encodeURIComponent(memberId)}`,
+      { token },
+    ),
+
+  getMyTrainerAssignedRoutine: (token: string) =>
+    request<{ routine: TrainerAssignedRoutine | null }>("/trainer-routines/my-routine", { token }),
 };

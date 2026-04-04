@@ -21,6 +21,7 @@ import {
   RoutineExerciseCheckin,
   StrengthProgressSummary,
   StrengthWeeklyHistoryPoint,
+  TrainerAssignedRoutine,
 } from "../../types/api";
 
 const DAY_TRANSLATIONS: Record<string, string> = {
@@ -135,6 +136,8 @@ export function RoutineScreen() {
   const [localCompletedExercises, setLocalCompletedExercises] = useState<Set<string>>(new Set());
   const [strengthSummary, setStrengthSummary] = useState<StrengthProgressSummary | null>(null);
   const [strengthByExercise, setStrengthByExercise] = useState<ExerciseStrengthProgress[]>([]);
+  const [trainerRoutine, setTrainerRoutine] = useState<TrainerAssignedRoutine | null>(null);
+  const [trainerRoutineExpanded, setTrainerRoutineExpanded] = useState(false);
 
   const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
   const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart);
@@ -312,13 +315,23 @@ export function RoutineScreen() {
     }
   };
 
+  const loadTrainerRoutine = async () => {
+    if (!token) return;
+    try {
+      const res = await api.getMyTrainerAssignedRoutine(token);
+      setTrainerRoutine(res.routine);
+    } catch {
+      setTrainerRoutine(null);
+    }
+  };
+
   const reloadAll = useCallback(async () => {
     if (!user || !token) {
       return;
     }
 
     try {
-      await Promise.all([loadLatestRoutine(), loadCheckins(), loadStrengthProgress()]);
+      await Promise.all([loadLatestRoutine(), loadCheckins(), loadStrengthProgress(), loadTrainerRoutine()]);
     } catch (error) {
       Alert.alert(
         "No se pudo cargar la rutina",
@@ -622,6 +635,54 @@ export function RoutineScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+
+      {/* Trainer-assigned routine section */}
+      {trainerRoutine && (
+        <View style={styles.trainerRoutineCard}>
+          <TouchableOpacity
+            style={styles.trainerRoutineHeader}
+            onPress={() => setTrainerRoutineExpanded((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trainerRoutineLabel}>Rutina asignada por tu entrenador</Text>
+              <Text style={styles.trainerRoutineName}>{trainerRoutine.name}</Text>
+            </View>
+            <Text style={styles.trainerRoutineChevron}>
+              {trainerRoutineExpanded ? "▲" : "▼"}
+            </Text>
+          </TouchableOpacity>
+
+          {trainerRoutineExpanded && (
+            <View style={styles.trainerRoutineBody}>
+              <Text style={styles.trainerRoutinePurpose}>{trainerRoutine.purpose}</Text>
+              {trainerRoutine.aiWarnings && trainerRoutine.aiWarnings.length > 0 && (
+                <View style={styles.trainerWarningBox}>
+                  <Text style={styles.trainerWarningTitle}>⚠️ Notas del entrenador (revisión IA)</Text>
+                  {trainerRoutine.aiWarnings.map((w, i) => (
+                    <Text key={i} style={styles.trainerWarningItem}>• {w}</Text>
+                  ))}
+                </View>
+              )}
+              {trainerRoutine.exercises.map((ex, idx) => (
+                <View key={ex.id} style={styles.trainerExerciseRow}>
+                  <Text style={styles.trainerExerciseNum}>{idx + 1}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.trainerExerciseName}>{ex.name}</Text>
+                    <Text style={styles.trainerExerciseMeta}>
+                      {ex.sets} series × {ex.reps} reps · descanso {ex.restSeconds}s
+                    </Text>
+                    {ex.tips ? (
+                      <Text style={styles.trainerExerciseTips}>{ex.tips}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
       <View style={styles.heroCard}>
         <Text style={styles.eyebrow}>Plan semanal</Text>
         <Text style={styles.title}>Rutina</Text>
@@ -1781,5 +1842,95 @@ const styles = StyleSheet.create({
   calendarDayTextDone: {
     color: "#fff",
     fontWeight: "700",
+  },
+
+  // Trainer-assigned routine card
+  trainerRoutineCard: {
+    backgroundColor: palette.surface,
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: palette.moss + "55",
+  },
+  trainerRoutineHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    backgroundColor: palette.moss + "18",
+  },
+  trainerRoutineLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: palette.moss,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  trainerRoutineName: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: palette.cocoa,
+  },
+  trainerRoutineChevron: {
+    fontSize: 14,
+    color: palette.moss,
+    marginLeft: 8,
+  },
+  trainerRoutineBody: {
+    padding: 16,
+  },
+  trainerRoutinePurpose: {
+    fontSize: 13,
+    color: palette.textSoft,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  trainerWarningBox: {
+    backgroundColor: "#FFF3CD",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  trainerWarningTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#856404",
+    marginBottom: 4,
+  },
+  trainerWarningItem: {
+    fontSize: 12,
+    color: "#856404",
+    lineHeight: 18,
+  },
+  trainerExerciseRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: palette.moss + "22",
+  },
+  trainerExerciseNum: {
+    width: 24,
+    fontSize: 13,
+    fontWeight: "700",
+    color: palette.moss,
+    marginTop: 1,
+  },
+  trainerExerciseName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: palette.cocoa,
+  },
+  trainerExerciseMeta: {
+    fontSize: 12,
+    color: palette.textSoft,
+    marginTop: 2,
+  },
+  trainerExerciseTips: {
+    fontSize: 12,
+    color: palette.textSoft,
+    fontStyle: "italic",
+    marginTop: 3,
   },
 });

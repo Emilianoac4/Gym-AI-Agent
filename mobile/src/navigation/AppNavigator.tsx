@@ -27,6 +27,8 @@ import { MessagesConversationScreen } from "../screens/Main/MessagesConversation
 import { MyMessagesScreen } from "../screens/Main/MyMessagesScreen";
 import { AssistanceScreen } from "../screens/Main/AssistanceScreen";
 import { AssistanceRequestsScreen } from "../screens/Main/AssistanceRequestsScreen";
+import { TrainerRoutineBuilderScreen } from "../screens/Main/TrainerRoutineBuilderScreen";
+import { TrainerPresetsScreen } from "../screens/Main/TrainerPresetsScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -203,6 +205,16 @@ export function AppNavigator() {
               <Stack.Screen
                 name="MyMessages"
                 component={MyMessagesScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="TrainerRoutineBuilder"
+                component={TrainerRoutineBuilderScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="TrainerPresets"
+                component={TrainerPresetsScreen}
                 options={{ headerShown: false }}
               />
             </>
