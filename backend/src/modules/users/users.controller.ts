@@ -513,6 +513,19 @@ export const createUser = async (
           emailVerificationTokenExpiresAt: tokenExpiresAt,
         },
       });
+    } else {
+      // Re-registration: reset credentials so the user must change their password on next login
+      globalAccount = await tx.globalUserAccount.update({
+        where: { email: emailLower },
+        data: {
+          passwordHash: tempPasswordHash,
+          fullName: req.body.fullName,
+          emailVerifiedAt: null,
+          emailVerificationLastSentAt: verificationSentAt,
+          emailVerificationTokenHash: tokenHash,
+          emailVerificationTokenExpiresAt: tokenExpiresAt,
+        },
+      });
     }
 
     const newUser = await tx.user.create({
@@ -539,13 +552,18 @@ export const createUser = async (
     });
 
     if (isMemberRole && req.body.profile) {
+      const LEVEL_LABELS = ["Principiante", "Basico", "Intermedio", "Avanzado", "Elite"];
+      const availDays = req.body.profile.availabilityDays;
+      const availStr = availDays === 1 ? "1 dia por semana" : `${availDays} dias por semana`;
+      const levelStr = LEVEL_LABELS[req.body.profile.level - 1] ?? `Nivel ${req.body.profile.level}`;
+
       await tx.userProfile.create({
         data: {
           userId: newUser.id,
           gender: req.body.profile.gender,
           goal: req.body.profile.goal,
-          availability: `${req.body.profile.availabilityDays} dias/semana`,
-          experienceLvl: `Nivel ${req.body.profile.level}`,
+          availability: availStr,
+          experienceLvl: levelStr,
         },
       });
     }
