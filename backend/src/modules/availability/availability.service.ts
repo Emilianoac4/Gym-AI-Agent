@@ -343,9 +343,9 @@ export const getAvailabilityToday = async (auth: AuthContext) => {
   };
 };
 
-export const getAvailabilityNext7Days = async (auth: AuthContext) => {
+export const getAvailabilityNext7Days = async (auth: AuthContext, fromDate?: string) => {
   const requester = await getRequester(auth);
-  const startDate = parseDateKey(formatDateKey(new Date()));
+  const startDate = fromDate ? parseDateKey(fromDate) : parseDateKey(formatDateKey(new Date()));
   const dates = Array.from({ length: 7 }, (_, index) => addDays(startDate, index));
   const endDate = dates[dates.length - 1];
 

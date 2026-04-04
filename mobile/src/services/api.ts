@@ -534,10 +534,16 @@ export const api = {
       token,
     }),
 
-  getAvailabilityNext7Days: (token: string) =>
-    request<{ days: GymAvailabilityDay[] }>("/availability/next-7-days", {
+  getAvailabilityNext7Days: (token: string) => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const fromDate = `${yyyy}-${mm}-${dd}`;
+    return request<{ days: GymAvailabilityDay[] }>(`/availability/next-7-days?from=${fromDate}`, {
       token,
-    }),
+    });
+  },
 
   getAvailabilityTemplate: (token: string) =>
     request<{ template: GymAvailabilityTemplateDay[]; permissions: GymAvailabilityPermissions }>(

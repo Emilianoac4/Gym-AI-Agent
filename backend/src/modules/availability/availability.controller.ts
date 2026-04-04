@@ -38,7 +38,8 @@ export const getTodayAvailability = async (req: Request, res: Response): Promise
 
 export const getNext7DaysAvailability = async (req: Request, res: Response): Promise<void> => {
   const auth = requireAuth(req);
-  res.json(await getAvailabilityNext7Days(auth));
+  const fromDate = typeof req.query.from === "string" ? req.query.from : undefined;
+  res.json(await getAvailabilityNext7Days(auth, fromDate));
 };
 
 export const getTemplateAvailability = async (req: Request, res: Response): Promise<void> => {
