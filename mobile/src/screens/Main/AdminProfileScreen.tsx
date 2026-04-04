@@ -131,6 +131,7 @@ export function AdminProfileScreen() {
   const [expandedPresenceMonth, setExpandedPresenceMonth] = useState(false);
   const [gymSettings, setGymSettings] = useState<GymSettings | null>(null);
   const [ratingsHistory, setRatingsHistory] = useState<AssistanceRatingEntry[]>([]);
+  const [expandedRatings, setExpandedRatings] = useState<Record<string, boolean>>({});
   const [kpi, setKpi] = useState<AdminKpi | null>(null);
   const [churnRisk, setChurnRisk] = useState<ChurnRiskEntry[]>([]);
   const [savingCurrency, setSavingCurrency] = useState(false);
@@ -222,6 +223,36 @@ export function AdminProfileScreen() {
     [expandedPresenceMonth, presenceDays],
   );
 
+  const trainerRankings = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      name: string;
+      entries: AssistanceRatingEntry[];
+      ratedCount: number;
+      sum: number;
+    }>();
+    for (const entry of ratingsHistory) {
+      const key = entry.trainerId ?? "__unassigned__";
+      const name = entry.trainerName ?? "Solicitudes sin respuesta";
+      if (!map.has(key)) {
+        map.set(key, { key, name, entries: [], ratedCount: 0, sum: 0 });
+      }
+      const group = map.get(key)!;
+      group.entries.push(entry);
+      if (entry.rating !== null) {
+        group.sum += entry.rating;
+        group.ratedCount++;
+      }
+    }
+    return Array.from(map.values())
+      .map((g) => ({ ...g, average: g.ratedCount > 0 ? g.sum / g.ratedCount : null }))
+      .sort((a, b) => {
+        if (a.key === "__unassigned__") return 1;
+        if (b.key === "__unassigned__") return -1;
+        return (b.average ?? 0) - (a.average ?? 0);
+      });
+  }, [ratingsHistory]);
+
   const onGenerateReport = async (days: number, label: string, specificDate?: string) => {
     if (!token) {
       return;
@@ -297,6 +328,13 @@ export function AdminProfileScreen() {
 
   const toggleTrainerSessions = (key: string) => {
     setExpandedSessions((previous) => ({
+      ...previous,
+      [key]: !(previous[key] ?? false),
+    }));
+  };
+
+  const toggleRatingTrainer = (key: string) => {
+    setExpandedRatings((previous) => ({
       ...previous,
       [key]: !(previous[key] ?? false),
     }));
@@ -523,28 +561,54 @@ export function AdminProfileScreen() {
             <View style={styles.loadingCard}>
               <ActivityIndicator color={palette.cocoa} />
             </View>
-          ) : ratingsHistory.length === 0 ? (
+          ) : trainerRankings.length === 0 ? (
             <View style={styles.infoCard}>
               <Text style={styles.emptyText}>No hay solicitudes calificadas en los últimos 30 días.</Text>
             </View>
           ) : (
-            ratingsHistory.map((entry) => (
-              <View key={entry.id} style={styles.dayCard}>
-                <View style={styles.dayHeader}>
-                  <Text style={styles.trainerName}>{entry.memberName}</Text>
-                  <Text style={styles.ratingStars}>
-                    {"★".repeat(entry.rating ?? 0)}{"☆".repeat(5 - (entry.rating ?? 0))}
-                  </Text>
-                </View>
-                {entry.trainerName ? (
-                  <Text style={styles.trainerSessionMeta}>Entrenador: {entry.trainerName}</Text>
-                ) : null}
-                <Text style={styles.trainerSessionMeta}>
-                  {entry.ratedAt ? formatDateTime(entry.ratedAt) : ""}
-                </Text>
-                {entry.resolution ? (
-                  <Text style={styles.emptyText} numberOfLines={2}>{entry.resolution}</Text>
-                ) : null}
+            trainerRankings.map((group) => (
+              <View key={group.key} style={styles.dayCard}>
+                <TouchableOpacity
+                  style={styles.trainerHeaderBtn}
+                  onPress={() => toggleRatingTrainer(group.key)}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.trainerName}>{group.name}</Text>
+                    <Text style={styles.trainerSessionMeta}>
+                      {group.ratedCount} calificación{group.ratedCount !== 1 ? "es" : ""}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", marginRight: 8 }}>
+                    {group.average !== null ? (
+                      <>
+                        <Text style={styles.ratingStars}>
+                          {"★".repeat(Math.round(group.average))}{"☆".repeat(5 - Math.round(group.average))}
+                        </Text>
+                        <Text style={styles.trainerSessionMeta}>{group.average.toFixed(1)} / 5</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.trainerSessionMeta}>Sin calificar</Text>
+                    )}
+                  </View>
+                  <Text style={styles.trainerChevron}>{expandedRatings[group.key] ? "▲" : "▼"}</Text>
+                </TouchableOpacity>
+                {expandedRatings[group.key] ? group.entries.map((entry) => (
+                  <View key={entry.id} style={styles.ratingEntryRow}>
+                    <View style={styles.dayHeader}>
+                      <Text style={styles.trainerName}>{entry.memberName}</Text>
+                      <Text style={styles.ratingStars}>
+                        {"★".repeat(entry.rating ?? 0)}{"☆".repeat(5 - (entry.rating ?? 0))}
+                      </Text>
+                    </View>
+                    <Text style={styles.trainerSessionMeta}>
+                      {entry.ratedAt ? formatDateTime(entry.ratedAt) : ""}
+                    </Text>
+                    {entry.resolution ? (
+                      <Text style={styles.emptyText} numberOfLines={2}>{entry.resolution}</Text>
+                    ) : null}
+                  </View>
+                )) : null}
               </View>
             ))
           )}
@@ -881,6 +945,12 @@ const styles = StyleSheet.create({
   dayTitle: { color: palette.cocoa, fontWeight: "800", fontSize: 15 },
   daySubtitle: { color: palette.moss, fontWeight: "700", fontSize: 12 },
   trainerBlock: { marginTop: 10 },
+  ratingEntryRow: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: palette.sand,
+  },
   trainerHeaderBtn: {
     flexDirection: "row",
     justifyContent: "space-between",

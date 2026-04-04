@@ -117,6 +117,7 @@ export function HomeScreen() {
   const [activeTrainers, setActiveTrainers] = useState<string[]>([]);
   const [emergencyTickets, setEmergencyTickets] = useState<EmergencyTicket[]>([]);
   const [pendingAssistanceCount, setPendingAssistanceCount] = useState(0);
+  const [unassignedAssistanceCount, setUnassignedAssistanceCount] = useState(0);
   const [ticketModalVisible, setTicketModalVisible] = useState(false);
   const [ticketCategory, setTicketCategory] = useState<"harassment" | "injury" | "accident" | "incident">("incident");
   const [ticketDescription, setTicketDescription] = useState("");
@@ -135,11 +136,12 @@ export function HomeScreen() {
         const ticketsPromise = api.listEmergencyTickets(token).catch(() => ({ tickets: [] as EmergencyTicket[] }));
 
         if (isAdmin) {
-          const [availabilityData, threadsData, presenceData, ticketsData] = await Promise.all([
+          const [availabilityData, threadsData, presenceData, ticketsData, pendingRequestsData] = await Promise.all([
             availabilityPromise,
             threadsPromise,
             api.getTrainerPresenceSummary(token, 1).catch(() => ({ days: [] as any[] })),
             ticketsPromise,
+            api.listAssistanceRequests(token).catch(() => ({ requests: [] as any[], total: 0 })),
           ]);
 
           const todayPresence = presenceData.days[0];
@@ -158,6 +160,9 @@ export function HomeScreen() {
             setUnreadThreads(threadsData.threads.filter((thread) => thread.unreadCount > 0));
             setActiveTrainers(activeTrainerNames);
             setEmergencyTickets(ticketsData.tickets);
+            setUnassignedAssistanceCount(
+              (pendingRequestsData.requests as any[]).filter((r) => r.status === "CREATED").length,
+            );
           }
           return;
         }
@@ -345,7 +350,7 @@ export function HomeScreen() {
           </Text>
         </View>
 
-        {(unreadThreads.length > 0 || urgentOpenTickets.length > 0) ? (
+        {(unreadThreads.length > 0 || urgentOpenTickets.length > 0 || (isAdmin && unassignedAssistanceCount > 0)) ? (
           <View style={styles.priorityCard}>
             <Text style={styles.priorityEyebrow}>Prioridad</Text>
             {unreadThreads.length > 0 ? (
@@ -353,6 +358,11 @@ export function HomeScreen() {
             ) : null}
             {urgentOpenTickets.length > 0 ? (
               <Text style={styles.priorityTitle}>Hay {urgentOpenTickets.length} ticket(s) de emergencia abiertos</Text>
+            ) : null}
+            {isAdmin && unassignedAssistanceCount > 0 ? (
+              <Text style={styles.priorityTitle}>
+                {unassignedAssistanceCount} solicitud{unassignedAssistanceCount > 1 ? "es" : ""} de asistencia sin respuesta
+              </Text>
             ) : null}
             <Text style={styles.priorityCopy}>
               Atiende primero los mensajes y emergencias para mantener la operacion segura.
@@ -369,6 +379,11 @@ export function HomeScreen() {
               {(isAdmin || isTrainer) && urgentOpenTickets.length > 0 ? (
                 <Pressable style={styles.priorityButton} onPress={() => navigation.navigate("Mensajes") }>
                   <Text style={styles.priorityButtonText}>Abrir bandeja admin</Text>
+                </Pressable>
+              ) : null}
+              {isAdmin && unassignedAssistanceCount > 0 ? (
+                <Pressable style={styles.priorityButton} onPress={() => navigation.navigate("Perfil")}>
+                  <Text style={styles.priorityButtonText}>Ver solicitudes</Text>
                 </Pressable>
               ) : null}
             </View>
