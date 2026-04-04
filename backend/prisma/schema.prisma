@@ -94,6 +94,7 @@ model Gym {
   deletionChallengeHash String? @map("deletion_challenge_hash")
   deletionChallengeExpiresAt DateTime? @map("deletion_challenge_expires_at")
   deletionRequestedByPlatformUserId String? @map("deletion_requested_by_platform_user_id")
+  lockedAt  DateTime? @map("locked_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   users User[]

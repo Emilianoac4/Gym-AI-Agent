@@ -293,6 +293,31 @@ button:hover {
   margin: 5px 0;
 }
 
+.admin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  list-style: none;
+  padding: 4px 0;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.danger-ghost-btn {
+  color: #e74c3c;
+  border-color: #e74c3c;
+}
+
+.danger-ghost-btn:hover {
+  background: #fdecea;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr));

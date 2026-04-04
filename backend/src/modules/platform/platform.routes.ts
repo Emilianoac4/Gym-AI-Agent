@@ -10,12 +10,15 @@ import {
   createCompany,
   createPlatformAdminUser,
   createCompanyAdmin,
+  deactivateCompanyAdmin,
+  deleteCompanyAdmin,
   enforceCompanyUserLimit,
   getPlatformAlerts,
   getPlatformSession,
   getCompanyHierarchy,
   getPlatformDashboard,
   listPlatformAdminUsers,
+  lockCompany,
   loginPlatform,
   recoverCompany,
   requestCompanyDeletion,
@@ -27,8 +30,11 @@ import {
   deleteCompanyRequestSchema,
   createCompanySchema,
   createCompanyAdminSchema,
+  adminParamsSchema,
+  deleteCompanyAdminSchema,
   enforceGymSubscriptionSchema,
   gymParamsSchema,
+  lockCompanySchema,
   platformDashboardQuerySchema,
   platformAlertsQuerySchema,
   platformAdminUserSchema,
@@ -99,6 +105,23 @@ platformRouter.patch(
   validate(gymParamsSchema),
   validate(updateSubscriptionStatusSchema),
   updateCompanySubscriptionStatus,
+);
+platformRouter.patch(
+  "/companies/:gymId/lock",
+  validate(gymParamsSchema),
+  validate(lockCompanySchema),
+  lockCompany,
+);
+platformRouter.patch(
+  "/companies/:gymId/admins/:adminId/deactivate",
+  validate(adminParamsSchema),
+  deactivateCompanyAdmin,
+);
+platformRouter.delete(
+  "/companies/:gymId/admins/:adminId",
+  validate(adminParamsSchema),
+  validate(deleteCompanyAdminSchema),
+  deleteCompanyAdmin,
 );
 
 export { platformRouter };

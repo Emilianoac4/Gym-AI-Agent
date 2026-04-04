@@ -62,6 +62,19 @@ export const recoverCompanySchema = z.object({
   platformPassword: z.string().min(8).max(120),
 });
 
+export const lockCompanySchema = z.object({
+  locked: z.boolean(),
+});
+
+export const deleteCompanyAdminSchema = z.object({
+  platformPassword: z.string().min(8).max(120),
+});
+
+export const adminParamsSchema = z.object({
+  gymId: z.string().uuid(),
+  adminId: z.string().uuid(),
+});
+
 export const platformLoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(120),
@@ -92,3 +105,5 @@ export type PlatformDashboardQueryInput = z.infer<typeof platformDashboardQueryS
 export type DeleteCompanyRequestInput = z.infer<typeof deleteCompanyRequestSchema>;
 export type DeleteCompanyConfirmInput = z.infer<typeof deleteCompanyConfirmSchema>;
 export type RecoverCompanyInput = z.infer<typeof recoverCompanySchema>;
+export type LockCompanyInput = z.infer<typeof lockCompanySchema>;
+export type DeleteCompanyAdminInput = z.infer<typeof deleteCompanyAdminSchema>;

@@ -457,7 +457,7 @@ export const login = async (
 
     const memberships = await prisma.user.findMany({
       where: { globalUserId: globalAccount.id, role: requestedRole as UserRole, isActive: true },
-      include: { gym: { select: { id: true, name: true } } },
+      include: { gym: { select: { id: true, name: true, lockedAt: true } } },
     });
 
     if (memberships.length === 0) {
@@ -466,6 +466,9 @@ export const login = async (
 
     if (memberships.length === 1) {
       const membership = memberships[0];
+      if (membership.gym.lockedAt) {
+        throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
+      }
       await ensureMembershipActive(membership);
       const token = signAuthToken({ userId: membership.id, role: membership.role });
       res.json({
@@ -483,12 +486,16 @@ export const login = async (
       return;
     }
 
-    // Multiple gyms → return gym selector
+    // Multiple gyms → return gym selector (filter out locked gyms silently)
+    const unlockedMemberships = memberships.filter((m) => !m.gym.lockedAt);
+    if (unlockedMemberships.length === 0) {
+      throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
+    }
     const selectorToken = signGymSelectorToken(globalAccount.id);
     res.json({
       requiresGymSelection: true,
       selectorToken,
-      gyms: memberships.map((m) => ({
+      gyms: unlockedMemberships.map((m) => ({
         userId: m.id,
         gymId: m.gymId,
         gymName: m.gym.name,
@@ -502,11 +509,15 @@ export const login = async (
   // ── Username-based login ─────────────────────────────────────────────
   const userByUsername = await prisma.user.findUnique({
     where: { username: identifier },
-    include: { globalAccount: true },
+    include: { globalAccount: true, gym: { select: { lockedAt: true } } },
   });
 
   if (!userByUsername || !userByUsername.isActive || !userByUsername.globalAccount.isActive) {
     throw new HttpError(401, "Invalid credentials");
+  }
+
+  if (userByUsername.gym.lockedAt) {
+    throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
   }
 
   const globalAccount = userByUsername.globalAccount;
@@ -554,7 +565,7 @@ export const selectGym = async (
 
   const membership = await prisma.user.findUnique({
     where: { id: userId },
-    include: { globalAccount: true },
+    include: { globalAccount: true, gym: { select: { lockedAt: true } } },
   });
 
   if (!membership || !membership.isActive) {
@@ -567,6 +578,10 @@ export const selectGym = async (
 
   if (!membership.globalAccount.isActive) {
     throw new HttpError(403, "Cuenta desactivada");
+  }
+
+  if (membership.gym.lockedAt) {
+    throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
   }
 
   await ensureMembershipActive(membership);

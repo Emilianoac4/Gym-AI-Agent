@@ -644,6 +644,7 @@ export const getCompanyHierarchy = async (req: Request, res: Response): Promise<
       currency: true,
       deletedAt: true,
       recoverUntil: true,
+      lockedAt: true,
       createdAt: true,
     },
   });
@@ -679,6 +680,7 @@ export const getCompanyHierarchy = async (req: Request, res: Response): Promise<
       isDeleted: Boolean(gym.deletedAt),
       deletedAt: gym.deletedAt ? toUtcIso(gym.deletedAt) : null,
       recoverUntil: gym.recoverUntil ? toUtcIso(gym.recoverUntil) : null,
+      lockedAt: gym.lockedAt ? toUtcIso(gym.lockedAt) : null,
       createdAt: toUtcIso(gym.createdAt),
     },
     subscription: {
@@ -1157,4 +1159,124 @@ export const recoverCompany = async (req: Request, res: Response): Promise<void>
     message: "Empresa recuperada correctamente",
     gymId,
   });
+};
+
+// ── Gym Lock / Unlock ──────────────────────────────────────────────────
+
+export const lockCompany = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const { gymId } = req.params as { gymId: string };
+  const { locked } = req.body as { locked: boolean };
+
+  const gym = await prisma.gym.findUnique({
+    where: { id: gymId },
+    select: { id: true, deletedAt: true },
+  });
+  if (!gym || gym.deletedAt) {
+    throw new HttpError(404, "Empresa no encontrada");
+  }
+
+  const lockedAt = locked ? new Date() : null;
+
+  await prisma.$transaction([
+    prisma.gym.update({ where: { id: gymId }, data: { lockedAt } }),
+    prisma.gymSubscriptionAudit.create({
+      data: {
+        gymId,
+        action: locked ? "company.locked" : "company.unlocked",
+        reason: locked ? "Acceso bloqueado por plataforma" : "Acceso desbloqueado por plataforma",
+        createdBy: session.platformUserId,
+      },
+    }),
+  ]);
+
+  res.json({
+    message: locked ? "Gimnasio bloqueado correctamente" : "Gimnasio desbloqueado correctamente",
+    gymId,
+    lockedAt: lockedAt ? lockedAt.toISOString() : null,
+  });
+};
+
+// ── Admin Deactivate ───────────────────────────────────────────────────
+
+export const deactivateCompanyAdmin = async (req: Request, res: Response): Promise<void> => {
+  requirePlatformSession(req);
+  const { gymId, adminId } = req.params as { gymId: string; adminId: string };
+
+  const user = await prisma.user.findUnique({
+    where: { id: adminId },
+    select: { id: true, gymId: true, role: true, isActive: true },
+  });
+
+  if (!user || user.gymId !== gymId) {
+    throw new HttpError(404, "Administrador no encontrado en esta empresa");
+  }
+  if (user.role !== UserRole.admin) {
+    throw new HttpError(400, "El usuario no es administrador");
+  }
+  if (!user.isActive) {
+    throw new HttpError(409, "El administrador ya esta desactivado");
+  }
+
+  // Block if this would leave 0 active admins
+  const activeAdminCount = await prisma.user.count({
+    where: { gymId, role: UserRole.admin, isActive: true },
+  });
+  if (activeAdminCount <= 1) {
+    throw new HttpError(
+      409,
+      "No puedes desactivar al unico administrador activo del gimnasio",
+    );
+  }
+
+  await prisma.user.update({ where: { id: adminId }, data: { isActive: false } });
+
+  res.json({ message: "Administrador desactivado correctamente", userId: adminId });
+};
+
+// ── Admin Hard Delete ──────────────────────────────────────────────────
+
+export const deleteCompanyAdmin = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const { gymId, adminId } = req.params as { gymId: string; adminId: string };
+  const { platformPassword } = req.body as { platformPassword: string };
+
+  await verifyPlatformPassword(session.platformUserId, platformPassword);
+
+  const user = await prisma.user.findUnique({
+    where: { id: adminId },
+    select: { id: true, gymId: true, role: true, globalUserId: true },
+  });
+
+  if (!user || user.gymId !== gymId) {
+    throw new HttpError(404, "Administrador no encontrado en esta empresa");
+  }
+  if (user.role !== UserRole.admin) {
+    throw new HttpError(400, "El usuario no es administrador");
+  }
+
+  // Block if this is the only admin (active or not)
+  const totalAdminCount = await prisma.user.count({
+    where: { gymId, role: UserRole.admin },
+  });
+  if (totalAdminCount <= 1) {
+    throw new HttpError(
+      409,
+      "No puedes eliminar al unico administrador del gimnasio",
+    );
+  }
+
+  // Check if GlobalUserAccount has other memberships
+  const otherMemberships = await prisma.user.count({
+    where: { globalUserId: user.globalUserId, id: { not: adminId } },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.delete({ where: { id: adminId } });
+    if (otherMemberships === 0) {
+      await tx.globalUserAccount.delete({ where: { id: user.globalUserId } });
+    }
+  });
+
+  res.json({ message: "Administrador eliminado correctamente", userId: adminId });
 };

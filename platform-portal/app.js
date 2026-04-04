@@ -124,6 +124,17 @@ function roleRows(users) {
   return users.map((u) => `<li>${u.fullName} (${u.email}) ${u.isActive ? "" : "[INACTIVO]"}</li>`).join("");
 }
 
+function adminRows(admins, gymId) {
+  return admins.map((u) => `
+    <li class="admin-row">
+      <span>${u.fullName} (${u.email}) ${u.isActive ? "" : "[INACTIVO]"}</span>
+      <span class="admin-actions">
+        ${u.isActive ? `<button class="ghost-btn deactivate-admin-btn" data-user-id="${u.id}" data-gym-id="${gymId}" data-admin-name="${u.fullName}">Desactivar</button>` : ""}
+        <button class="ghost-btn danger-ghost-btn delete-admin-btn" data-user-id="${u.id}" data-gym-id="${gymId}" data-admin-name="${u.fullName}">Eliminar</button>
+      </span>
+    </li>`).join("");
+}
+
 // Pages
 function showApp() {
   navigate("/main");
@@ -417,6 +428,11 @@ async function loadCompanyDetail(gymId) {
           <p>Gracia: ${sub.graceEndsAt ? fmtDate(sub.graceEndsAt) : "No activa"}</p>
         </section>
         <section class="block">
+          <h3>Acceso de empresa</h3>
+          <p>${data.company.lockedAt ? `<strong>BLOQUEADO</strong> desde ${fmtDate(data.company.lockedAt)}` : "Acceso normal (desbloqueado)"}</p>
+          <button id="lockToggleBtn" type="button">${data.company.lockedAt ? "Desbloquear acceso" : "Bloquear acceso"}</button>
+        </section>
+        <section class="block">
           <h3>Estado de suscripcion</h3>
           <div class="form-grid">
             <select id="subscriptionStatus" class="full">
@@ -458,7 +474,7 @@ async function loadCompanyDetail(gymId) {
         <section class="block">
           <h3>Jerarquia</h3>
           <p><strong>Admins (${data.hierarchy.admins.length})</strong></p>
-          <ul class="mini-list">${roleRows(data.hierarchy.admins)}</ul>
+          <ul class="mini-list">${adminRows(data.hierarchy.admins, gymId)}</ul>
           <p><strong>Entrenadores (${data.hierarchy.trainers.length})</strong></p>
           <ul class="mini-list">${roleRows(data.hierarchy.trainers)}</ul>
           <p><strong>Miembros (${data.hierarchy.members.length})</strong></p>
@@ -512,6 +528,66 @@ async function loadCompanyDetail(gymId) {
         });
         alert("Administrador creado");
         await loadCompanyDetail(gymId);
+      } catch (error) { alert(error.message); }
+    });
+
+    $("lockToggleBtn").addEventListener("click", async () => {
+      const isLocked = Boolean(data.company.lockedAt);
+      const action = isLocked ? "desbloquear" : "bloquear";
+      if (!confirm(`¿Seguro que deseas ${action} el acceso a este gimnasio?`)) return;
+      try {
+        await apiFetch(`/platform/companies/${gymId}/lock`, {
+          method: "PATCH",
+          body: JSON.stringify({ locked: !isLocked }),
+        });
+        await loadCompanyDetail(gymId);
+      } catch (error) { alert(error.message); }
+    });
+
+    document.querySelectorAll(".deactivate-admin-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const userId    = btn.getAttribute("data-user-id");
+        const adminName = btn.getAttribute("data-admin-name");
+        if (!confirm(`¿Desactivar a ${adminName}? No podrá iniciar sesión hasta que se reactive.`)) return;
+        try {
+          await apiFetch(`/platform/companies/${gymId}/admins/${userId}/deactivate`, { method: "PATCH", body: JSON.stringify({}) });
+          alert("Administrador desactivado");
+          await loadCompanyDetail(gymId);
+        } catch (error) { alert(error.message); }
+      });
+    });
+
+    document.querySelectorAll(".delete-admin-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const userId    = btn.getAttribute("data-user-id");
+        const adminName = btn.getAttribute("data-admin-name");
+        openModal({
+          eyebrow: "Eliminar administrador",
+          title: adminName,
+          desc: "Esta accion es permanente. Confirma tu contrasena para eliminar este administrador.",
+          step: 1,
+          confirmBtnText: "Eliminar",
+          dangerBtn: true,
+          onConfirm: async () => {
+            const password = $("modalPassword").value;
+            if (!password) { $("modalError").textContent = "Ingresa tu contrasena."; return; }
+            const cb = $("modalConfirmBtn");
+            cb.disabled = true; cb.textContent = "Eliminando..."; $("modalError").textContent = "";
+            try {
+              await apiFetch(`/platform/companies/${gymId}/admins/${userId}`, {
+                method: "DELETE",
+                body: JSON.stringify({ platformPassword: password }),
+              });
+              closeModal();
+              await loadCompanyDetail(gymId);
+            } catch (err) {
+              $("modalError").textContent = err.message;
+              cb.disabled = false; cb.textContent = "Eliminar";
+            }
+          },
+        });
+      });
+    });
       } catch (error) { alert(error.message); }
     });
   } catch (error) {
