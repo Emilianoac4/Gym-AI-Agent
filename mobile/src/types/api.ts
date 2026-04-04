@@ -354,6 +354,12 @@ export interface GeneralNotification {
   createdAt: string;
 }
 
+export interface GymAdminEntry {
+  id: string;
+  fullName: string;
+  avatarUrl: string | null;
+}
+
 export interface MessageThread {
   id: string;
   adminUserId: string;

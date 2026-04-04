@@ -7,6 +7,7 @@ import {
 	getUserProfileById,
 	listHealthConnectionsByUserId,
 	listUsers,
+	listGymAdmins,
 	createUser,
 	setHealthConnectionStateByUserId,
 	upsertHealthConnectionByUserId,
@@ -25,6 +26,8 @@ import {
 } from "./users.validation";
 
 const usersRouter = Router();
+
+usersRouter.get("/gym-admins", authenticate, listGymAdmins);
 
 usersRouter.get(
 	"/",

@@ -25,6 +25,7 @@ import {
   RoutineExerciseCheckin,
   StrengthLog,
   StrengthProgressSummary,
+  GymAdminEntry,
   ThreadWithMessages,
   TrainerPresenceStatus,
   TrainerPresenceSummaryDay,
@@ -761,6 +762,9 @@ export const api = {
       method: "GET",
       token,
     }),
+
+  listGymAdmins: (token: string) =>
+    request<{ admins: GymAdminEntry[] }>("/users/gym-admins", { token }),
 
   getOrCreateThread: (token: string, body: { targetUserId?: string } = {}) =>
     request<ThreadWithMessages>("/notifications/threads", {

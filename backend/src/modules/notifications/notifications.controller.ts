@@ -260,8 +260,25 @@ export const getOrCreateThread = async (req: Request, res: Response): Promise<vo
     memberUserId = targetUserId;
     memberName = target.fullName;
   } else {
-    const admin = await getGymAdmin(actor.gymId);
-    adminUserId = admin.id;
+    if (targetUserId) {
+      // member/trainer specifying which admin to contact — validate it
+      const targetAdmin = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, gymId: true, role: true, isActive: true },
+      });
+      if (
+        !targetAdmin ||
+        targetAdmin.gymId !== actor.gymId ||
+        targetAdmin.role !== UserRole.admin ||
+        !targetAdmin.isActive
+      ) {
+        throw new HttpError(404, "Administrador no encontrado");
+      }
+      adminUserId = targetAdmin.id;
+    } else {
+      const admin = await getGymAdmin(actor.gymId);
+      adminUserId = admin.id;
+    }
     memberUserId = actor.id;
     memberName = actor.fullName;
   }

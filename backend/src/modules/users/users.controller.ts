@@ -21,6 +21,35 @@ import { generateGymScopedUsername } from "../../utils/username";
 import { env } from "../../config/env";
 import { forceSendDailyMembershipSummary } from "../../services/membership-summary.service";
 
+export const listGymAdmins = async (req: Request, res: Response): Promise<void> => {
+  if (!req.auth) throw new HttpError(401, "Unauthorized");
+
+  const actor = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: { gymId: true, isActive: true },
+  });
+
+  if (!actor || !actor.isActive) throw new HttpError(401, "Unauthorized");
+
+  const admins = await prisma.user.findMany({
+    where: { gymId: actor.gymId, role: UserRole.admin, isActive: true },
+    select: {
+      id: true,
+      fullName: true,
+      profile: { select: { avatarUrl: true } },
+    },
+    orderBy: { fullName: "asc" },
+  });
+
+  res.json({
+    admins: admins.map((a) => ({
+      id: a.id,
+      fullName: a.fullName,
+      avatarUrl: a.profile?.avatarUrl ?? null,
+    })),
+  });
+};
+
 type ActiveUser = {
   id: string;
   role: string;
