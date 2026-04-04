@@ -253,7 +253,7 @@ export const assignRoutine = async (req: Request, res: Response): Promise<void> 
   const auth = requireAuth(req);
   const actor = await requireTrainerOrAdmin(auth.userId);
 
-  const { memberId, name, purpose, exercises, templateId, aiWarnings } =
+  const { memberId, name, purpose, exercises, templateId, aiWarnings, scheduledDays } =
     req.body as AssignRoutineInput;
 
   const member = await prisma.user.findUnique({
@@ -280,6 +280,7 @@ export const assignRoutine = async (req: Request, res: Response): Promise<void> 
       name,
       purpose,
       aiWarnings: aiWarnings && aiWarnings.length > 0 ? aiWarnings : Prisma.JsonNull,
+      scheduledDays: scheduledDays && scheduledDays.length > 0 ? scheduledDays : Prisma.JsonNull,
       exercises: {
         create: exercises.map((e, i) => ({
           name: e.name,
@@ -353,4 +354,80 @@ export const getMyAssignedRoutine = async (req: Request, res: Response): Promise
   });
 
   res.json({ routine: routine ?? null });
+};
+
+/* ─── member views ALL trainer assigned routines ─────────── */
+
+export const getMyAllAssignedRoutines = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+
+  const user = await prisma.user.findUnique({
+    where: { id: auth.userId },
+    select: { id: true, gymId: true, isActive: true },
+  });
+
+  if (!user || !user.isActive) throw new HttpError(401, "Unauthorized");
+
+  const routines = await prisma.trainerAssignedRoutine.findMany({
+    where: { memberId: user.id, isActive: true },
+    include: {
+      exercises: { orderBy: { sortOrder: "asc" } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Enrich with trainer name
+  const trainerIds = [...new Set(routines.map((r) => r.trainerId))];
+  const trainers = await prisma.user.findMany({
+    where: { id: { in: trainerIds } },
+    select: { id: true, fullName: true },
+  });
+  const trainerMap = Object.fromEntries(trainers.map((t) => [t.id, t.fullName]));
+
+  const enriched = routines.map((r) => ({
+    ...r,
+    trainerName: trainerMap[r.trainerId] ?? "Entrenador",
+  }));
+
+  res.json({ routines: enriched });
+};
+
+/* ─── member deletes one of their trainer assigned routines ─ */
+
+export const deleteMyAssignedRoutine = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+
+  const user = await prisma.user.findUnique({
+    where: { id: auth.userId },
+    select: { id: true, isActive: true },
+  });
+
+  if (!user || !user.isActive) throw new HttpError(401, "Unauthorized");
+
+  const { id } = req.params as { id: string };
+
+  const routine = await prisma.trainerAssignedRoutine.findUnique({ where: { id } });
+  if (!routine || routine.memberId !== user.id) {
+    throw new HttpError(404, "Rutina no encontrada");
+  }
+
+  await prisma.trainerAssignedRoutine.delete({ where: { id } });
+  res.json({ ok: true });
+};
+
+/* ─── trainer fetches member's preferred days ─────────────── */
+
+export const getMemberPreferredDays = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  await requireTrainerOrAdmin(auth.userId);
+
+  const { memberId } = req.params as { memberId: string };
+
+  const profile = await prisma.userProfile.findUnique({
+    where: { userId: memberId },
+    select: { preferredDays: true },
+  });
+
+  const days = Array.isArray(profile?.preferredDays) ? profile.preferredDays : [];
+  res.json({ preferredDays: days });
 };

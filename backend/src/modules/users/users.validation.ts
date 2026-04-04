@@ -71,6 +71,8 @@ export const renewMembershipSchema = z.object({
 
 export type RenewMembershipInput = z.infer<typeof renewMembershipSchema>;
 
+const DAY_VALUES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+
 export const updateProfileSchema = z.object({
   gender: z.enum(["female", "male", "prefer_not_to_say"]).optional(),
   birthDate: z.string().datetime().optional(),
@@ -81,6 +83,7 @@ export const updateProfileSchema = z.object({
   experienceLvl: z.string().optional(),
   availability: z.string().optional(),
   dietPrefs: z.string().optional(),
+  preferredDays: z.array(z.enum(DAY_VALUES)).optional(),
 });
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

@@ -11,6 +11,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -37,6 +38,16 @@ const LEVEL_OPTIONS = ["Principiante", "Basico", "Intermedio", "Avanzado", "Elit
 const AVAILABILITY_OPTIONS = Array.from({ length: 7 }, (_, i) =>
   i === 0 ? "1 dia por semana" : `${i + 1} dias por semana`,
 );
+
+const PREFERRED_DAYS: { value: string; label: string }[] = [
+  { value: "monday",    label: "Lunes" },
+  { value: "tuesday",   label: "Martes" },
+  { value: "wednesday", label: "Miércoles" },
+  { value: "thursday",  label: "Jueves" },
+  { value: "friday",    label: "Viernes" },
+  { value: "saturday",  label: "Sábado" },
+  { value: "sunday",    label: "Domingo" },
+];
 
 const design = {
   color: {
@@ -185,6 +196,7 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
   const [goal, setGoal] = useState("");
   const [availability, setAvailability] = useState("");
   const [experienceLvl, setExperienceLvl] = useState("");
+  const [preferredDays, setPreferredDays] = useState<string[]>([]);
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -207,6 +219,7 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
         setGoal(data.profile?.goal ?? "");
         setAvailability(data.profile?.availability ?? "");
         setExperienceLvl(data.profile?.experienceLvl ?? "");
+        setPreferredDays(Array.isArray(data.profile?.preferredDays) ? data.profile.preferredDays : []);
         if (data.profile?.birthDate) setBirthDate(new Date(data.profile.birthDate));
         if (data.profile?.avatarUrl) setAvatarUri(data.profile.avatarUrl);
         setMembershipEndAt((data.user as any)?.membershipEndAt ?? null);
@@ -292,6 +305,7 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
         goal,
         availability,
         experienceLvl,
+        preferredDays,
         ...(birthDate ? { birthDate: birthDate.toISOString() } : {}),
       });
       Alert.alert("Perfil actualizado", "Tus preferencias se guardaron correctamente.");
@@ -415,6 +429,28 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
             {experienceLvl || "Seleccionar nivel"}
           </Text>
         </TapSurface>
+
+        <Text style={styles.inputLabel}>Días de entrenamiento</Text>
+        <View style={styles.daysGrid}>
+          {PREFERRED_DAYS.map((day) => {
+            const active = preferredDays.includes(day.value);
+            return (
+              <TouchableOpacity
+                key={day.value}
+                style={[styles.dayChip, active && styles.dayChipActive]}
+                onPress={() =>
+                  setPreferredDays((prev) =>
+                    active ? prev.filter((d) => d !== day.value) : [...prev, day.value]
+                  )
+                }
+              >
+                <Text style={[styles.dayChipText, active && styles.dayChipTextActive]}>
+                  {day.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <View style={styles.buttonRow}>
           <TapSurface onPress={onSave} style={styles.primaryButton}>
@@ -739,6 +775,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     fontFamily: design.fontFamily,
+  },
+  daysGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: design.spacing.x2,
+  },
+  dayChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: design.color.border,
+    backgroundColor: design.color.input,
+  },
+  dayChipActive: {
+    borderColor: design.color.primary,
+    backgroundColor: design.color.primary + "18",
+  },
+  dayChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: design.color.textSecondary,
+  },
+  dayChipTextActive: {
+    color: design.color.primary,
   },
 });
 

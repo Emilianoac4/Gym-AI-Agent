@@ -914,6 +914,7 @@ export const api = {
       exercises: ExerciseInput[];
       templateId?: string;
       aiWarnings?: string[];
+      scheduledDays?: string[];
     },
   ) =>
     request<{ routine: TrainerAssignedRoutine }>("/trainer-routines/assign", {
@@ -930,4 +931,19 @@ export const api = {
 
   getMyTrainerAssignedRoutine: (token: string) =>
     request<{ routine: TrainerAssignedRoutine | null }>("/trainer-routines/my-routine", { token }),
+
+  getMyAllTrainerRoutines: (token: string) =>
+    request<{ routines: TrainerAssignedRoutine[] }>("/trainer-routines/my-routines", { token }),
+
+  deleteMyTrainerRoutine: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/trainer-routines/my-routines/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      token,
+    }),
+
+  getMemberPreferredDays: (token: string, memberId: string) =>
+    request<{ preferredDays: string[] }>(
+      `/trainer-routines/member-preferred-days/${encodeURIComponent(memberId)}`,
+      { token },
+    ),
 };

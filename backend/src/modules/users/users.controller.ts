@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { Request, Response } from "express";
-import { AuditAction, HealthProvider, MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/client";
+import { AuditAction, HealthProvider, MembershipTransactionType, PaymentMethod, Prisma, UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
 import { createAuditLog } from "../../utils/audit";
@@ -183,6 +183,7 @@ export const updateUserProfileById = async (
       experienceLvl: req.body.experienceLvl,
       availability: req.body.availability,
       dietPrefs: req.body.dietPrefs,
+      preferredDays: req.body.preferredDays ?? Prisma.JsonNull,
     },
     update: {
       gender: req.body.gender,
@@ -194,6 +195,9 @@ export const updateUserProfileById = async (
       experienceLvl: req.body.experienceLvl,
       availability: req.body.availability,
       dietPrefs: req.body.dietPrefs,
+      ...(req.body.preferredDays !== undefined
+        ? { preferredDays: req.body.preferredDays.length > 0 ? req.body.preferredDays : Prisma.JsonNull }
+        : {}),
     },
   });
 

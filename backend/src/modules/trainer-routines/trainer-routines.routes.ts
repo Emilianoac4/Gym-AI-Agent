@@ -16,6 +16,9 @@ import {
   assignRoutine,
   getRoutineForMember,
   getMyAssignedRoutine,
+  getMyAllAssignedRoutines,
+  deleteMyAssignedRoutine,
+  getMemberPreferredDays,
 } from "./trainer-routines.controller";
 
 const trainerRoutinesRouter = Router();
@@ -37,5 +40,14 @@ trainerRoutinesRouter.get("/for-member/:memberId", authenticate, getRoutineForMe
 
 /* --- member: view own trainer routine --- */
 trainerRoutinesRouter.get("/my-routine", authenticate, getMyAssignedRoutine);
+
+/* --- member: view ALL trainer assigned routines --- */
+trainerRoutinesRouter.get("/my-routines", authenticate, getMyAllAssignedRoutines);
+
+/* --- member: delete one of their trainer routines --- */
+trainerRoutinesRouter.delete("/my-routines/:id", authenticate, deleteMyAssignedRoutine);
+
+/* --- trainer: get member's preferred training days --- */
+trainerRoutinesRouter.get("/member-preferred-days/:memberId", authenticate, getMemberPreferredDays);
 
 export { trainerRoutinesRouter };

@@ -139,6 +139,7 @@ model UserProfile {
   experienceLvl  String?   @map("experience_lvl")
   availability   String?
   dietPrefs      String?   @map("diet_prefs")
+  preferredDays  Json?     @map("preferred_days")
   avatarUrl      String?   @map("avatar_url")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
@@ -546,8 +547,9 @@ model TrainerAssignedRoutine {
   templateId String?  @map("template_id")
   name       String
   purpose    String
-  aiWarnings Json?    @map("ai_warnings")
-  isActive   Boolean  @default(true) @map("is_active")
+  aiWarnings     Json?    @map("ai_warnings")
+  scheduledDays  Json?    @map("scheduled_days")
+  isActive       Boolean  @default(true) @map("is_active")
   createdAt  DateTime @default(now()) @map("created_at")
 
   exercises TrainerAssignedExercise[]

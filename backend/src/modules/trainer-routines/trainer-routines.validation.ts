@@ -18,6 +18,8 @@ export const createTemplateSchema = z.object({
 
 export const updateTemplateSchema = createTemplateSchema;
 
+const DAY_VALUES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+
 export const assignRoutineSchema = z.object({
   memberId: z.string().uuid(),
   name: z.string().min(1).max(100),
@@ -25,6 +27,7 @@ export const assignRoutineSchema = z.object({
   templateId: z.string().uuid().optional(),
   exercises: z.array(exerciseSchema).min(1),
   aiWarnings: z.array(z.string()).optional(),
+  scheduledDays: z.array(z.enum(DAY_VALUES)).optional(),
 });
 
 export const standardizeNameSchema = z.object({

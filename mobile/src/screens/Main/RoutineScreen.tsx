@@ -24,6 +24,16 @@ import {
   TrainerAssignedRoutine,
 } from "../../types/api";
 
+const DAY_LABELS: Record<string, string> = {
+  monday: "Lun", tuesday: "Mar", wednesday: "Mié",
+  thursday: "Jue", friday: "Vie", saturday: "Sáb", sunday: "Dom",
+};
+
+function formatScheduledDays(days: string[] | null | undefined): string {
+  if (!days || days.length === 0) return "Día A";
+  return days.map((d) => DAY_LABELS[d] ?? d).join(" · ");
+}
+
 const DAY_TRANSLATIONS: Record<string, string> = {
   monday: "Lunes",
   tuesday: "Martes",
@@ -136,8 +146,10 @@ export function RoutineScreen() {
   const [localCompletedExercises, setLocalCompletedExercises] = useState<Set<string>>(new Set());
   const [strengthSummary, setStrengthSummary] = useState<StrengthProgressSummary | null>(null);
   const [strengthByExercise, setStrengthByExercise] = useState<ExerciseStrengthProgress[]>([]);
-  const [trainerRoutine, setTrainerRoutine] = useState<TrainerAssignedRoutine | null>(null);
-  const [trainerRoutineExpanded, setTrainerRoutineExpanded] = useState(false);
+  const [trainerRoutines, setTrainerRoutines] = useState<TrainerAssignedRoutine[]>([]);
+  const [activeTab, setActiveTab] = useState<"ai" | string>("ai"); // "ai" or routineId
+  const [deletingRoutineId, setDeletingRoutineId] = useState<string | null>(null);
+  const [trainerRoutineExpanded, setTrainerRoutineExpanded] = useState<Record<string, boolean>>({});
 
   const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
   const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart);
@@ -318,10 +330,10 @@ export function RoutineScreen() {
   const loadTrainerRoutine = async () => {
     if (!token) return;
     try {
-      const res = await api.getMyTrainerAssignedRoutine(token);
-      setTrainerRoutine(res.routine);
+      const res = await api.getMyAllTrainerRoutines(token);
+      setTrainerRoutines(res.routines);
     } catch {
-      setTrainerRoutine(null);
+      setTrainerRoutines([]);
     }
   };
 
@@ -345,6 +357,33 @@ export function RoutineScreen() {
       void reloadAll();
     }, [reloadAll])
   );
+
+  const onDeleteTrainerRoutine = (routineId: string, routineName: string) => {
+    Alert.alert(
+      "Eliminar rutina",
+      `¿Eliminar la rutina "${routineName}"? Esta acción no se puede deshacer.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            if (!token) return;
+            setDeletingRoutineId(routineId);
+            try {
+              await api.deleteMyTrainerRoutine(token, routineId);
+              setTrainerRoutines((prev) => prev.filter((r) => r.id !== routineId));
+              setActiveTab("ai");
+            } catch (err) {
+              Alert.alert("Error", err instanceof Error ? err.message : "No se pudo eliminar la rutina.");
+            } finally {
+              setDeletingRoutineId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const onGenerate = async () => {
     if (!user || !token) return;
@@ -636,53 +675,106 @@ export function RoutineScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
 
-      {/* Trainer-assigned routine section */}
-      {trainerRoutine && (
-        <View style={styles.trainerRoutineCard}>
+      {/* Tab selector */}
+      {trainerRoutines.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabBar}
+          contentContainerStyle={styles.tabBarContent}
+        >
           <TouchableOpacity
-            style={styles.trainerRoutineHeader}
-            onPress={() => setTrainerRoutineExpanded((v) => !v)}
-            activeOpacity={0.8}
+            style={[styles.tab, activeTab === "ai" && styles.tabActive]}
+            onPress={() => setActiveTab("ai")}
           >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.trainerRoutineLabel}>Rutina asignada por tu entrenador</Text>
-              <Text style={styles.trainerRoutineName}>{trainerRoutine.name}</Text>
-            </View>
-            <Text style={styles.trainerRoutineChevron}>
-              {trainerRoutineExpanded ? "▲" : "▼"}
+            <Text style={[styles.tabText, activeTab === "ai" && styles.tabTextActive]}>
+              Plan IA
             </Text>
           </TouchableOpacity>
-
-          {trainerRoutineExpanded && (
-            <View style={styles.trainerRoutineBody}>
-              <Text style={styles.trainerRoutinePurpose}>{trainerRoutine.purpose}</Text>
-              {trainerRoutine.aiWarnings && trainerRoutine.aiWarnings.length > 0 && (
-                <View style={styles.trainerWarningBox}>
-                  <Text style={styles.trainerWarningTitle}>⚠️ Notas del entrenador (revisión IA)</Text>
-                  {trainerRoutine.aiWarnings.map((w, i) => (
-                    <Text key={i} style={styles.trainerWarningItem}>• {w}</Text>
-                  ))}
-                </View>
-              )}
-              {trainerRoutine.exercises.map((ex, idx) => (
-                <View key={ex.id} style={styles.trainerExerciseRow}>
-                  <Text style={styles.trainerExerciseNum}>{idx + 1}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.trainerExerciseName}>{ex.name}</Text>
-                    <Text style={styles.trainerExerciseMeta}>
-                      {ex.sets} series × {ex.reps} reps · descanso {ex.restSeconds}s
-                    </Text>
-                    {ex.tips ? (
-                      <Text style={styles.trainerExerciseTips}>{ex.tips}</Text>
-                    ) : null}
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
+          {trainerRoutines.map((r) => (
+            <TouchableOpacity
+              key={r.id}
+              style={[styles.tab, activeTab === r.id && styles.tabActive]}
+              onPress={() => setActiveTab(r.id)}
+            >
+              <Text style={[styles.tabText, activeTab === r.id && styles.tabTextActive]}>
+                {r.trainerName ?? "Entrenador"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       )}
 
+      {/* Trainer routine panel */}
+      {activeTab !== "ai" && (() => {
+        const r = trainerRoutines.find((tr) => tr.id === activeTab);
+        if (!r) return null;
+        const expanded = trainerRoutineExpanded[r.id] ?? true;
+        return (
+          <View style={styles.trainerRoutineCard}>
+            <View style={styles.trainerRoutineHeader}>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                onPress={() =>
+                  setTrainerRoutineExpanded((prev) => ({ ...prev, [r.id]: !expanded }))
+                }
+                activeOpacity={0.8}
+              >
+                <Text style={styles.trainerRoutineLabel}>
+                  Rutina de {r.trainerName ?? "tu entrenador"}
+                </Text>
+                <Text style={styles.trainerRoutineName}>{r.name}</Text>
+                <Text style={styles.trainerRoutineDays}>
+                  📅 {formatScheduledDays(r.scheduledDays)}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.trainerDeleteBtn}
+                onPress={() => onDeleteTrainerRoutine(r.id, r.name)}
+                disabled={deletingRoutineId === r.id}
+              >
+                <Text style={styles.trainerDeleteBtnText}>
+                  {deletingRoutineId === r.id ? "..." : "🗑"}
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.trainerRoutineChevron}>
+                {expanded ? "▲" : "▼"}
+              </Text>
+            </View>
+
+            {expanded && (
+              <View style={styles.trainerRoutineBody}>
+                <Text style={styles.trainerRoutinePurpose}>{r.purpose}</Text>
+                {r.aiWarnings && r.aiWarnings.length > 0 && (
+                  <View style={styles.trainerWarningBox}>
+                    <Text style={styles.trainerWarningTitle}>⚠️ Notas (revisión IA)</Text>
+                    {r.aiWarnings.map((w, i) => (
+                      <Text key={i} style={styles.trainerWarningItem}>• {w}</Text>
+                    ))}
+                  </View>
+                )}
+                {r.exercises.map((ex, idx) => (
+                  <View key={ex.id} style={styles.trainerExerciseRow}>
+                    <Text style={styles.trainerExerciseNum}>{idx + 1}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.trainerExerciseName}>{ex.name}</Text>
+                      <Text style={styles.trainerExerciseMeta}>
+                        {ex.sets} series × {ex.reps} reps · descanso {ex.restSeconds}s
+                      </Text>
+                      {ex.tips ? (
+                        <Text style={styles.trainerExerciseTips}>{ex.tips}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        );
+      })()}
+
+      {/* AI plan panel — only shown when AI tab is active */}
+      {activeTab === "ai" && (<>
       <View style={styles.heroCard}>
         <Text style={styles.eyebrow}>Plan semanal</Text>
         <Text style={styles.title}>Rutina</Text>
@@ -1190,6 +1282,7 @@ export function RoutineScreen() {
           ) : null}
         </View>
       )}
+      </>)}
     </ScrollView>
   );
 }
@@ -1845,6 +1938,37 @@ const styles = StyleSheet.create({
   },
 
   // Trainer-assigned routine card
+  tabBar: {
+    marginBottom: 16,
+    flexGrow: 0,
+  },
+  tabBarContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  tab: {
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: palette.line,
+    backgroundColor: palette.surface,
+  },
+  tabActive: {
+    borderColor: palette.moss,
+    backgroundColor: palette.moss + "18",
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: palette.textSoft,
+  },
+  tabTextActive: {
+    color: palette.moss,
+  },
+
   trainerRoutineCard: {
     backgroundColor: palette.surface,
     borderRadius: 16,
@@ -1871,6 +1995,18 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
     color: palette.cocoa,
+  },
+  trainerRoutineDays: {
+    fontSize: 12,
+    color: palette.textSoft,
+    marginTop: 3,
+  },
+  trainerDeleteBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  trainerDeleteBtnText: {
+    fontSize: 18,
   },
   trainerRoutineChevron: {
     fontSize: 14,

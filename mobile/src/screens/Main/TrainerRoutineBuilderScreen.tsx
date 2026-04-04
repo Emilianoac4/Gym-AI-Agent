@@ -71,8 +71,32 @@ export function TrainerRoutineBuilderScreen({
     return [makeBlankExercise()];
   });
   const [submitting, setSubmitting] = useState(false);
+  const [memberPreferredDays, setMemberPreferredDays] = useState<string[]>([]);
+  const [scheduledDays, setScheduledDays] = useState<string[]>([]);
+
+  const ALL_DAYS: { value: string; label: string }[] = [
+    { value: "monday",    label: "Lun" },
+    { value: "tuesday",   label: "Mar" },
+    { value: "wednesday", label: "Mié" },
+    { value: "thursday",  label: "Jue" },
+    { value: "friday",    label: "Vie" },
+    { value: "saturday",  label: "Sáb" },
+    { value: "sunday",    label: "Dom" },
+  ];
 
   const isAssign = mode === "assign";
+
+  const availableDays = isAssign && memberPreferredDays.length > 0
+    ? ALL_DAYS.filter((d) => memberPreferredDays.includes(d.value))
+    : ALL_DAYS;
+
+  useEffect(() => {
+    if (!isAssign || !memberId || !token) return;
+    api.getMemberPreferredDays(token, memberId)
+      .then((res) => setMemberPreferredDays(res.preferredDays))
+      .catch(() => {});
+  }, [isAssign, memberId, token]);
+
   const title = isAssign
     ? `Rutina para ${memberName ?? "usuario"}`
     : "Nueva plantilla";
@@ -217,6 +241,7 @@ export function TrainerRoutineBuilderScreen({
         exercises: exercisePayload,
         templateId: template?.id,
         aiWarnings: acceptedWarnings.length > 0 ? acceptedWarnings : undefined,
+        scheduledDays: scheduledDays.length > 0 ? scheduledDays : undefined,
       });
 
       Alert.alert(
@@ -250,6 +275,39 @@ export function TrainerRoutineBuilderScreen({
             )}
           </View>
         </View>
+
+        {/* Days selector — assign mode only */}
+        {isAssign && (
+          <View style={styles.sectionBox}>
+            <Text style={styles.sectionLabel}>Días de la rutina</Text>
+            {memberPreferredDays.length === 0 && (
+              <Text style={styles.daysHint}>El usuario no tiene días preferidos configurados. Puedes seleccionar cualquier día.</Text>
+            )}
+            <View style={styles.daysRow}>
+              {availableDays.map((day) => {
+                const active = scheduledDays.includes(day.value);
+                return (
+                  <TouchableOpacity
+                    key={day.value}
+                    style={[styles.dayChip, active && styles.dayChipActive]}
+                    onPress={() =>
+                      setScheduledDays((prev) =>
+                        active ? prev.filter((d) => d !== day.value) : [...prev, day.value]
+                      )
+                    }
+                  >
+                    <Text style={[styles.dayChipText, active && styles.dayChipTextActive]}>
+                      {day.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {scheduledDays.length === 0 && (
+              <Text style={styles.daysHint}>Si no seleccionas ningún día se asignará como "Día A".</Text>
+            )}
+          </View>
+        )}
 
         {/* Routine info */}
         <View style={styles.sectionBox}>
@@ -487,4 +545,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   submitBtnText: { color: palette.white, fontWeight: "800", fontSize: 16 },
+
+  daysRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
+  daysHint: { fontSize: 12, color: palette.textSoft, marginTop: 4, marginBottom: 4 },
+  dayChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: palette.line,
+    backgroundColor: palette.surface,
+  },
+  dayChipActive: {
+    borderColor: palette.moss,
+    backgroundColor: palette.moss + "18",
+  },
+  dayChipText: { fontSize: 13, fontWeight: "600", color: palette.textSoft },
+  dayChipTextActive: { color: palette.moss },
 });

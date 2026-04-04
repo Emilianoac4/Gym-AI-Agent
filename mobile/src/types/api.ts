@@ -387,12 +387,14 @@ export interface TrainerRoutineTemplate {
 export interface TrainerAssignedRoutine {
   id: string;
   trainerId: string;
+  trainerName?: string;
   memberId: string;
   gymId: string;
   templateId: string | null;
   name: string;
   purpose: string;
   aiWarnings: string[] | null;
+  scheduledDays: string[] | null;
   isActive: boolean;
   createdAt: string;
   exercises: TrainerExercise[];
