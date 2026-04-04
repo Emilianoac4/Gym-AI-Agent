@@ -69,31 +69,31 @@ export function LoginScreen() {
       setAuthError(null);
       await login(identifier.trim(), password, selectedRole);
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesion.");
+      setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesión.");
     }
   };
 
   const onResendVerification = async () => {
     const normalizedEmail = identifier.trim().toLowerCase();
     if (!normalizedEmail) {
-      Alert.alert("Correo requerido", "Ingresa tu correo para reenviar la verificacion.");
+      Alert.alert("Correo requerido", "Ingresa tu correo para reenviar la verificación.");
       return;
     }
     if (!normalizedEmail.includes("@")) {
-      Alert.alert("Correo requerido", "Para reenviar verificacion debes ingresar tu correo electronico.");
+      Alert.alert("Correo requerido", "Para reenviar verificación debes ingresar tu correo electrónico.");
       return;
     }
 
     try {
       const data = await api.requestEmailVerification({ email: normalizedEmail });
       Alert.alert(
-        "Verificacion enviada",
+        "Verificación enviada",
         `${data.message}${data.devToken ? `\n\nToken (dev): ${data.devToken}` : ""}`,
       );
     } catch (error) {
       Alert.alert(
         "Error",
-        error instanceof Error ? error.message : "No se pudo reenviar la verificacion.",
+          error instanceof Error ? error.message : "No se pudo reenviar la verificación.",
       );
     }
   };
@@ -101,11 +101,11 @@ export function LoginScreen() {
   const onForgotPassword = async () => {
     const normalizedEmail = identifier.trim().toLowerCase();
     if (!normalizedEmail) {
-      Alert.alert("Correo requerido", "Ingresa tu correo para recuperar la contrasena.");
+      Alert.alert("Correo requerido", "Ingresa tu correo para recuperar la contraseña.");
       return;
     }
     if (!normalizedEmail.includes("@")) {
-      Alert.alert("Correo requerido", "Para recuperar contrasena debes ingresar tu correo electronico.");
+      Alert.alert("Correo requerido", "Para recuperar contraseña debes ingresar tu correo electrónico.");
       return;
     }
 
@@ -113,13 +113,13 @@ export function LoginScreen() {
       setSendingRecovery(true);
       const data = await api.forgotPassword({ email: normalizedEmail });
       Alert.alert(
-        "Recuperacion enviada",
+        "Recuperación enviada",
         `${data.message}${data.devToken ? `\n\nToken (dev): ${data.devToken}` : ""}`,
       );
     } catch (error) {
       Alert.alert(
         "Error",
-        error instanceof Error ? error.message : "No se pudo iniciar la recuperacion de contrasena.",
+         error instanceof Error ? error.message : "No se pudo iniciar la recuperación de contraseña.",
       );
     } finally {
       setSendingRecovery(false);
@@ -138,7 +138,7 @@ export function LoginScreen() {
     if (runningInExpoGo) {
       Alert.alert(
         "Google no disponible en Expo Go",
-        "Google OAuth requiere un Development Build en iOS. En Expo Go este flujo es bloqueado por politica de OAuth.",
+        "Google OAuth requiere un Development Build en iOS. En Expo Go este flujo es bloqueado por política de OAuth.",
       );
       return;
     }
@@ -189,7 +189,7 @@ export function LoginScreen() {
 
       Alert.alert(
         "Apple",
-        error instanceof Error ? error.message : "No fue posible iniciar sesion con Apple.",
+        error instanceof Error ? error.message : "No fue posible iniciar sesión con Apple.",
       );
     }
   };
@@ -213,7 +213,7 @@ export function LoginScreen() {
         setAuthError(null);
         await loginWithGoogle(idToken, selectedRole);
       } catch (error) {
-        setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesion con Google.");
+        setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesión con Google.");
       }
     };
 
@@ -243,7 +243,7 @@ export function LoginScreen() {
             <Text style={styles.roleBadgeText}>{roleLabels[selectedRole]}</Text>
           </View>
           <Text style={styles.roleHint}>
-            Ingresa tus credenciales para este perfil. Si tu cuenta no coincide, el acceso sera denegado.
+            Ingresa tus credenciales para este perfil. Si tu cuenta no coincide, el acceso será denegado.
           </Text>
           <TouchableOpacity
             disabled={loading}
@@ -294,7 +294,7 @@ export function LoginScreen() {
         <View style={styles.passwordRow}>
           <TextInput
             style={[styles.input, styles.passwordInput]}
-            placeholder="Contrasena"
+            placeholder="Contraseña"
             placeholderTextColor={palette.textSoft}
             secureTextEntry={!showPassword}
             value={password}
@@ -309,11 +309,11 @@ export function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <AppButton label={loading ? "Ingresando..." : "Iniciar sesion"} onPress={onLogin} disabled={loading} />
+        <AppButton label={loading ? "Ingresando..." : "Iniciar sesión"} onPress={onLogin} disabled={loading} />
 
         <TouchableOpacity disabled={sendingRecovery} onPress={onForgotPassword}>
           <Text style={styles.recoveryLink}>
-            {sendingRecovery ? "Enviando recuperacion..." : "Olvide mi contrasena"}
+            {sendingRecovery ? "Enviando recuperación..." : "Olvidé mi contraseña"}
           </Text>
         </TouchableOpacity>
 

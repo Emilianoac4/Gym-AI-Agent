@@ -72,9 +72,9 @@ export function TrainerProfileScreen({ navigation }: { navigation: any }) {
   };
 
   const onLogout = () => {
-    Alert.alert("Cerrar sesion", "Deseas cerrar sesion?", [
+    Alert.alert("Cerrar sesión", "¿Deseas cerrar sesión?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Cerrar sesion", style: "destructive", onPress: logout },
+      { text: "Cerrar sesión", style: "destructive", onPress: logout },
     ]);
   };
 
@@ -149,7 +149,7 @@ export function TrainerProfileScreen({ navigation }: { navigation: any }) {
                     {formatHour(session.startedAt)} - {session.endedAt ? formatHour(session.endedAt) : "En curso"}
                   </Text>
                   <Text style={styles.sessionMeta}>
-                    {session.isActive ? "Sesion activa" : `${session.durationMinutes} min trabajados`}
+                    {session.isActive ? "Sesión activa" : `${session.durationMinutes} min trabajados`}
                   </Text>
                 </View>
                 <View
@@ -169,7 +169,7 @@ export function TrainerProfileScreen({ navigation }: { navigation: any }) {
       </View>
 
       <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
-        <Text style={styles.logoutBtnText}>Cerrar sesion</Text>
+        <Text style={styles.logoutBtnText}>Cerrar sesión</Text>
       </TouchableOpacity>
     </ScrollView>
   );

@@ -33,10 +33,10 @@ function formatDayLabel(value: string): string {
   const dayMap: Record<string, string> = {
     monday: "Lunes",
     tuesday: "Martes",
-    wednesday: "Miercoles",
+    wednesday: "Miércoles",
     thursday: "Jueves",
     friday: "Viernes",
-    saturday: "Sabado",
+    saturday: "Sábado",
     sunday: "Domingo",
   };
 
@@ -46,8 +46,8 @@ function formatDayLabel(value: string): string {
 const adminHighlights = [
   "Picos de actividad del gimnasio",
   "Usuarios en riesgo de abandono",
-  "Maquinas con mayor demanda",
-  "Satisfaccion del servicio de coach",
+  "Máquinas con mayor demanda",
+  "Satisfacción del servicio de coach",
 ];
 
 function formatAvailabilityWindow(day: GymAvailabilityDay | null): string {
@@ -87,6 +87,7 @@ export function HomeScreen() {
   const [unreadThreads, setUnreadThreads] = useState<MessageThread[]>([]);
   const [activeTrainers, setActiveTrainers] = useState<string[]>([]);
   const [emergencyTickets, setEmergencyTickets] = useState<EmergencyTicket[]>([]);
+  const [pendingAssistanceCount, setPendingAssistanceCount] = useState(0);
   const [ticketModalVisible, setTicketModalVisible] = useState(false);
   const [ticketCategory, setTicketCategory] = useState<"harassment" | "injury" | "accident" | "incident">("incident");
   const [ticketDescription, setTicketDescription] = useState("");
@@ -133,7 +134,7 @@ export function HomeScreen() {
         }
 
         try {
-          const [availabilityData, progress, strength, latestRoutine, checkinData, threadsData, ticketsData] = await Promise.all([
+        const [availabilityData, progress, strength, latestRoutine, checkinData, threadsData, ticketsData, assistanceData, presenceData] = await Promise.all([
             availabilityPromise,
             api.getProgressSummary(user.id, token).catch(() => ({ summary: null as any })),
             api.getStrengthProgress(user.id, token, 120).catch(() => ({ summary: null as any })),
@@ -141,6 +142,12 @@ export function HomeScreen() {
             api.getRoutineCheckins(user.id, token, 28).catch(() => ({ checkins: [] as RoutineCheckin[] })),
             threadsPromise,
             ticketsPromise,
+            isTrainer
+              ? api.listAssistanceRequests(token).catch(() => ({ requests: [], total: 0 }))
+              : Promise.resolve({ requests: [], total: 0 }),
+            isMember
+              ? api.getTrainerPresenceSummary(token, 1).catch(() => ({ days: [] as any[] }))
+              : Promise.resolve({ days: [] as any[] }),
           ]);
 
           if (cancelled) {
@@ -153,8 +160,21 @@ export function HomeScreen() {
           setRoutine(latestRoutine?.routine ?? null);
           setCheckins(checkinData.checkins);
           setUnreadThreads(threadsData.threads.filter((thread) => thread.unreadCount > 0));
-          setActiveTrainers([]);
           setEmergencyTickets(ticketsData.tickets);
+          setPendingAssistanceCount(
+            isTrainer
+              ? (assistanceData as { requests: { status: string }[]; total: number }).requests.filter((r) => r.status === "CREATED").length
+              : 0,
+          );
+          // Active trainers for members
+          const todayMemberPresence = (presenceData as { days: any[] }).days[0];
+          setActiveTrainers(
+            isMember && todayMemberPresence
+              ? todayMemberPresence.trainers
+                  .filter((t: any) => t.sessions.some((s: any) => s.isActive))
+                  .map((t: any) => t.trainerName as string)
+              : [],
+          );
         } catch {
           if (!cancelled) {
             setTodayAvailability(null);
@@ -313,7 +333,7 @@ export function HomeScreen() {
           {todayAvailability?.note ? <Text style={styles.availabilityNote}>{todayAvailability.note}</Text> : null}
           <View style={styles.inlineActionsRow}>
             <Pressable style={styles.inlineActionPrimary} onPress={() => navigation.navigate("GymAvailability")}>
-              <Text style={styles.inlineActionPrimaryText}>Ver proximos 7 dias</Text>
+              <Text style={styles.inlineActionPrimaryText}>Ver próximos 7 días</Text>
             </Pressable>
             {canManageAvailability ? (
               <Pressable
@@ -364,6 +384,28 @@ export function HomeScreen() {
             {isTrainer ? (
               <>
                 <View style={styles.sectionCard}>
+                  <Text style={styles.sectionEyebrow}>Solicitudes de asistencia</Text>
+                  <Text style={styles.sectionTitle}>
+                    {pendingAssistanceCount === 0
+                      ? "Sin solicitudes pendientes"
+                      : `${pendingAssistanceCount} solicitud${pendingAssistanceCount > 1 ? "es" : ""} pendiente${pendingAssistanceCount > 1 ? "s" : ""}`}
+                  </Text>
+                  <Text style={styles.featureDetail}>
+                    {pendingAssistanceCount === 0
+                      ? "No hay miembros esperando atención en este momento."
+                      : "Miembros en el piso esperan tu asistencia."}
+                  </Text>
+                  <View style={styles.inlineActionsRow}>
+                    <Pressable
+                      style={styles.inlineActionPrimary}
+                      onPress={() => navigation.navigate("Solicitudes")}
+                    >
+                      <Text style={styles.inlineActionPrimaryText}>Ver solicitudes</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={styles.sectionCard}>
                   <Text style={styles.sectionEyebrow}>Usuarios que necesitan ayuda</Text>
                   <Text style={styles.sectionTitle}>Tickets abiertos</Text>
                   {urgentOpenTickets.length === 0 ? (
@@ -401,9 +443,24 @@ export function HomeScreen() {
                 </View>
 
                 <View style={styles.sectionCard}>
+                  <Text style={styles.sectionEyebrow}>Coaches disponibles</Text>
+                  <Text style={styles.sectionTitle}>Activos ahora</Text>
+                  {activeTrainers.length === 0 ? (
+                    <Text style={styles.featureDetail}>No hay entrenadores activos en este momento.</Text>
+                  ) : (
+                    activeTrainers.map((name) => (
+                      <View key={name} style={styles.featureItem}>
+                        <View style={[styles.featureDot, { backgroundColor: palette.moss }]} />
+                        <Text style={styles.featureTitle}>{name}</Text>
+                      </View>
+                    ))
+                  )}
+                </View>
+
+                <View style={styles.sectionCard}>
                   <Text style={styles.sectionEyebrow}>Siguiente paso</Text>
                   <Text style={styles.sectionTitle}>{nextSession}</Text>
-                  <Text style={styles.featureDetail}>{summary?.nextAction ?? "Completa tu perfil, genera una rutina y registra tu primera sesion."}</Text>
+                  <Text style={styles.featureDetail}>{summary?.nextAction ?? "Completa tu perfil, genera una rutina y registra tu primera sesión."}</Text>
                 </View>
 
                 <View style={styles.sectionCard}>
@@ -413,7 +470,7 @@ export function HomeScreen() {
                     <View style={styles.featureDot} />
                     <View style={styles.featureCopy}>
                       <Text style={styles.featureTitle}>Racha semanal</Text>
-                      <Text style={styles.featureDetail}>{summary ? `${summary.weeklyCheckInStreak} semana(s) con check-in` : "Aun no hay check-ins registrados"}</Text>
+                      <Text style={styles.featureDetail}>{summary ? `${summary.weeklyCheckInStreak} semana(s) con check-in` : "Aún no hay check-ins registrados"}</Text>
                     </View>
                   </View>
                   <View style={styles.featureItem}>
@@ -427,7 +484,7 @@ export function HomeScreen() {
                     <View style={styles.featureDot} />
                     <View style={styles.featureCopy}>
                       <Text style={styles.featureTitle}>Carga de trabajo</Text>
-                      <Text style={styles.featureDetail}>{strengthSummary ? `${strengthSummary.activeExercises} ejercicios con historial de carga` : "Aun no hay progreso de cargas registrado"}</Text>
+                      <Text style={styles.featureDetail}>{strengthSummary ? `${strengthSummary.activeExercises} ejercicios con historial de carga` : "Aún no hay progreso de cargas registrado"}</Text>
                     </View>
                   </View>
                   <Pressable style={styles.inlineActionPrimary} onPress={() => setTicketModalVisible(true)}>
@@ -451,7 +508,7 @@ export function HomeScreen() {
         )}
 
         <View style={styles.actions}>
-          <AppButton label="Cerrar sesion" onPress={logout} />
+          <AppButton label="Cerrar sesión" onPress={logout} />
         </View>
       </ScrollView>
 

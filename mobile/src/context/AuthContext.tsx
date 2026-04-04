@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const selectGym = async (userId: string) => {
     if (!pendingGymSelection) {
-      throw new Error("No hay seleccion de gimnasio pendiente");
+      throw new Error("No hay selección de gimnasio pendiente");
     }
 
     setLoading(true);
@@ -148,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const completeTemporaryPasswordChange = async (newPassword: string) => {
     if (!token || !user) {
-      throw new Error("Sesion no valida");
+      throw new Error("Sesión no válida");
     }
 
     setLoading(true);
@@ -194,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         requestedRole: "admin",
       });
       if (data.requiresGymSelection) {
-        throw new Error("No se pudo completar el alta inicial. Intenta iniciar sesion manualmente.");
+        throw new Error("No se pudo completar el alta inicial. Intenta iniciar sesión manualmente.");
       }
 
       if (!data.token || !data.user) {

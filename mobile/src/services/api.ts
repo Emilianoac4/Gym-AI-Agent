@@ -1,6 +1,7 @@
 import {
   AIChatLog,
   AssistanceRequest,
+  AssistanceRatingEntry,
   AvailabilityTrainerPermission,
   CreateMeasurementPayload,
   DirectMessage,
@@ -245,6 +246,13 @@ export const api = {
       method: "PUT",
       token,
       body,
+    }),
+
+  updateAvatar: (id: string, token: string, imageBase64: string) =>
+    request<{ message: string; avatarUrl: string }>(`/users/${id}/avatar`, {
+      method: "PATCH",
+      token,
+      body: { imageBase64 },
     }),
 
   getRoutine: (id: string, token: string) =>
@@ -823,4 +831,7 @@ export const api = {
       `/assistance/${encodeURIComponent(id)}/rate`,
       { method: "PATCH", token, body },
     ),
+
+  listAssistanceRatings: (token: string) =>
+    request<{ ratings: AssistanceRatingEntry[]; total: number }>("/assistance/ratings", { token }),
 };

@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS "user_profiles" (
   "experience_lvl" TEXT,
   "availability" TEXT,
   "diet_prefs" TEXT,
+  "avatar_url" TEXT,
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

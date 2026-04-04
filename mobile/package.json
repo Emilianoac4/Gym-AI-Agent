@@ -19,6 +19,8 @@
     "expo-apple-authentication": "~8.0.7",
     "expo-auth-session": "~7.0.8",
     "expo-constants": "^55.0.9",
+    "expo-image-manipulator": "~14.0.8",
+    "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "~15.0.8",
     "expo-notifications": "~0.32.16",
     "expo-status-bar": "~3.0.9",

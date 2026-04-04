@@ -62,10 +62,10 @@ type TimePickerTarget =
 const dayLabels: Record<GymDayOfWeek, string> = {
   monday: "Lunes",
   tuesday: "Martes",
-  wednesday: "Miercoles",
+  wednesday: "Miércoles",
   thursday: "Jueves",
   friday: "Viernes",
-  saturday: "Sabado",
+  saturday: "Sábado",
   sunday: "Domingo",
 };
 
@@ -94,7 +94,7 @@ const monthLabels = [
   "Diciembre",
 ];
 
-const weekHeaders = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
+const weekHeaders = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
 const toDayOfWeek = (date: Date): GymDayOfWeek => {
   const value = date.getDay();
@@ -291,7 +291,7 @@ export function AvailabilityManagementScreen() {
           setTrainers([]);
         }
       } catch (error) {
-        Alert.alert("Error", error instanceof Error ? error.message : "No se pudo cargar la configuracion");
+        Alert.alert("Error", error instanceof Error ? error.message : "No se pudo cargar la configuración");
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -883,7 +883,7 @@ export function AvailabilityManagementScreen() {
                 <Text style={styles.auditText}>
                   {trainer.hasNotificationsSend
                     ? `Puede enviar notificaciones${trainer.notificationsGrantedBy ? ` (por ${trainer.notificationsGrantedBy.fullName})` : ""}`
-                    : "Sin autorizacion para enviar notificaciones"}
+                    : "Sin autorización para enviar notificaciones"}
                 </Text>
               </View>
               <View style={styles.permissionButtonsWrap}>

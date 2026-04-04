@@ -30,6 +30,16 @@ interface GymUser {
   isActive: boolean;
   membershipStartAt?: string | null;
   membershipEndAt?: string | null;
+  profile?: { birthDate?: string | null; avatarUrl?: string | null } | null;
+}
+
+function calcAge(birthDateIso: string): number {
+  const today = new Date();
+  const birth = new Date(birthDateIso);
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -52,10 +62,10 @@ const GENDER_LABELS: Record<GenderOption, string> = {
 
 const GOAL_OPTIONS = [
   "Aumento de masa muscular",
-  "Perdida de peso",
+  "Pérdida de peso",
   "Aumento de movilidad",
   "Mejora de resistencia",
-  "Tonificacion general",
+  "Tonificación general",
   "Recomposicion corporal",
   "Recuperacion post-lesion",
   "Mejora de fuerza",
@@ -162,7 +172,7 @@ export function AdminUsersScreen() {
     if (newRole === "member") {
       const amount = Number(paymentAmount);
       if (!Number.isFinite(amount) || amount <= 0) {
-        Alert.alert("Monto invalido", "Debes indicar un monto valido para la activacion.");
+        Alert.alert("Monto inválido", "Debes indicar un monto válido para la activación.");
         return;
       }
 
@@ -311,7 +321,7 @@ export function AdminUsersScreen() {
     if (!token || !renewingUser) return;
     const amount = Number(renewPaymentAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      Alert.alert("Monto invalido", "Debes indicar un monto valido para la renovacion.");
+      Alert.alert("Monto inválido", "Debes indicar un monto válido para la renovación.");
       return;
     }
 
@@ -322,12 +332,12 @@ export function AdminUsersScreen() {
         paymentMethod: renewPaymentMethod,
         paymentAmount: amount,
       });
-      Alert.alert("Renovacion realizada", "La membresia fue renovada correctamente.");
+      Alert.alert("Renovación realizada", "La membresía fue renovada correctamente.");
       setShowRenewModal(false);
       setRenewingUser(null);
       void loadUsers();
     } catch (e) {
-      Alert.alert("Error al renovar", e instanceof Error ? e.message : "No se pudo renovar la membresia");
+      Alert.alert("Error al renovar", e instanceof Error ? e.message : "No se pudo renovar la membresía");
     } finally {
       setRenewing(false);
     }
@@ -411,7 +421,10 @@ export function AdminUsersScreen() {
             filteredUsers.map((u) => (
               <View key={u.id} style={styles.userCard}>
                 <View style={styles.userInfo}>
-                  <Text style={styles.userName}>{u.fullName}</Text>
+                  <Text style={styles.userName}>
+                    {u.fullName}
+                    {u.profile?.birthDate ? ` · ${calcAge(u.profile.birthDate)} años` : ""}
+                  </Text>
                   <Text style={styles.userEmail}>{u.email}</Text>
                   <View style={[styles.roleBadge, (styles as Record<string, object>)[`role_${u.role}`] ?? styles.role_member]}>
                     <Text style={styles.roleBadgeText}>{ROLE_LABELS[u.role] ?? u.role}</Text>
@@ -421,7 +434,7 @@ export function AdminUsersScreen() {
                   </View>
                   {u.role === "member" && u.membershipEndAt && (
                     <Text style={styles.membershipText}>
-                      Membresia hasta: {new Date(u.membershipEndAt).toLocaleDateString()}
+                      Membresía hasta: {new Date(u.membershipEndAt).toLocaleDateString()}
                     </Text>
                   )}
                 </View>
@@ -486,7 +499,7 @@ export function AdminUsersScreen() {
 
             {newRole === "member" && createStep === 1 && (
               <View style={styles.membershipSelectorWrap}>
-                <Text style={styles.membershipLabel}>Duracion de membresia (meses)</Text>
+                <Text style={styles.membershipLabel}>Duración de membresía (meses)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((months) => (
                     <TouchableOpacity
@@ -570,7 +583,7 @@ export function AdminUsersScreen() {
                   secureTextEntry
                 />
                 <Text style={styles.modalHint}>
-                  Al primer ingreso, el usuario debera cambiar esta contrasena temporal por una contrasena permanente.
+                  Al primer ingreso, el usuario deberá cambiar esta contraseña temporal por una contraseña permanente.
                 </Text>
               </>
             ) : (
@@ -798,10 +811,10 @@ export function AdminUsersScreen() {
           <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowRenewModal(false)}>
             <TouchableOpacity activeOpacity={1} onPress={() => {}}>
               <View style={styles.modalCard}>
-                <Text style={styles.modalTitle}>Renovar membresia</Text>
+                <Text style={styles.modalTitle}>Renovar membresía</Text>
                 <Text style={styles.modalSubTitle}>{renewingUser?.fullName ?? ""}</Text>
 
-                <Text style={styles.membershipLabel}>Duracion de renovacion (meses)</Text>
+                <Text style={styles.membershipLabel}>Duración de renovación (meses)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((months) => (
                     <TouchableOpacity

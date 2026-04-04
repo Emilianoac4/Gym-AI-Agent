@@ -21,7 +21,7 @@ export function GymSelectorScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.emptyCard}>
           <Text style={styles.title}>Sin seleccion pendiente</Text>
-          <Text style={styles.subtitle}>Inicia sesion nuevamente para elegir un gimnasio.</Text>
+          <Text style={styles.subtitle}>Inicia sesión nuevamente para elegir un gimnasio.</Text>
         </View>
       </SafeAreaView>
     );
@@ -32,7 +32,7 @@ export function GymSelectorScreen() {
       <View style={styles.header}>
         <Text style={styles.eyebrow}>Cuenta detectada en multiples gimnasios</Text>
         <Text style={styles.title}>Selecciona tu perfil</Text>
-        <Text style={styles.subtitle}>Elige a que gimnasio deseas ingresar en esta sesion.</Text>
+        <Text style={styles.subtitle}>Elige a qué gimnasio deseas ingresar en esta sesión.</Text>
       </View>
 
       <FlatList

@@ -412,6 +412,19 @@ export interface AssistanceRequest {
   resolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  memberName: string | null;
+}
+
+export interface AssistanceRatingEntry {
+  id: string;
+  memberId: string;
+  trainerId: string | null;
+  rating: number | null;
+  ratedAt: string | null;
+  description: string;
+  resolution: string | null;
+  memberName: string;
+  trainerName: string | null;
 }
 
 export interface EmergencyTicket {

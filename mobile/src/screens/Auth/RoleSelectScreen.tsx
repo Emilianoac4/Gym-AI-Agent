@@ -15,7 +15,7 @@ const roleOptions: RoleOption[] = [
   {
     role: "admin",
     title: "Ingresar como administrador",
-    description: "Gestiona la operacion del gimnasio, usuarios y metricas de negocio.",
+    description: "Gestiona la operación del gimnasio, usuarios y métricas de negocio.",
   },
   {
     role: "trainer",
@@ -25,7 +25,7 @@ const roleOptions: RoleOption[] = [
   {
     role: "member",
     title: "Ingresar como usuario",
-    description: "Accede a rutinas, progreso y acompanamiento con coach IA.",
+    description: "Accede a rutinas, progreso y acompañamiento con coach IA.",
   },
 ];
 
@@ -41,7 +41,7 @@ export function RoleSelectScreen() {
       <View style={styles.card}>
         <Text style={styles.eyebrow}>GymAI</Text>
         <Text style={styles.title}>Selecciona tu tipo de acceso</Text>
-        <Text style={styles.subtitle}>Elige como deseas ingresar a la aplicacion.</Text>
+        <Text style={styles.subtitle}>Élige cómo deseas ingresar a la aplicación.</Text>
 
         <View style={styles.optionList}>
           {roleOptions.map((option) => (

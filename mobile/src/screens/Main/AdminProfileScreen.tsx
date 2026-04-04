@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
-import { GymSettings, MembershipReport, TrainerPresenceSummaryDay } from "../../types/api";
+import { AssistanceRatingEntry, GymSettings, MembershipReport, TrainerPresenceSummaryDay } from "../../types/api";
 import { palette } from "../../theme/palette";
 
 const REPORT_OPTIONS = [
@@ -122,6 +122,7 @@ export function AdminProfileScreen() {
   const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
   const [expandedPresenceMonth, setExpandedPresenceMonth] = useState(false);
   const [gymSettings, setGymSettings] = useState<GymSettings | null>(null);
+  const [ratingsHistory, setRatingsHistory] = useState<AssistanceRatingEntry[]>([]);
   const [savingCurrency, setSavingCurrency] = useState(false);
   const [selectedReportDate, setSelectedReportDate] = useState(() => toDateKey(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -137,14 +138,16 @@ export function AdminProfileScreen() {
 
     setLoading(true);
     try {
-      const [presenceResponse, reportResponse, settingsResponse] = await Promise.all([
+      const [presenceResponse, reportResponse, settingsResponse, ratingsResponse] = await Promise.all([
         api.getTrainerPresenceSummary(token, 30),
         api.getMembershipReport(token, 7),
         api.getGymSettings(token),
+        api.listAssistanceRatings(token).catch(() => ({ ratings: [], total: 0 })),
       ]);
       setPresenceDays(presenceResponse.days);
       setReport(reportResponse.report);
       setGymSettings(settingsResponse.settings);
+      setRatingsHistory(ratingsResponse.ratings);
       setReportRangeLabel("1 semana");
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo cargar el panel administrativo";
@@ -304,7 +307,7 @@ export function AdminProfileScreen() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Configuracion general</Text>
+            <Text style={styles.sectionTitle}>Configuración general</Text>
           </View>
           <Text style={styles.summaryHint}>Moneda global para reportes y transacciones</Text>
           <View style={styles.sectionHeaderActions}>
@@ -402,6 +405,44 @@ export function AdminProfileScreen() {
                     </View>
                   ))
                 )}
+              </View>
+            ))
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Calificaciones del último mes</Text>
+            <TouchableOpacity style={styles.refreshChip} onPress={() => void loadDashboard()}>
+              <Text style={styles.refreshChipText}>Actualizar</Text>
+            </TouchableOpacity>
+          </View>
+          {loading ? (
+            <View style={styles.loadingCard}>
+              <ActivityIndicator color={palette.cocoa} />
+            </View>
+          ) : ratingsHistory.length === 0 ? (
+            <View style={styles.infoCard}>
+              <Text style={styles.emptyText}>No hay solicitudes calificadas en los últimos 30 días.</Text>
+            </View>
+          ) : (
+            ratingsHistory.map((entry) => (
+              <View key={entry.id} style={styles.dayCard}>
+                <View style={styles.dayHeader}>
+                  <Text style={styles.trainerName}>{entry.memberName}</Text>
+                  <Text style={styles.ratingStars}>
+                    {"★".repeat(entry.rating ?? 0)}{"☆".repeat(5 - (entry.rating ?? 0))}
+                  </Text>
+                </View>
+                {entry.trainerName ? (
+                  <Text style={styles.trainerSessionMeta}>Entrenador: {entry.trainerName}</Text>
+                ) : null}
+                <Text style={styles.trainerSessionMeta}>
+                  {entry.ratedAt ? formatDateTime(entry.ratedAt) : ""}
+                </Text>
+                {entry.resolution ? (
+                  <Text style={styles.emptyText} numberOfLines={2}>{entry.resolution}</Text>
+                ) : null}
               </View>
             ))
           )}
@@ -714,6 +755,8 @@ const styles = StyleSheet.create({
   },
   trainerName: { color: palette.cocoa, fontWeight: "700", flex: 1 },
   trainerChevron: { color: palette.cocoa, fontSize: 16, fontWeight: "800", marginLeft: 8 },
+  trainerSessionMeta: { color: palette.textMuted, fontSize: 12, marginTop: 2 },
+  ratingStars: { color: palette.gold, fontSize: 16, marginLeft: 8 },
   timelineCard: { marginBottom: 8 },
   timelineLabel: { color: palette.cocoa + "AA", fontSize: 12, marginBottom: 4 },
   timelineTrack: {

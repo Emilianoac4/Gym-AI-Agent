@@ -5,6 +5,7 @@ import {
   createAssistanceRequest,
   listAssistanceRequests,
   listMyAssistanceRequests,
+  listAssistanceRatings,
   assignAssistanceRequest,
   resolveAssistanceRequest,
   rateAssistanceRequest,
@@ -39,6 +40,13 @@ assistanceRouter.get(
   "/my",
   authenticate,
   listMyAssistanceRequests,
+);
+
+// Admin ve historial de calificaciones del último mes
+assistanceRouter.get(
+  "/ratings",
+  authenticate,
+  listAssistanceRatings,
 );
 
 // Trainer se asigna una solicitud

@@ -11,6 +11,7 @@ import {
 	setHealthConnectionStateByUserId,
 	upsertHealthConnectionByUserId,
 	updateUserProfileById,
+	updateAvatarById,
 	triggerDailySummary,
 } from "./users.controller";
 import { authenticate, authorizeAction } from "../../middleware/auth.middleware";
@@ -46,6 +47,7 @@ usersRouter.put(
 	validate(updateProfileSchema),
 	updateUserProfileById,
 );
+usersRouter.patch("/:id/avatar", authenticate, updateAvatarById);
 usersRouter.get(
 	"/:id/health-connections",
 	authenticate,

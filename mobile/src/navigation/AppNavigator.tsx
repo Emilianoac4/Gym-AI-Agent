@@ -189,7 +189,7 @@ export function AppNavigator() {
                 component={AvailabilityManagementScreen}
                 options={{
                   headerShown: true,
-                  title: "Gestion de horarios",
+                  title: "Gestión de horarios",
                   headerStyle: { backgroundColor: palette.card },
                   headerTintColor: palette.cocoa,
                 }}

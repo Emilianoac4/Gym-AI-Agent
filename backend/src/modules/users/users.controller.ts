@@ -171,6 +171,52 @@ export const updateUserProfileById = async (
   res.json({ message: "Profile updated", profile });
 };
 
+// PATCH /users/:id/avatar — update profile picture (self or admin)
+export const updateAvatarById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+  if (!req.auth) throw new HttpError(401, "Unauthorized");
+
+  const { id } = req.params;
+  const { imageBase64 } = req.body as { imageBase64?: string };
+
+  if (!imageBase64 || typeof imageBase64 !== "string") {
+    throw new HttpError(400, "imageBase64 is required");
+  }
+
+  // Strip data URI prefix if present
+  const dataUriMatch = imageBase64.match(/^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/);
+  const rawBase64 = dataUriMatch ? dataUriMatch[2] : imageBase64;
+
+  // Size guard: 250 KB base64 ≈ ~186 KB image. Anything bigger wasn't properly compressed client-side.
+  if (rawBase64.length > 260_000) {
+    throw new HttpError(400, "Image too large. Please compress before uploading (max ~190 KB).");
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, role: true, gymId: true, isActive: true },
+  });
+  if (!existingUser || !existingUser.isActive) throw new HttpError(404, "User not found");
+
+  // Only the user themselves or an admin in the same gym can update
+  const actor = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: { id: true, role: true, gymId: true },
+  });
+  if (!actor) throw new HttpError(403, "Forbidden");
+  if (actor.gymId !== existingUser.gymId) throw new HttpError(403, "Forbidden");
+  if (actor.id !== existingUser.id && actor.role !== "admin") throw new HttpError(403, "Forbidden");
+
+  const dataUri = `data:image/jpeg;base64,${rawBase64}`;
+
+  const profile = await prisma.userProfile.upsert({
+    where: { userId: id },
+    create: { id: require("crypto").randomUUID(), userId: id, avatarUrl: dataUri },
+    update: { avatarUrl: dataUri },
+  });
+
+  res.json({ message: "Avatar updated", avatarUrl: profile.avatarUrl });
+};
+
 export const deactivateUserById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   if (!req.auth) {
     throw new HttpError(401, "Unauthorized");
@@ -378,6 +424,9 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
       isActive: true,
       membershipStartAt: true,
       membershipEndAt: true,
+      profile: {
+        select: { birthDate: true, avatarUrl: true },
+      },
     },
     orderBy: { createdAt: "desc" },
   });

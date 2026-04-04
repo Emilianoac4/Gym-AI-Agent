@@ -48,10 +48,12 @@ type ActionType = "assign" | "resolve";
 function RequestCard({
   item,
   myId,
+  role,
   onAction,
 }: {
   item: AssistanceRequest;
   myId: string;
+  role: string;
   onAction: (id: string, action: ActionType) => void;
 }) {
   const date = new Date(item.createdAt).toLocaleDateString("es-ES", {
@@ -71,6 +73,12 @@ function RequestCard({
         <StatusBadge status={item.status} />
         <Text style={styles.cardDate}>{date}</Text>
       </View>
+      {item.memberName ? (
+        <View style={styles.memberRow}>
+          <Text style={styles.memberLabel}>Miembro</Text>
+          <Text style={styles.memberName}>{item.memberName}</Text>
+        </View>
+      ) : null}
       <Text style={styles.cardDescription}>{item.description}</Text>
       {item.resolution ? (
         <View style={styles.resolutionBox}>
@@ -78,7 +86,7 @@ function RequestCard({
           <Text style={styles.resolutionText}>{item.resolution}</Text>
         </View>
       ) : null}
-      {item.rating ? (
+      {role === "admin" && item.rating ? (
         <Text style={styles.ratingText}>
           {"★".repeat(item.rating)}{"☆".repeat(5 - item.rating)} — Calificación del miembro
         </Text>
@@ -105,6 +113,7 @@ function RequestCard({
 
 export function AssistanceRequestsScreen() {
   const { user, token } = useAuth();
+  const role = user?.role ?? "trainer";
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<AssistanceRequest[]>([]);
 
@@ -228,6 +237,7 @@ export function AssistanceRequestsScreen() {
                   key={item.id}
                   item={item}
                   myId={user?.id ?? ""}
+                  role={role}
                   onAction={onAction}
                 />
               ))}
@@ -245,6 +255,7 @@ export function AssistanceRequestsScreen() {
                   key={item.id}
                   item={item}
                   myId={user?.id ?? ""}
+                  role={role}
                   onAction={onAction}
                 />
               ))}
@@ -260,6 +271,7 @@ export function AssistanceRequestsScreen() {
                   key={item.id}
                   item={item}
                   myId={user?.id ?? ""}
+                  role={role}
                   onAction={onAction}
                 />
               ))}
@@ -381,6 +393,23 @@ const styles = StyleSheet.create({
   cardDate: {
     color: palette.textMuted,
     fontSize: 12,
+  },
+  memberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  memberLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: palette.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  memberName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: palette.cocoa,
   },
   cardDescription: {
     color: palette.ink,

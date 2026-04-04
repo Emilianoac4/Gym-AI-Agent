@@ -14,25 +14,25 @@ export function ChangeTemporaryPasswordScreen() {
 
   const onConfirm = async () => {
     if (!newPassword || !confirmPassword) {
-      Alert.alert("Campos incompletos", "Completa ambos campos de contrasena.");
+      Alert.alert("Campos incompletos", "Completa ambos campos de contraseña.");
       return;
     }
 
     if (newPassword.length < 8) {
-      Alert.alert("Contrasena invalida", "La nueva contrasena debe tener al menos 8 caracteres.");
+      Alert.alert("Contraseña inválida", "La nueva contraseña debe tener al menos 8 caracteres.");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert("No coincide", "La confirmacion de contrasena no coincide con la nueva contrasena.");
+      Alert.alert("No coincide", "La confirmación de contraseña no coincide con la nueva contraseña.");
       return;
     }
 
     try {
       await completeTemporaryPasswordChange(newPassword);
-      Alert.alert("Contrasena actualizada", "Tu nueva contrasena se guardo correctamente.");
+      Alert.alert("Contraseña actualizada", "Tu nueva contraseña se guardó correctamente.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudo actualizar la contrasena";
+      const message = error instanceof Error ? error.message : "No se pudo actualizar la contraseña";
       Alert.alert("Error", message);
     }
   };
@@ -40,20 +40,20 @@ export function ChangeTemporaryPasswordScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.title}>Actualiza tu contrasena</Text>
+        <Text style={styles.title}>Actualiza tu contraseña</Text>
         <Text style={styles.subtitle}>
-          Este usuario fue creado con una contrasena temporal. Debes crear una contrasena permanente para
+          Este usuario fue creado con una contraseña temporal. Debes crear una contraseña permanente para
           continuar.
         </Text>
 
-        <Text style={styles.label}>Nueva contrasena</Text>
+        <Text style={styles.label}>Nueva contraseña</Text>
         <View style={styles.passwordRow}>
           <TextInput
             style={[styles.input, styles.passwordInput]}
             value={newPassword}
             onChangeText={setNewPassword}
             secureTextEntry={!showNewPassword}
-            placeholder="Minimo 8 caracteres"
+            placeholder="Mínimo 8 caracteres"
             placeholderTextColor={palette.textMuted}
           />
           <TouchableOpacity style={styles.passwordToggle} onPress={() => setShowNewPassword((v) => !v)}>
@@ -65,14 +65,14 @@ export function ChangeTemporaryPasswordScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.label}>Confirmar contrasena</Text>
+        <Text style={styles.label}>Confirmar contraseña</Text>
         <View style={styles.passwordRow}>
           <TextInput
             style={[styles.input, styles.passwordInput]}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry={!showConfirmPassword}
-            placeholder="Repite la contrasena"
+            placeholder="Repite la contraseña"
             placeholderTextColor={palette.textMuted}
           />
           <TouchableOpacity style={styles.passwordToggle} onPress={() => setShowConfirmPassword((v) => !v)}>
@@ -85,7 +85,7 @@ export function ChangeTemporaryPasswordScreen() {
         </View>
 
         <AppButton
-          label={loading ? "Guardando..." : "Guardar contrasena"}
+          label={loading ? "Guardando..." : "Guardar contraseña"}
           onPress={onConfirm}
           disabled={loading}
         />

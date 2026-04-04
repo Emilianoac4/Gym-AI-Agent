@@ -4,6 +4,7 @@ import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
 import { createAuditLog } from "../../utils/audit";
 import { AuditAction } from "@prisma/client";
+import { sendExpoPushNotifications } from "../../utils/expo-push";
 import {
   CreateAssistanceRequestInput,
   ListAssistanceRequestsQuery,
@@ -76,6 +77,35 @@ export const createAssistanceRequest = async (
       userAgent: req.headers["user-agent"] as string,
     });
 
+    // Notificar a entrenadores del gimnasio (fire-and-forget)
+    void (async () => {
+      try {
+        const trainers = await prisma.user.findMany({
+          where: { gymId: actor.gymId, role: "trainer", isActive: true },
+          select: { id: true },
+        });
+        const trainerIds = trainers.map((t) => t.id);
+        if (trainerIds.length > 0) {
+          const pushTokens = await prisma.pushToken.findMany({
+            where: { gymId: actor.gymId, userId: { in: trainerIds } },
+            select: { token: true },
+          });
+          const shortDesc = req.body.description.slice(0, 100);
+          await sendExpoPushNotifications(
+            pushTokens.map((pt) => ({
+              to: pt.token,
+              title: "Nueva solicitud de asistencia",
+              body: shortDesc,
+              sound: "default" as const,
+              data: { requestId: request.id, type: "assistance_request" },
+            })),
+          );
+        }
+      } catch (e) {
+        console.warn("[PUSH] assistance notification failed:", e);
+      }
+    })();
+
     res.status(201).json({ message: "Solicitud de asistencia creada", request });
   } catch (error) {
     if (error instanceof HttpError) throw error;
@@ -115,7 +145,7 @@ export const listAssistanceRequests = async (
       where["status"] = query.status as AssistanceRequestStatus;
     }
 
-    const [requests, total] = await Promise.all([
+    const [rawRequests, total] = await Promise.all([
       prisma.assistanceRequest.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -139,6 +169,30 @@ export const listAssistanceRequests = async (
       }),
       prisma.assistanceRequest.count({ where }),
     ]);
+
+    // Resolver nombres de miembros: solo para solicitudes ya asignadas/en progreso/resueltas
+    const assignedIds = [
+      ...new Set(
+        rawRequests
+          .filter((r) => r.status !== AssistanceRequestStatus.CREATED)
+          .map((r) => r.memberId),
+      ),
+    ];
+    const memberNames: Record<string, string> = {};
+    if (assignedIds.length > 0) {
+      const members = await prisma.user.findMany({
+        where: { id: { in: assignedIds } },
+        select: { id: true, fullName: true },
+      });
+      members.forEach((m) => { memberNames[m.id] = m.fullName; });
+    }
+
+    const requests = rawRequests.map((r) => ({
+      ...r,
+      memberName: r.status !== AssistanceRequestStatus.CREATED
+        ? (memberNames[r.memberId] ?? null)
+        : null,
+    }));
 
     res.json({ requests, total });
   } catch (error) {
@@ -282,6 +336,62 @@ export const rateAssistanceRequest = async (
   });
 
   res.json({ message: "Solicitud calificada", request: updated });
+};
+
+// GET /assistance/ratings — admin ve historial de calificaciones del último mes
+export const listAssistanceRatings = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  if (actor.role !== "admin") {
+    throw new HttpError(403, "Solo administradores pueden ver el historial de calificaciones");
+  }
+
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+
+  const rated = await prisma.assistanceRequest.findMany({
+    where: {
+      gymId: actor.gymId,
+      status: AssistanceRequestStatus.RATED,
+      ratedAt: { gte: since },
+    },
+    orderBy: { ratedAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      memberId: true,
+      trainerId: true,
+      rating: true,
+      ratedAt: true,
+      description: true,
+      resolution: true,
+    },
+  });
+
+  const memberIds = [...new Set(rated.map((r) => r.memberId))];
+  const trainerIds = [...new Set(rated.map((r) => r.trainerId).filter((id): id is string => id !== null))];
+
+  const [members, trainers] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: memberIds } }, select: { id: true, fullName: true } }),
+    trainerIds.length > 0
+      ? prisma.user.findMany({ where: { id: { in: trainerIds } }, select: { id: true, fullName: true } })
+      : Promise.resolve([]),
+  ]);
+
+  const memberMap = Object.fromEntries(members.map((m) => [m.id, m.fullName]));
+  const trainerMap = Object.fromEntries(trainers.map((t) => [t.id, t.fullName]));
+
+  const ratings = rated.map((r) => ({
+    ...r,
+    memberName: memberMap[r.memberId] ?? "Miembro desconocido",
+    trainerName: r.trainerId ? (trainerMap[r.trainerId] ?? "Entrenador desconocido") : null,
+  }));
+
+  res.json({ ratings, total: ratings.length });
 };
 
 // GET /assistance/my — member ve sus propias solicitudes
