@@ -180,7 +180,7 @@ function OptionPicker({
 }
 
 export function ProfileScreen({ navigation }: { navigation: any }) {
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
 
   const [goal, setGoal] = useState("");
   const [availability, setAvailability] = useState("");
@@ -431,7 +431,9 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
           </TapSurface>
         </View>
       </View>
-
+        <TapSurface onPress={logout} style={styles.logoutButton}>
+          <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
+        </TapSurface>
       <OptionPicker
         visible={showGoalPicker}
         title="Objetivo"
@@ -649,6 +651,22 @@ const styles = StyleSheet.create({
     color: design.color.textPrimary,
     fontSize: 16,
     fontWeight: "500",
+    fontFamily: design.fontFamily,
+  },
+  logoutButton: {
+    marginTop: design.spacing.x2,
+    borderRadius: design.radius.input,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: design.color.primary,
+    backgroundColor: "transparent",
+  },
+  logoutButtonText: {
+    color: design.color.primary,
+    fontSize: 16,
+    fontWeight: "600",
     fontFamily: design.fontFamily,
   },
   badge: {
