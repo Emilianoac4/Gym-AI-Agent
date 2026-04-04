@@ -4,7 +4,9 @@ import { validate } from "../../middleware/validate.middleware";
 import {
   exportMembershipReport,
   getActiveTrainers,
+  getChurnRisk,
   getGymSettings,
+  getKpi,
   getMembershipReport,
   getMyTrainerPresenceStatus,
   sendMembershipReport,
@@ -87,6 +89,18 @@ operationsRouter.put(
   authorizeAction("permissions.grant"),
   validate(gymCurrencySchema),
   updateGymSettings,
+);
+
+operationsRouter.get(
+  "/kpi",
+  authenticate,
+  getKpi,
+);
+
+operationsRouter.get(
+  "/churn-risk",
+  authenticate,
+  getChurnRisk,
 );
 
 export { operationsRouter };

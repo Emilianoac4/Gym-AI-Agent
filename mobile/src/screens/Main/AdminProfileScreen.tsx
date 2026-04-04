@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
-import { AssistanceRatingEntry, GymSettings, MembershipReport, TrainerPresenceSummaryDay } from "../../types/api";
+import { AdminKpi, AssistanceRatingEntry, ChurnRiskEntry, GymSettings, MembershipReport, TrainerPresenceSummaryDay } from "../../types/api";
 import { palette } from "../../theme/palette";
 
 const REPORT_OPTIONS = [
@@ -123,6 +123,8 @@ export function AdminProfileScreen() {
   const [expandedPresenceMonth, setExpandedPresenceMonth] = useState(false);
   const [gymSettings, setGymSettings] = useState<GymSettings | null>(null);
   const [ratingsHistory, setRatingsHistory] = useState<AssistanceRatingEntry[]>([]);
+  const [kpi, setKpi] = useState<AdminKpi | null>(null);
+  const [churnRisk, setChurnRisk] = useState<ChurnRiskEntry[]>([]);
   const [savingCurrency, setSavingCurrency] = useState(false);
   const [selectedReportDate, setSelectedReportDate] = useState(() => toDateKey(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -138,16 +140,20 @@ export function AdminProfileScreen() {
 
     setLoading(true);
     try {
-      const [presenceResponse, reportResponse, settingsResponse, ratingsResponse] = await Promise.all([
+      const [presenceResponse, reportResponse, settingsResponse, ratingsResponse, kpiResponse, churnResponse] = await Promise.all([
         api.getTrainerPresenceSummary(token, 30),
         api.getMembershipReport(token, 7),
         api.getGymSettings(token),
         api.listAssistanceRatings(token).catch(() => ({ ratings: [], total: 0 })),
+        api.getKpi(token).catch(() => null),
+        api.getChurnRisk(token).catch(() => ({ churnRisk: [] })),
       ]);
       setPresenceDays(presenceResponse.days);
       setReport(reportResponse.report);
       setGymSettings(settingsResponse.settings);
       setRatingsHistory(ratingsResponse.ratings);
+      if (kpiResponse) setKpi(kpiResponse.kpi);
+      setChurnRisk(churnResponse.churnRisk);
       setReportRangeLabel("1 semana");
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo cargar el panel administrativo";
@@ -294,16 +300,54 @@ export function AdminProfileScreen() {
 
         <View style={styles.summaryGrid}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Coaches activos</Text>
-            <Text style={styles.summaryValue}>{activeCoaches}</Text>
-            <Text style={styles.summaryHint}>acumulado en los ultimos 7 dias</Text>
+            <Text style={styles.summaryLabel}>Miembros activos</Text>
+            <Text style={styles.summaryValue}>{kpi?.membersWithActiveMembership ?? "—"}</Text>
+            <Text style={styles.summaryHint}>membresía vigente</Text>
           </View>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Movimientos</Text>
-            <Text style={styles.summaryValue}>{report?.summary.rowCount ?? 0}</Text>
-            <Text style={styles.summaryHint}>reporte actual: {reportRangeLabel}</Text>
+            <Text style={styles.summaryLabel}>Nuevos hoy</Text>
+            <Text style={styles.summaryValue}>{kpi?.newUsersToday ?? "—"}</Text>
+            <Text style={styles.summaryHint}>registros del día</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Entrenadores</Text>
+            <Text style={styles.summaryValue}>{kpi?.activeTrainersNow ?? activeCoaches}</Text>
+            <Text style={styles.summaryHint}>activos ahora</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Ingresos (semana)</Text>
+            <Text style={[styles.summaryValue, { fontSize: 20 }]}>
+              {kpi
+                ? new Intl.NumberFormat(kpi.currency === "CRC" ? "es-CR" : "en-US", {
+                    style: "currency",
+                    currency: kpi.currency,
+                    maximumFractionDigits: 0,
+                  }).format(kpi.week.revenue)
+                : "—"}
+            </Text>
+            <Text style={styles.summaryHint}>
+              {kpi ? `${kpi.week.registrations + kpi.week.renewals} movimientos` : ""}
+            </Text>
           </View>
         </View>
+
+        {churnRisk.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>⚠️ Riesgo de abandono</Text>
+            </View>
+            {churnRisk.map((entry) => (
+              <View key={entry.userId} style={styles.churnCard}>
+                <Text style={styles.churnName}>{entry.fullName}</Text>
+                <Text style={styles.churnMeta}>
+                  {entry.daysSince !== null
+                    ? `Sin actividad: ${entry.daysSince}d`
+                    : "Sin actividad registrada"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -672,9 +716,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   roleBadgeText: { fontWeight: "700", color: palette.cocoa, fontSize: 13 },
-  summaryGrid: { flexDirection: "row", gap: 12, marginBottom: 20 },
+  summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 20 },
   summaryCard: {
-    flex: 1,
+    width: "47%",
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
@@ -683,7 +727,18 @@ const styles = StyleSheet.create({
   },
   summaryLabel: { fontSize: 12, color: palette.cocoa + "99", fontWeight: "700", textTransform: "uppercase" },
   summaryValue: { fontSize: 28, color: palette.cocoa, fontWeight: "800", marginTop: 8 },
+  summaryAlert: { color: "#ef4444" },
   summaryHint: { fontSize: 12, color: palette.cocoa + "88", marginTop: 6 },
+  churnCard: {
+    backgroundColor: "#fffbeb",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#f59e0b",
+    marginBottom: 8,
+  },
+  churnName: { fontWeight: "700", color: palette.cocoa, fontSize: 15 },
+  churnMeta: { marginTop: 4, fontSize: 13, color: palette.cocoa + "aa" },
   section: { marginBottom: 24 },
   sectionHeader: {
     flexDirection: "row",

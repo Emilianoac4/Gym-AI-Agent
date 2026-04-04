@@ -1,8 +1,10 @@
 import {
   AIChatLog,
+  AdminKpi,
   AssistanceRequest,
   AssistanceRatingEntry,
   AvailabilityTrainerPermission,
+  ChurnRiskEntry,
   CreateMeasurementPayload,
   DirectMessage,
   GeneralNotification,
@@ -846,4 +848,10 @@ export const api = {
 
   listAssistanceRatings: (token: string) =>
     request<{ ratings: AssistanceRatingEntry[]; total: number }>("/assistance/ratings", { token }),
+
+  getKpi: (token: string) =>
+    request<{ kpi: AdminKpi }>("/operations/kpi", { token }),
+
+  getChurnRisk: (token: string) =>
+    request<{ churnRisk: ChurnRiskEntry[] }>("/operations/churn-risk", { token }),
 };

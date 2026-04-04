@@ -108,6 +108,8 @@ export const getUserProfileById = async (req: Request<{ id: string }>, res: Resp
       role: user.role,
       gymId: user.gymId,
       createdAt: user.createdAt,
+      membershipStartAt: user.membershipStartAt,
+      membershipEndAt: user.membershipEndAt,
     },
     profile: user.profile,
   });

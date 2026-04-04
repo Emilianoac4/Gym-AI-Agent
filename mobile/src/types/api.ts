@@ -389,6 +389,33 @@ export interface GymSettings {
   currency: "USD" | "CRC";
 }
 
+/* ─── KPI / Churn Risk ───────────────────────────────────── */
+
+export interface AdminKpi {
+  totalActiveMembers: number;
+  membersWithActiveMembership: number;
+  newUsersToday: number;
+  activeTrainersNow: number;
+  today: {
+    registrations: number;
+    renewals: number;
+    revenue: number;
+  };
+  week: {
+    registrations: number;
+    renewals: number;
+    revenue: number;
+  };
+  currency: "USD" | "CRC";
+}
+
+export interface ChurnRiskEntry {
+  userId: string;
+  fullName: string;
+  lastActivity: string | null;
+  daysSince: number | null;
+}
+
 /* ─── Assistance Requests ────────────────────────────────── */
 
 export type AssistanceRequestStatus =

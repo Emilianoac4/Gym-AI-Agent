@@ -114,6 +114,9 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
+  // Membership
+  const [membershipEndAt, setMembershipEndAt] = useState<string | null>(null);
+
   // Misc
   const [unreadThreads, setUnreadThreads] = useState(0);
 
@@ -136,6 +139,7 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
         setExperienceLvl(data.profile?.experienceLvl ?? "");
         if (data.profile?.birthDate) setBirthDate(new Date(data.profile.birthDate));
         if (data.profile?.avatarUrl) setAvatarUri(data.profile.avatarUrl);
+        setMembershipEndAt((data.user as any)?.membershipEndAt ?? null);
         setUnreadThreads(threadsData.threads.reduce((acc, item) => acc + item.unreadCount, 0));
       } catch {
         // Keep defaults
@@ -222,6 +226,30 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
         <Text style={styles.title}>Perfil Deportivo</Text>
         <Text style={styles.subtitle}>Estos datos alimentan la IA para rutinas y nutrición personalizadas.</Text>
       </View>
+
+      {/* ─ Membership status (member only) ─ */}
+      {user?.role === "member" && membershipEndAt ? (() => {
+        const end = new Date(membershipEndAt);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffMs = end.getTime() - today.getTime();
+        const daysLeft = Math.ceil(diffMs / 86400000);
+        const expired = daysLeft <= 0;
+        const urgent = daysLeft <= 7 && !expired;
+        return (
+          <View style={[styles.membershipCard, expired && styles.membershipCardExpired, urgent && styles.membershipCardUrgent]}>
+            <Text style={styles.membershipLabel}>Membresía</Text>
+            {expired ? (
+              <Text style={styles.membershipValueExpired}>Vencida</Text>
+            ) : (
+              <Text style={[styles.membershipValue, urgent && styles.membershipValueUrgent]}>
+                {daysLeft} {daysLeft === 1 ? "día restante" : "días restantes"}
+              </Text>
+            )}
+            <Text style={styles.membershipSub}>Vence: {end.toLocaleDateString("es-CR", { day: "2-digit", month: "short", year: "numeric" })}</Text>
+          </View>
+        );
+      })() : null}
 
       <View style={styles.card}>
         {/* ─ Fecha de nacimiento ─ */}
@@ -537,6 +565,49 @@ const styles = StyleSheet.create({
     color: palette.white,
     fontSize: 11,
     fontWeight: "800",
+  },
+  membershipCard: {
+    backgroundColor: palette.card,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+  membershipCardExpired: {
+    borderColor: "#ef4444",
+    backgroundColor: "#fff1f1",
+  },
+  membershipCardUrgent: {
+    borderColor: "#f59e0b",
+    backgroundColor: "#fffbeb",
+  },
+  membershipLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    color: palette.textMuted,
+    marginBottom: 6,
+  },
+  membershipValue: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#22c55e",
+  },
+  membershipValueUrgent: {
+    color: "#f59e0b",
+  },
+  membershipValueExpired: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#ef4444",
+  },
+  membershipSub: {
+    marginTop: 4,
+    fontSize: 13,
+    color: palette.textMuted,
   },
 });
 

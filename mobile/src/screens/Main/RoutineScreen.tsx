@@ -88,6 +88,22 @@ function getWeeklyEntry(
   return progress?.weeklyHistory.find((item) => item.weekStart === weekStart);
 }
 
+const WEEK_HEADERS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
+const MONTH_LABELS = ["Jan","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+function buildCalMonthMatrix(monthStart: Date): Array<Date | null> {
+  const start = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1));
+  const firstWeekday = (start.getUTCDay() + 6) % 7;
+  const daysInMonth = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
+  const result: Array<Date | null> = [];
+  for (let i = 0; i < firstWeekday; i++) result.push(null);
+  for (let day = 1; day <= daysInMonth; day++) {
+    result.push(new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), day)));
+  }
+  while (result.length % 7 !== 0) result.push(null);
+  return result;
+}
+
 export function RoutineScreen() {
   const { user, token } = useAuth();
   const [routine, setRoutine] = useState<GeneratedRoutine | null>(null);
@@ -132,6 +148,22 @@ export function RoutineScreen() {
     });
     return map;
   }, [strengthByExercise]);
+
+  const checkinDateSet = useMemo(() => {
+    const set = new Set<string>();
+    checkins.forEach((item) => {
+      const d = new Date(item.completedAt);
+      set.add(d.toISOString().slice(0, 10));
+    });
+    return set;
+  }, [checkins]);
+
+  const calendarMonths = useMemo(() => {
+    const now = new Date();
+    return [2, 1, 0].map((offset) =>
+      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset, 1))
+    );
+  }, []);
 
   const availableWeeks = useMemo(() => {
     const weeks = new Set<string>();
@@ -687,6 +719,41 @@ export function RoutineScreen() {
             </View>
 
             {syncingCheckins ? <Text style={styles.syncText}>Sincronizando progreso...</Text> : null}
+          </View>
+
+          {/* ─ 3-month progress calendar ─ */}
+          <View style={styles.calendarSection}>
+            <Text style={styles.calendarSectionTitle}>Progreso (3 meses)</Text>
+            {calendarMonths.map((monthStart) => {
+              const cells = buildCalMonthMatrix(monthStart);
+              const label = `${MONTH_LABELS[monthStart.getUTCMonth()]} ${monthStart.getUTCFullYear()}`;
+              return (
+                <View key={monthStart.toISOString()} style={styles.calendarMonthBlock}>
+                  <Text style={styles.calendarMonthLabel}>{label}</Text>
+                  <View style={styles.calendarWeekRow}>
+                    {WEEK_HEADERS.map((h) => (
+                      <Text key={h} style={styles.calendarWeekHeader}>{h}</Text>
+                    ))}
+                  </View>
+                  {Array.from({ length: cells.length / 7 }, (_, row) => (
+                    <View key={row} style={styles.calendarWeekRow}>
+                      {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
+                        if (!day) return <View key={col} style={styles.calendarCell} />;
+                        const key = day.toISOString().slice(0, 10);
+                        const done = checkinDateSet.has(key);
+                        return (
+                          <View key={col} style={[styles.calendarCell, done && styles.calendarCellDone]}>
+                            <Text style={[styles.calendarDayText, done && styles.calendarDayTextDone]}>
+                              {day.getUTCDate()}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
           </View>
 
           {routine.sessions.map((session) => {
@@ -1616,5 +1683,61 @@ const styles = StyleSheet.create({
     color: palette.cocoa,
     fontSize: 13,
     lineHeight: 20,
+  },
+  calendarSection: {
+    backgroundColor: palette.card,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: palette.line,
+    marginBottom: 16,
+  },
+  calendarSectionTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: palette.ink,
+    marginBottom: 12,
+  },
+  calendarMonthBlock: {
+    marginBottom: 16,
+  },
+  calendarMonthLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: palette.textMuted,
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  calendarWeekRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  calendarWeekHeader: {
+    width: "13%",
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "700",
+    color: palette.textMuted,
+    paddingBottom: 4,
+  },
+  calendarCell: {
+    width: "13%",
+    aspectRatio: 1,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calendarCellDone: {
+    backgroundColor: "#22c55e",
+  },
+  calendarDayText: {
+    fontSize: 11,
+    color: palette.textSoft,
+  },
+  calendarDayTextDone: {
+    color: "#fff",
+    fontWeight: "700",
   },
 });

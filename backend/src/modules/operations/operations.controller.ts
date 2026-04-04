@@ -590,3 +590,132 @@ export const updateGymSettings = async (req: Request, res: Response): Promise<vo
 
   res.json({ message: "Configuracion actualizada", settings: { currency: gym.currency } });
 };
+
+export const getKpi = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  if (actor.role !== UserRole.admin) throw new HttpError(403, "Solo el administrador puede ver los KPIs");
+
+  const now = new Date();
+  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const weekStart = new Date(todayStart);
+  weekStart.setUTCDate(todayStart.getUTCDate() - 6);
+
+  const [
+    totalActiveMembers,
+    membersWithActiveMembership,
+    newUsersToday,
+    activeTrainersNow,
+    transactionsToday,
+    transactionsWeek,
+  ] = await Promise.all([
+    prisma.user.count({
+      where: { gymId: actor.gymId, isActive: true, role: "member" },
+    }),
+    prisma.user.count({
+      where: { gymId: actor.gymId, isActive: true, role: "member", membershipEndAt: { gt: now } },
+    }),
+    prisma.user.count({
+      where: { gymId: actor.gymId, isActive: true, createdAt: { gte: todayStart } },
+    }),
+    prisma.trainerPresenceSession.count({
+      where: { gymId: actor.gymId, endedAt: null },
+    }),
+    prisma.membershipTransaction.findMany({
+      where: {
+        gymId: actor.gymId,
+        createdAt: { gte: todayStart },
+      },
+      select: { type: true, amount: true, currency: true },
+    }),
+    prisma.membershipTransaction.findMany({
+      where: {
+        gymId: actor.gymId,
+        createdAt: { gte: weekStart },
+      },
+      select: { type: true, amount: true, currency: true },
+    }),
+  ]);
+
+  const gym = await prisma.gym.findUnique({
+    where: { id: actor.gymId },
+    select: { currency: true },
+  });
+  const reportCurrency = normalizeCurrency(gym?.currency);
+
+  const sumAmount = (rows: { amount: number | null; currency: string | null }[]) =>
+    rows.reduce((acc, r) => acc + (r.amount ?? 0), 0);
+
+  res.json({
+    kpi: {
+      totalActiveMembers,
+      membersWithActiveMembership,
+      newUsersToday,
+      activeTrainersNow,
+      today: {
+        registrations: transactionsToday.filter((t) => t.type === "activation").length,
+        renewals: transactionsToday.filter((t) => t.type === "renewal").length,
+        revenue: sumAmount(transactionsToday),
+      },
+      week: {
+        registrations: transactionsWeek.filter((t) => t.type === "activation").length,
+        renewals: transactionsWeek.filter((t) => t.type === "renewal").length,
+        revenue: sumAmount(transactionsWeek),
+      },
+      currency: reportCurrency,
+    },
+  });
+};
+
+export const getChurnRisk = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  if (actor.role !== UserRole.admin) throw new HttpError(403, "Solo el administrador puede ver alertas de abandono");
+
+  const CHURN_DAYS = 6;
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - CHURN_DAYS * 24 * 60 * 60 * 1000);
+
+  // Active members with valid membership
+  const activeMembers = await prisma.user.findMany({
+    where: {
+      gymId: actor.gymId,
+      isActive: true,
+      role: "member",
+      membershipEndAt: { gt: now },
+    },
+    select: { id: true, fullName: true, membershipEndAt: true },
+  });
+
+  if (activeMembers.length === 0) {
+    res.json({ churnRisk: [] });
+    return;
+  }
+
+  // Last activity per member from ai_chat_logs
+  const memberIds = activeMembers.map((m) => m.id);
+  const lastLogs = await prisma.aIChatLog.groupBy({
+    by: ["userId"],
+    where: { userId: { in: memberIds } },
+    _max: { createdAt: true },
+  });
+
+  const lastActivityMap = new Map(
+    lastLogs.map((row) => [row.userId, row._max.createdAt]),
+  );
+
+  const churnRisk = activeMembers
+    .map((member) => {
+      const lastActivity = lastActivityMap.get(member.id) ?? null;
+      const daysSince = lastActivity
+        ? Math.floor((now.getTime() - lastActivity.getTime()) / (24 * 60 * 60 * 1000))
+        : null;
+      return { userId: member.id, fullName: member.fullName, lastActivity, daysSince };
+    })
+    .filter((m) => m.lastActivity === null || (m.daysSince !== null && m.daysSince >= CHURN_DAYS))
+    .sort((a, b) => (b.daysSince ?? 9999) - (a.daysSince ?? 9999));
+
+  res.json({ churnRisk });
+};
