@@ -382,8 +382,12 @@ Customize the routine to match the user context. Return ONLY valid JSON.
       throw this.extractProviderError(error);
     }
 
-    const content = (response.choices[0]?.message?.content || "").trim();
-    
+    const rawContent = (response.choices[0]?.message?.content || "").trim();
+
+    // Strip potential markdown code fences (```json ... ``` or ``` ... ```)
+    const codeBlockMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const content = codeBlockMatch?.[1]?.trim() ?? rawContent;
+
     // Validate that response contains valid JSON structure with sessions
     try {
       const parsed = JSON.parse(content);
@@ -394,11 +398,11 @@ Customize the routine to match the user context. Return ONLY valid JSON.
         throw new Error("Some sessions have no exercises");
       }
     } catch (error) {
-      // If JSON is invalid or incomplete, throw error for user feedback
-      const validationError = error instanceof Error ? error.message : "Invalid JSON from AI";
-      throw new Error(`Routine generation incomplete: ${validationError}. Please try again.`);
+      // Surface as AI provider error so it returns 502 with a user-friendly message
+      const detail = error instanceof Error ? error.message : "Invalid JSON from AI";
+      throw new Error(`AI provider error: No se pudo generar la rutina completa. Por favor intenta de nuevo. (${detail})`);
     }
-    
+
     await this.saveLogSafely({
       userId,
       type: "ROUTINE_GENERATION",
@@ -473,10 +477,13 @@ Reglas:
       throw this.extractProviderError(error);
     }
 
-    const content = (response.choices[0]?.message?.content || "").trim();
+    const rawDayContent = (response.choices[0]?.message?.content || "").trim();
+    const dayCodeBlockMatch = rawDayContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const dayContent = dayCodeBlockMatch?.[1]?.trim() ?? rawDayContent;
+
     let newSession: RoutineSession;
     try {
-      newSession = JSON.parse(content) as RoutineSession;
+      newSession = JSON.parse(dayContent) as RoutineSession;
       if (!Array.isArray(newSession.exercises) || newSession.exercises.length < 1) {
         throw new Error("Invalid session exercises");
       }
@@ -485,8 +492,9 @@ Reglas:
       }
       newSession.exercises = newSession.exercises.slice(0, targetExerciseCount);
       newSession.day = targetSession.day;
-    } catch {
-      throw new Error("Could not regenerate routine day. Please try again.");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Invalid JSON from AI";
+      throw new Error(`AI provider error: No se pudo regenerar el dia de rutina. Por favor intenta de nuevo. (${detail})`);
     }
 
     const updatedSessions = currentRoutine.sessions.map((session) =>
@@ -571,14 +579,17 @@ Responde SOLO JSON valido:
         throw this.extractProviderError(error);
       }
 
-      const content = (response.choices[0]?.message?.content || "").trim();
+      const rawReplContent = (response.choices[0]?.message?.content || "").trim();
+      const replCodeBlock = rawReplContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      const replContent = replCodeBlock?.[1]?.trim() ?? rawReplContent;
       try {
-        replacement = JSON.parse(content) as RoutineExercise;
+        replacement = JSON.parse(replContent) as RoutineExercise;
         if (!replacement.name || typeof replacement.sets !== "number") {
           throw new Error("Invalid replacement exercise");
         }
-      } catch {
-        throw new Error("Could not recommend replacement exercise. Please try again.");
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "Invalid JSON from AI";
+        throw new Error(`AI provider error: No se pudo recomendar un ejercicio de reemplazo. Por favor intenta de nuevo. (${detail})`);
       }
     }
 
@@ -666,9 +677,11 @@ Reglas:
       throw this.extractProviderError(error);
     }
 
-    const content = (response.choices[0]?.message?.content || "").trim();
+    const rawOptContent = (response.choices[0]?.message?.content || "").trim();
+    const optCodeBlock = rawOptContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const optContent = optCodeBlock?.[1]?.trim() ?? rawOptContent;
     try {
-      const parsed = JSON.parse(content) as { options?: RoutineExercise[] };
+      const parsed = JSON.parse(optContent) as { options?: RoutineExercise[] };
       const options = (parsed.options || [])
         .filter((item) => item && item.name)
         .slice(0, count)
@@ -685,8 +698,9 @@ Reglas:
       }
 
       return options;
-    } catch {
-      throw new Error("Could not generate replacement options. Please try again.");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Invalid JSON from AI";
+      throw new Error(`AI provider error: No se pudieron generar opciones de reemplazo. Por favor intenta de nuevo. (${detail})`);
     }
   }
 
