@@ -5,9 +5,9 @@
 
 -- 1. Trainer reusable template routines
 CREATE TABLE IF NOT EXISTS trainer_routine_templates (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  trainer_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  gym_id      UUID NOT NULL REFERENCES gyms(id) ON DELETE CASCADE,
+  id          TEXT DEFAULT gen_random_uuid()::TEXT PRIMARY KEY,
+  trainer_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  gym_id      TEXT NOT NULL REFERENCES gyms(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   purpose     TEXT NOT NULL,
   created_at  TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -19,8 +19,8 @@ CREATE INDEX IF NOT EXISTS idx_trt_gym    ON trainer_routine_templates(gym_id);
 
 -- 2. Exercises within a template
 CREATE TABLE IF NOT EXISTS trainer_routine_template_exercises (
-  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  template_id   UUID NOT NULL REFERENCES trainer_routine_templates(id) ON DELETE CASCADE,
+  id            TEXT DEFAULT gen_random_uuid()::TEXT PRIMARY KEY,
+  template_id   TEXT NOT NULL REFERENCES trainer_routine_templates(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
   original_name TEXT,
   reps          INTEGER NOT NULL,
@@ -34,11 +34,11 @@ CREATE INDEX IF NOT EXISTS idx_trte_template ON trainer_routine_template_exercis
 
 -- 3. Routines assigned to specific members
 CREATE TABLE IF NOT EXISTS trainer_assigned_routines (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  trainer_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  member_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  gym_id      UUID NOT NULL REFERENCES gyms(id) ON DELETE CASCADE,
-  template_id UUID REFERENCES trainer_routine_templates(id) ON DELETE SET NULL,
+  id          TEXT DEFAULT gen_random_uuid()::TEXT PRIMARY KEY,
+  trainer_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  member_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  gym_id      TEXT NOT NULL REFERENCES gyms(id) ON DELETE CASCADE,
+  template_id TEXT REFERENCES trainer_routine_templates(id) ON DELETE SET NULL,
   name        TEXT NOT NULL,
   purpose     TEXT NOT NULL,
   ai_warnings JSONB,
@@ -52,8 +52,8 @@ CREATE INDEX IF NOT EXISTS idx_tar_gym     ON trainer_assigned_routines(gym_id);
 
 -- 4. Exercises within an assigned routine
 CREATE TABLE IF NOT EXISTS trainer_assigned_exercises (
-  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  routine_id    UUID NOT NULL REFERENCES trainer_assigned_routines(id) ON DELETE CASCADE,
+  id            TEXT DEFAULT gen_random_uuid()::TEXT PRIMARY KEY,
+  routine_id    TEXT NOT NULL REFERENCES trainer_assigned_routines(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
   original_name TEXT,
   reps          INTEGER NOT NULL,
