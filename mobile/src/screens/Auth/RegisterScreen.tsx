@@ -38,7 +38,7 @@ export function RegisterScreen() {
     <LinearGradient colors={palette.gradientHero} style={styles.shell}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
       >
         <ScrollView

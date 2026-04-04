@@ -54,6 +54,7 @@ export const createAssistanceRequest = async (
       data: {
         gymId: actor.gymId,
         memberId: actor.id,
+        type: req.body.type ?? null,
         description: req.body.description,
       },
       select: {

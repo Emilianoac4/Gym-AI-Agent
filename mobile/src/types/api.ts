@@ -431,6 +431,7 @@ export interface AssistanceRequest {
   memberId: string;
   trainerId: string | null;
   status: AssistanceRequestStatus;
+  type: string | null;
   description: string;
   resolution: string | null;
   rating: number | null;

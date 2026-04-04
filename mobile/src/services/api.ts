@@ -809,7 +809,7 @@ export const api = {
 
   /* ─── Assistance Requests ────────────────────────────────── */
 
-  createAssistanceRequest: (token: string, body: { description: string }) =>
+  createAssistanceRequest: (token: string, body: { type?: string; description: string }) =>
     request<{ message: string; request: AssistanceRequest }>("/assistance", {
       method: "POST",
       token,

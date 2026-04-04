@@ -35,6 +35,13 @@ const STATUS_COLOR: Record<string, string> = {
   RATED: palette.textMuted,
 };
 
+const ALERT_TYPES = [
+  { value: "acoso",     label: "Acoso" },
+  { value: "incidente", label: "Incidente" },
+  { value: "accidente", label: "Accidente" },
+  { value: "lesion",    label: "Lesión" },
+];
+
 function StatusBadge({ status }: { status: string }) {
   return (
     <View style={[styles.badge, { backgroundColor: STATUS_COLOR[status] ?? palette.line }]}>
@@ -56,12 +63,19 @@ function RequestCard({
     year: "numeric",
   });
 
+  const typeLabel = ALERT_TYPES.find((t) => t.value === item.type)?.label;
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <StatusBadge status={item.status} />
         <Text style={styles.cardDate}>{date}</Text>
       </View>
+      {typeLabel ? (
+        <View style={styles.typePill}>
+          <Text style={styles.typePillText}>{typeLabel}</Text>
+        </View>
+      ) : null}
       <Text style={styles.cardDescription}>{item.description}</Text>
       {item.resolution ? (
         <View style={styles.resolutionBox}>
@@ -90,6 +104,8 @@ export function AssistanceScreen() {
   // New request modal
   const [modalVisible, setModalVisible] = useState(false);
   const [description, setDescription] = useState("");
+  const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
+  const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Rate modal
@@ -131,9 +147,14 @@ export function AssistanceScreen() {
     }
     setSubmitting(true);
     try {
-      await api.createAssistanceRequest(token, { description: description.trim() });
+      await api.createAssistanceRequest(token, {
+        type: selectedType,
+        description: description.trim(),
+      });
       setModalVisible(false);
       setDescription("");
+      setSelectedType(undefined);
+      setTypeMenuOpen(false);
       await load();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al crear solicitud";
@@ -206,44 +227,80 @@ export function AssistanceScreen() {
       )}
 
       {/* New request modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.overlay}>
-          <KeyboardAvoidingView
-            style={styles.modalKeyboard}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <ScrollView
-              contentContainerStyle={styles.modalScrollContent}
-              keyboardShouldPersistTaps="handled"
+      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+        <KeyboardAvoidingView
+          style={styles.overlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalVisible(false)} />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Nueva solicitud</Text>
+
+            {/* Type selector */}
+            <TouchableOpacity
+              style={styles.typeMenuTrigger}
+              onPress={() => setTypeMenuOpen((v) => !v)}
+              activeOpacity={0.75}
             >
-              <View style={styles.modalCard}>
-                <Text style={styles.modalTitle}>Nueva solicitud</Text>
-                <Text style={styles.modalLabel}>¿En qué necesitas ayuda?</Text>
-                <TextInput
-                  style={styles.textArea}
-                  placeholder="Describe tu solicitud..."
-                  placeholderTextColor={palette.textMuted}
-                  multiline
-                  numberOfLines={4}
-                  value={description}
-                  onChangeText={setDescription}
-                />
-                <TouchableOpacity
-                  style={[styles.submitButton, submitting && styles.buttonDisabled]}
-                  onPress={() => void onSubmit()}
-                  disabled={submitting}
-                >
-                  <Text style={styles.submitButtonText}>
-                    {submitting ? "Enviando..." : "Enviar solicitud"}
-                  </Text>
-                </TouchableOpacity>
-                <Pressable onPress={() => setModalVisible(false)} style={styles.cancelLink}>
-                  <Text style={styles.cancelLinkText}>Cancelar</Text>
-                </Pressable>
+              <Text style={styles.typeMenuTriggerText}>
+                {selectedType
+                  ? ALERT_TYPES.find((t) => t.value === selectedType)?.label
+                  : "Desplegar menú de alertas"}
+              </Text>
+              <Text style={styles.typeMenuChevron}>{typeMenuOpen ? "▲" : "▼"}</Text>
+            </TouchableOpacity>
+
+            {typeMenuOpen ? (
+              <View style={styles.typeMenuList}>
+                {ALERT_TYPES.map((t) => (
+                  <TouchableOpacity
+                    key={t.value}
+                    style={[
+                      styles.typeMenuOption,
+                      selectedType === t.value && styles.typeMenuOptionActive,
+                    ]}
+                    onPress={() => {
+                      setSelectedType(t.value);
+                      setTypeMenuOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.typeMenuOptionText,
+                        selectedType === t.value && styles.typeMenuOptionTextActive,
+                      ]}
+                    >
+                      {t.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </View>
+            ) : null}
+
+            <Text style={styles.modalLabel}>¿En qué necesitas ayuda?</Text>
+            <TextInput
+              style={styles.textArea}
+              placeholder="Describe tu solicitud..."
+              placeholderTextColor={palette.textMuted}
+              multiline
+              numberOfLines={4}
+              value={description}
+              onChangeText={setDescription}
+            />
+            <TouchableOpacity
+              style={[styles.submitButton, submitting && styles.buttonDisabled]}
+              onPress={() => void onSubmit()}
+              disabled={submitting}
+            >
+              <Text style={styles.submitButtonText}>
+                {submitting ? "Enviando..." : "Enviar solicitud"}
+              </Text>
+            </TouchableOpacity>
+            <Pressable onPress={() => { setModalVisible(false); setTypeMenuOpen(false); }} style={styles.cancelLink}>
+              <Text style={styles.cancelLinkText}>Cancelar</Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Rate modal */}
@@ -428,14 +485,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "flex-end",
   },
-  modalKeyboard: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  modalScrollContent: {
-    flexGrow: 1,
-    justifyContent: "flex-end",
-  },
   modalCard: {
     backgroundColor: palette.card,
     borderTopLeftRadius: 24,
@@ -451,6 +500,66 @@ const styles = StyleSheet.create({
   modalLabel: {
     fontSize: 14,
     color: palette.textMuted,
+  },
+  typeMenuTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: palette.surface,
+  },
+  typeMenuTriggerText: {
+    fontSize: 14,
+    color: palette.ink,
+    flex: 1,
+  },
+  typeMenuChevron: {
+    fontSize: 11,
+    color: palette.textMuted,
+    marginLeft: 8,
+  },
+  typeMenuList: {
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginTop: -4,
+  },
+  typeMenuOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: palette.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.line,
+  },
+  typeMenuOptionActive: {
+    backgroundColor: palette.sand,
+  },
+  typeMenuOptionText: {
+    fontSize: 14,
+    color: palette.ink,
+  },
+  typeMenuOptionTextActive: {
+    color: palette.cocoa,
+    fontWeight: "700",
+  },
+  typePill: {
+    alignSelf: "flex-start",
+    backgroundColor: palette.sand,
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: palette.gold,
+  },
+  typePillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: palette.cocoa,
   },
   textArea: {
     borderWidth: 1,

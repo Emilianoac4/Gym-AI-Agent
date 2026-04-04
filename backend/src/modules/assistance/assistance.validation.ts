@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const createAssistanceRequestSchema = z.object({
+  type: z.enum(["acoso", "incidente", "accidente", "lesion"]).optional(),
   description: z.string().min(1, "La descripcion no puede estar vacia").max(500),
 });
 

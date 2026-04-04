@@ -487,6 +487,7 @@ model AssistanceRequest {
   memberId     String                  @map("member_id")
   trainerId    String?                 @map("trainer_id")
   status       AssistanceRequestStatus @default(CREATED)
+  type         String?                 @map("type")
   description  String
   resolution   String?
   rating       Int?

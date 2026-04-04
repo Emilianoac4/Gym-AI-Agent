@@ -224,7 +224,7 @@ export function LoginScreen() {
     <LinearGradient colors={palette.gradientHero} style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
       >
       <ScrollView

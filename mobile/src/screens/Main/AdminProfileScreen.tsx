@@ -4,7 +4,10 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -714,7 +717,11 @@ export function AdminProfileScreen() {
       </Modal>
 
       <Modal visible={sendModalVisible} animationType="fade" transparent onRequestClose={() => setSendModalVisible(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSendModalVisible(false)} />
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Enviar reporte</Text>
             <Text style={styles.modalSubtitle}>Elige como deseas compartir el reporte actual</Text>
@@ -737,7 +744,7 @@ export function AdminProfileScreen() {
               <Text style={styles.optionCancelText}>Cerrar</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
