@@ -2,7 +2,10 @@
 -- Ejecuta este archivo en Supabase para dejar el esquema limpio y funcional
 
 -- 1. UserRole enum
-CREATE TYPE "UserRole" AS ENUM ('admin', 'member', 'trainer');
+DO $$ BEGIN
+  CREATE TYPE "UserRole" AS ENUM ('admin', 'member', 'trainer');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 2. Tablas principales
 CREATE TABLE IF NOT EXISTS "gyms" (
@@ -88,8 +91,15 @@ CREATE TABLE IF NOT EXISTS "measurements" (
 );
 
 -- 3. Membership transactions y resumen diario
-CREATE TYPE "MembershipTransactionType" AS ENUM ('activation', 'renewal');
-CREATE TYPE "PaymentMethod" AS ENUM ('card', 'transfer', 'cash');
+DO $$ BEGIN
+  CREATE TYPE "MembershipTransactionType" AS ENUM ('activation', 'renewal');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "PaymentMethod" AS ENUM ('card', 'transfer', 'cash');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "membership_transactions" (
   "id" TEXT PRIMARY KEY,
