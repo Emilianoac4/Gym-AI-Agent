@@ -1,6 +1,6 @@
 export const palette = {
   moss: "#22C55E",
-  gold: "#FFFFFF",
+  gold: "#F5A623",
   coral: "#6B7280",
   cocoa: "#111827",
   cream: "#F3F4F6",
