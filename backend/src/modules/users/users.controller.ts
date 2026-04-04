@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Request, Response } from "express";
 import { AuditAction, HealthProvider, MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
@@ -210,7 +211,7 @@ export const updateAvatarById = async (req: Request<{ id: string }>, res: Respon
 
   const profile = await prisma.userProfile.upsert({
     where: { userId: id },
-    create: { id: require("crypto").randomUUID(), userId: id, avatarUrl: dataUri },
+    create: { id: randomUUID(), userId: id, avatarUrl: dataUri },
     update: { avatarUrl: dataUri },
   });
 
@@ -425,7 +426,7 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
       membershipStartAt: true,
       membershipEndAt: true,
       profile: {
-        select: { birthDate: true, avatarUrl: true },
+        select: { birthDate: true },
       },
     },
     orderBy: { createdAt: "desc" },

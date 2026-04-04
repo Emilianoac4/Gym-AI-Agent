@@ -3,12 +3,15 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { TrainerPresenceStatus } from "../../types/api";
@@ -26,6 +29,8 @@ export function TrainerProfileScreen({ navigation }: { navigation: any }) {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<TrainerPresenceStatus | null>(null);
   const [unreadThreads, setUnreadThreads] = useState(0);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const loadStatus = useCallback(async () => {
     if (!token) {
@@ -34,12 +39,14 @@ export function TrainerProfileScreen({ navigation }: { navigation: any }) {
 
     setLoading(true);
     try {
-      const [response, threadsData] = await Promise.all([
+      const [response, threadsData, profileData] = await Promise.all([
         api.getMyTrainerPresenceStatus(token),
         api.getMyThreads(token).catch(() => ({ threads: [] })),
+        user ? api.getProfile(user.id, token).catch(() => null) : Promise.resolve(null),
       ]);
       setStatus(response.status);
       setUnreadThreads(threadsData.threads.reduce((acc, item) => acc + item.unreadCount, 0));
+      if (profileData?.profile?.avatarUrl) setAvatarUri(profileData.profile.avatarUrl);
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo cargar el estado operativo";
       Alert.alert("Error", message);
@@ -78,12 +85,52 @@ export function TrainerProfileScreen({ navigation }: { navigation: any }) {
     ]);
   };
 
+  const onPickAvatar = async () => {
+    const { status: permStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permStatus !== "granted") {
+      Alert.alert("Permiso requerido", "Necesitamos acceso a tus fotos para actualizar tu imagen.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+    if (result.canceled || !result.assets[0] || !user || !token) return;
+    try {
+      setUploadingAvatar(true);
+      const manipulated = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 320, height: 320 } }],
+        { compress: 0.65, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+      if (!manipulated.base64) return;
+      const res = await api.updateAvatar(user.id, token, manipulated.base64);
+      setAvatarUri(res.avatarUrl);
+      Alert.alert("Foto actualizada", "Tu foto de perfil se guardó correctamente.");
+    } catch (error) {
+      Alert.alert("Error", error instanceof Error ? error.message : "No se pudo actualizar la foto.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.heroCard}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>{user?.fullName?.charAt(0).toUpperCase() ?? "E"}</Text>
-        </View>
+        <TouchableOpacity onPress={onPickAvatar} disabled={uploadingAvatar} style={styles.avatarCircle}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarText}>{user?.fullName?.charAt(0).toUpperCase() ?? "E"}</Text>
+          )}
+          {uploadingAvatar ? (
+            <View style={styles.avatarOverlay}>
+              <ActivityIndicator color={palette.white} />
+            </View>
+          ) : null}
+        </TouchableOpacity>
         <Text style={styles.name}>{user?.fullName ?? "Entrenador"}</Text>
         <Text style={styles.email}>{user?.email ?? ""}</Text>
         <View style={styles.roleBadge}>
@@ -192,6 +239,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
+    overflow: "hidden",
+  },
+  avatarImage: { width: "100%", height: "100%" },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarText: { fontSize: 30, fontWeight: "700", color: palette.cream },
   name: { fontSize: 22, fontWeight: "700", color: palette.cream, marginBottom: 4 },

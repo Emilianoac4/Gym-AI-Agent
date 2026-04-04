@@ -146,8 +146,8 @@ export function HomeScreen() {
               ? api.listAssistanceRequests(token).catch(() => ({ requests: [], total: 0 }))
               : Promise.resolve({ requests: [], total: 0 }),
             isMember
-              ? api.getTrainerPresenceSummary(token, 1).catch(() => ({ days: [] as any[] }))
-              : Promise.resolve({ days: [] as any[] }),
+              ? api.getActiveTrainers(token).catch(() => ({ trainers: [] as { id: string; fullName: string; avatarUrl: string | null }[] }))
+              : Promise.resolve({ trainers: [] as { id: string; fullName: string; avatarUrl: string | null }[] }),
           ]);
 
           if (cancelled) {
@@ -167,13 +167,9 @@ export function HomeScreen() {
               : 0,
           );
           // Active trainers for members
-          const todayMemberPresence = (presenceData as { days: any[] }).days[0];
+          const activeTrainersList = (presenceData as { trainers: { id: string; fullName: string; avatarUrl: string | null }[] }).trainers;
           setActiveTrainers(
-            isMember && todayMemberPresence
-              ? todayMemberPresence.trainers
-                  .filter((t: any) => t.sessions.some((s: any) => s.isActive))
-                  .map((t: any) => t.trainerName as string)
-              : [],
+            isMember ? activeTrainersList.map((t) => t.fullName) : [],
           );
         } catch {
           if (!cancelled) {

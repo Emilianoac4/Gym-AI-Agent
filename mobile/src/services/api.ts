@@ -660,6 +660,12 @@ export const api = {
       },
     ),
 
+  getActiveTrainers: (token: string) =>
+    request<{ trainers: { id: string; fullName: string; avatarUrl: string | null }[] }>(
+      `/operations/active-trainers`,
+      { token },
+    ),
+
   getMembershipReport: (token: string, days: number, specificDate?: string) =>
     request<{ report: MembershipReport }>(
       `/operations/membership-report?days=${days}${

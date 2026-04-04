@@ -253,6 +253,29 @@ export const getTrainerPresenceSummary = async (
   });
 };
 
+// Lightweight endpoint usable by any gym member to see which trainers are active right now
+export const getActiveTrainers = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  const activeSessions = await prisma.trainerPresenceSession.findMany({
+    where: { gymId: actor.gymId, endedAt: null },
+    select: { trainerUserId: true },
+  });
+
+  const activeIds = [...new Set(activeSessions.map((s) => s.trainerUserId))];
+
+  const trainers = activeIds.length === 0
+    ? []
+    : await prisma.user.findMany({
+        where: { id: { in: activeIds }, role: UserRole.trainer, isActive: true },
+        select: { id: true, fullName: true, profile: { select: { avatarUrl: true } } },
+        orderBy: { fullName: "asc" },
+      });
+
+  res.json({ trainers: trainers.map((t) => ({ id: t.id, fullName: t.fullName, avatarUrl: t.profile?.avatarUrl ?? null })) });
+};
+
 const buildMembershipReport = async (
   gymId: string,
   days: number,

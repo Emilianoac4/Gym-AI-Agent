@@ -3,6 +3,7 @@ import { authenticate, authorizeAction } from "../../middleware/auth.middleware"
 import { validate } from "../../middleware/validate.middleware";
 import {
   exportMembershipReport,
+  getActiveTrainers,
   getGymSettings,
   getMembershipReport,
   getMyTrainerPresenceStatus,
@@ -26,6 +27,12 @@ operationsRouter.get(
   authenticate,
   authorizeAction("trainer.presence.write"),
   getMyTrainerPresenceStatus,
+);
+
+operationsRouter.get(
+  "/active-trainers",
+  authenticate,
+  getActiveTrainers,
 );
 
 operationsRouter.put(
