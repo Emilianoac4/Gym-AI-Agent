@@ -4,6 +4,7 @@ import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useAuth } from "../context/AuthContext";
+import { designSystem } from "../theme/designSystem";
 import { palette } from "../theme/palette";
 import { RoleSelectScreen } from "../screens/Auth/RoleSelectScreen";
 import { LoginScreen } from "../screens/Auth/LoginScreen";
@@ -46,14 +47,14 @@ function MemberTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: palette.cocoa,
-        tabBarInactiveTintColor: palette.tabInactive,
+        tabBarActiveTintColor: designSystem.colors.primary,
+        tabBarInactiveTintColor: designSystem.colors.textSecondary,
         tabBarStyle: {
           height: 72,
           paddingBottom: 10,
           paddingTop: 10,
-          backgroundColor: palette.card,
-          borderTopColor: palette.line,
+          backgroundColor: designSystem.colors.surface,
+          borderTopColor: designSystem.colors.borderSubtle,
           borderTopWidth: 1,
         },
         tabBarLabelStyle: {

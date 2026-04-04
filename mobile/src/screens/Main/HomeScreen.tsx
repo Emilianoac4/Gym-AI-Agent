@@ -3,6 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View 
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { AppButton } from "../../components/AppButton";
+import { MemberHomeContent } from "../../components/MemberHomeContent";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
@@ -68,6 +69,34 @@ function formatAvailabilityWindow(day: GymAvailabilityDay | null): string {
   }
 
   return "Horario publicado para hoy";
+}
+
+function getTodayRoutineSession(routine: GeneratedRoutine | null): GeneratedRoutine["sessions"][number] | null {
+  if (!routine) {
+    return null;
+  }
+
+  const todayKey = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][new Date().getDay()];
+  return routine.sessions.find((session) => normalize(session.day) === todayKey) ?? null;
+}
+
+function getMemberInsight(
+  summary: ProgressSummary | null,
+  strengthSummary: StrengthProgressSummary | null
+): string {
+  if (strengthSummary && strengthSummary.improvingExercises > 0) {
+    return `Mejoraste tu rendimiento en ${strengthSummary.improvingExercises} ejercicio(s). Aprovecha ese impulso en tu siguiente sesion.`;
+  }
+
+  if (summary && !summary.hasMeasurementThisWeek) {
+    return "Registra tus medidas esta semana para que Tuco ajuste mejor tus recomendaciones.";
+  }
+
+  if (summary && summary.weeklyCheckInStreak > 0) {
+    return `Llevas ${summary.weeklyCheckInStreak} semana(s) manteniendo constancia. Sigue con tu proxima sesion para no romper la racha.`;
+  }
+
+  return "Empieza tu entrenamiento de hoy para generar nuevas recomendaciones y mantener tu progreso activo.";
 }
 
 export function HomeScreen() {
@@ -219,6 +248,30 @@ export function HomeScreen() {
     return pending ? `${formatDayLabel(pending.day)} · ${pending.focus}` : "Semana completada";
   }, [completedThisWeek, routine]);
 
+  const todayRoutineSession = useMemo(() => getTodayRoutineSession(routine), [routine]);
+
+  const memberHeroTitle = todayRoutineSession?.focus ?? nextSession;
+
+  const memberHeroMeta = useMemo(() => {
+    if (todayRoutineSession) {
+      return `${formatDayLabel(todayRoutineSession.day)} · ${todayRoutineSession.duration_minutes} min · ${todayRoutineSession.exercises.length} ejercicios`;
+    }
+
+    if (routine) {
+      return `${routine.weekly_sessions} sesiones planificadas esta semana`;
+    }
+
+    return "Abre tu rutina y prepara tu primera sesion personalizada.";
+  }, [routine, todayRoutineSession]);
+
+  const memberProgressLabel = routine
+    ? `${completedCount}/${routine.weekly_sessions} sesiones completadas esta semana`
+    : "Aun no tienes una rutina activa";
+
+  const memberProgressValue = routine ? completedCount / Math.max(routine.weekly_sessions, 1) : 0;
+
+  const memberInsight = useMemo(() => getMemberInsight(summary, strengthSummary), [strengthSummary, summary]);
+
   const urgentOpenTickets = emergencyTickets.filter((ticket) => !ticket.resolvedAt);
 
   const submitEmergencyTicket = async () => {
@@ -242,6 +295,40 @@ export function HomeScreen() {
       Alert.alert("No se pudo enviar", "Intenta de nuevo en unos segundos.");
     }
   };
+
+  if (isMember) {
+    return (
+      <MemberHomeContent
+        userName={user?.fullName ?? "Atleta"}
+        heroTitle={memberHeroTitle}
+        heroMeta={memberHeroMeta}
+        progressLabel={memberProgressLabel}
+        progressValue={memberProgressValue}
+        insight={memberInsight}
+        onStartWorkout={() => navigation.navigate("Rutina")}
+        secondaryActions={[
+          {
+            key: "routine",
+            label: "Ver rutina completa",
+            description: "Revisa ejercicios, series y progreso antes de entrenar.",
+            onPress: () => navigation.navigate("Rutina"),
+          },
+          {
+            key: "measurements",
+            label: "Registrar medidas",
+            description: "Actualiza tus metricas para seguir tu avance real.",
+            onPress: () => navigation.navigate("Medidas"),
+          },
+          {
+            key: "coach",
+            label: "Hablar con Tuco",
+            description: "Pide una recomendacion rapida sobre entrenamiento o recuperacion.",
+            onPress: () => navigation.navigate("Coach"),
+          },
+        ]}
+      />
+    );
+  }
 
   return (
     <LinearGradient colors={[palette.cream, palette.gold, palette.coral]} style={styles.shell}>
@@ -421,85 +508,7 @@ export function HomeScreen() {
               </>
             ) : null}
 
-            {isMember ? (
-              <>
-                <View style={styles.kpiRow}>
-                  <View style={styles.kpiCardPrimary}>
-                    <Text style={styles.kpiLabelDark}>Sesiones completadas</Text>
-                    <Text style={styles.kpiValueDark}>
-                      {routine ? `${completedCount}/${routine.weekly_sessions}` : "Sin rutina"}
-                    </Text>
-                    <Text style={styles.kpiHintDark}>Semana actual</Text>
-                  </View>
-                  <View style={styles.kpiCardSecondary}>
-                    <Text style={styles.kpiLabelLight}>Ejercicios en mejora</Text>
-                    <Text style={styles.kpiValueLight}>{strengthSummary?.improvingExercises ?? 0}</Text>
-                    <Text style={styles.kpiHintLight}>Ultimos 120 dias</Text>
-                  </View>
-                </View>
-
-                <View style={styles.sectionCard}>
-                  <Text style={styles.sectionEyebrow}>Coaches disponibles</Text>
-                  <Text style={styles.sectionTitle}>Activos ahora</Text>
-                  {activeTrainers.length === 0 ? (
-                    <Text style={styles.featureDetail}>No hay entrenadores activos en este momento.</Text>
-                  ) : (
-                    activeTrainers.map((name) => (
-                      <View key={name} style={styles.featureItem}>
-                        <View style={[styles.featureDot, { backgroundColor: palette.moss }]} />
-                        <Text style={styles.featureTitle}>{name}</Text>
-                      </View>
-                    ))
-                  )}
-                </View>
-
-                <View style={styles.sectionCard}>
-                  <Text style={styles.sectionEyebrow}>Siguiente paso</Text>
-                  <Text style={styles.sectionTitle}>{nextSession}</Text>
-                  <Text style={styles.featureDetail}>{summary?.nextAction ?? "Completa tu perfil, genera una rutina y registra tu primera sesión."}</Text>
-                </View>
-
-                <View style={styles.sectionCard}>
-                  <Text style={styles.sectionEyebrow}>Resumen del miembro</Text>
-                  <Text style={styles.sectionTitle}>Estado actual</Text>
-                  <View style={styles.featureItem}>
-                    <View style={styles.featureDot} />
-                    <View style={styles.featureCopy}>
-                      <Text style={styles.featureTitle}>Racha semanal</Text>
-                      <Text style={styles.featureDetail}>{summary ? `${summary.weeklyCheckInStreak} semana(s) con check-in` : "Aún no hay check-ins registrados"}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <View style={styles.featureDot} />
-                    <View style={styles.featureCopy}>
-                      <Text style={styles.featureTitle}>Mediciones</Text>
-                      <Text style={styles.featureDetail}>{summary ? `${summary.measurementsCount} registros guardados` : "Sin mediciones registradas"}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <View style={styles.featureDot} />
-                    <View style={styles.featureCopy}>
-                      <Text style={styles.featureTitle}>Carga de trabajo</Text>
-                      <Text style={styles.featureDetail}>{strengthSummary ? `${strengthSummary.activeExercises} ejercicios con historial de carga` : "Aún no hay progreso de cargas registrado"}</Text>
-                    </View>
-                  </View>
-                  <Pressable style={styles.inlineActionPrimary} onPress={() => setTicketModalVisible(true)}>
-                    <Text style={styles.inlineActionPrimaryText}>Reportar emergencia</Text>
-                  </Pressable>
-                </View>
-
-                <View style={styles.twoColumnRow}>
-                  <View style={styles.miniCardWarm}>
-                    <Text style={styles.miniLabel}>Rutina</Text>
-                    <Text style={styles.miniValue}>{routine ? `${routine.sessions.length} dias planificados` : "Pendiente de generar"}</Text>
-                  </View>
-                  <View style={styles.miniCardDark}>
-                    <Text style={styles.miniLabelDark}>Coach IA</Text>
-                    <Text style={styles.miniValueDark}>Memoria conversacional y contexto del perfil activos</Text>
-                  </View>
-                </View>
-              </>
-            ) : null}
+            {isMember ? null : null}
           </>
         )}
 
