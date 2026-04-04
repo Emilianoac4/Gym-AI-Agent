@@ -22,17 +22,15 @@ export function AppButton({ label, onPress, disabled }: Props) {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: palette.cocoa,
-    paddingVertical: 15,
+    backgroundColor: palette.moss,
+    paddingVertical: 16,
     borderRadius: 16,
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: palette.gold,
-    shadowColor: palette.cocoa,
-    shadowOpacity: 0.18,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 14,
-    elevation: 4,
+    shadowColor: palette.ink,
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 3,
   },
   pressed: {
     opacity: 0.92,
@@ -44,8 +42,8 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   text: {
-    color: palette.gold,
+    color: palette.white,
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "600",
   },
 });

@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             name: "default",
             importance: Notifications.AndroidImportance.MAX,
             vibrationPattern: [0, 250, 250, 250],
-            lightColor: "#463C33",
+            lightColor: "#22C55E",
           });
         }
 

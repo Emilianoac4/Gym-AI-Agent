@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
   Modal,
   Platform,
@@ -8,59 +11,131 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
-  ActivityIndicator,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
-import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
-import { palette } from "../../theme/palette";
 
 const GOAL_OPTIONS = [
   "Aumento de masa muscular",
-  "Pérdida de peso",
+  "Perdida de peso",
   "Aumento de movilidad",
   "Mejora de resistencia",
-  "Tonificación general",
-  "Recomposición corporal",
-  "Recuperación post-lesión",
+  "Tonificacion general",
+  "Recomposicion corporal",
+  "Recuperacion post-lesion",
   "Mejora de fuerza",
   "Salud general",
   "Rendimiento deportivo",
 ];
 
-const LEVEL_OPTIONS = [
-  "Principiante",
-  "Básico",
-  "Intermedio",
-  "Avanzado",
-  "Élite",
-];
+const LEVEL_OPTIONS = ["Principiante", "Basico", "Intermedio", "Avanzado", "Elite"];
 
 const AVAILABILITY_OPTIONS = Array.from({ length: 7 }, (_, i) =>
-  i === 0 ? "1 día por semana" : `${i + 1} días por semana`,
+  i === 0 ? "1 dia por semana" : `${i + 1} dias por semana`,
 );
+
+const design = {
+  color: {
+    primary: "#22C55E",
+    background: "#F9FAFB",
+    card: "#FFFFFF",
+    textPrimary: "#111827",
+    textSecondary: "#6B7280",
+    border: "#E5E7EB",
+    input: "#F3F4F6",
+    white: "#FFFFFF",
+    danger: "#EF4444",
+    warning: "#6B7280",
+  },
+  spacing: {
+    x1: 8,
+    x2: 16,
+    x3: 24,
+    x4: 32,
+  },
+  radius: {
+    input: 12,
+    card: 16,
+    pill: 999,
+  },
+  shadow: {
+    card: {
+      shadowColor: "#111827",
+      shadowOpacity: 0.08,
+      shadowOffset: { width: 0, height: 6 },
+      shadowRadius: 14,
+      elevation: 3,
+    },
+    soft: {
+      shadowColor: "#111827",
+      shadowOpacity: 0.06,
+      shadowOffset: { width: 0, height: 4 },
+      shadowRadius: 10,
+      elevation: 2,
+    },
+  },
+  fontFamily: Platform.select({
+    ios: "SF Pro Text",
+    android: "Inter",
+    default: undefined,
+  }),
+} as const;
 
 function calculateAge(isoDate: string): number {
   const today = new Date();
   const birth = new Date(isoDate);
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age -= 1;
   return age;
 }
 
-function formatDisplayDate(date: Date): string {
+function formatDate(date: Date): string {
   const day = date.getUTCDate().toString().padStart(2, "0");
   const month = (date.getUTCMonth() + 1).toString().padStart(2, "0");
   return `${day}/${month}/${date.getUTCFullYear()}`;
 }
 
-// ── Inline picker modal shown as a bottom sheet ────────────────────────────
+function TapSurface({
+  onPress,
+  children,
+  style,
+  disabled,
+}: {
+  onPress: () => void;
+  children: React.ReactNode;
+  style?: any;
+  disabled?: boolean;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const animate = (value: number) => {
+    Animated.timing(scale, {
+      toValue: value,
+      duration: 170,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      onPressIn={() => animate(0.985)}
+      onPressOut={() => animate(1)}
+    >
+      <Animated.View style={[style, { transform: [{ scale }] }, disabled && styles.disabled]}>
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 function OptionPicker({
   visible,
   title,
@@ -73,54 +148,49 @@ function OptionPicker({
   title: string;
   options: string[];
   selected: string;
-  onSelect: (v: string) => void;
+  onSelect: (value: string) => void;
   onClose: () => void;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={pickerStyles.backdrop} onPress={onClose} />
-      <View style={pickerStyles.sheet}>
-        <Text style={pickerStyles.sheetTitle}>{title}</Text>
+    <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose} />
+      <View style={styles.modalSheet}>
+        <Text style={styles.modalTitle}>{title}</Text>
         <ScrollView showsVerticalScrollIndicator={false}>
-          {options.map((opt) => (
-            <TouchableOpacity
-              key={opt}
-              style={[pickerStyles.option, selected === opt && pickerStyles.optionSelected]}
-              onPress={() => { onSelect(opt); onClose(); }}
-            >
-              <Text style={[pickerStyles.optionText, selected === opt && pickerStyles.optionTextSelected]}>
-                {opt}
-              </Text>
-              {selected === opt && <Text style={pickerStyles.checkmark}>✓</Text>}
-            </TouchableOpacity>
-          ))}
+          {options.map((option) => {
+            const active = option === selected;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => {
+                  onSelect(option);
+                  onClose();
+                }}
+                style={({ pressed }) => [styles.modalOption, active && styles.modalOptionActive, pressed && styles.modalOptionPressed]}
+              >
+                <Text style={[styles.modalOptionText, active && styles.modalOptionTextActive]}>{option}</Text>
+                {active ? <Text style={styles.modalCheck}>Seleccionado</Text> : null}
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
     </Modal>
   );
 }
 
-// ── Main screen ─────────────────────────────────────────────────────────────
 export function ProfileScreen({ navigation }: { navigation: any }) {
   const { user, token } = useAuth();
 
-  // Profile fields
   const [goal, setGoal] = useState("");
   const [availability, setAvailability] = useState("");
   const [experienceLvl, setExperienceLvl] = useState("");
   const [birthDate, setBirthDate] = useState<Date | null>(null);
-
-  // Avatar
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-
-  // Membership
   const [membershipEndAt, setMembershipEndAt] = useState<string | null>(null);
-
-  // Misc
   const [unreadThreads, setUnreadThreads] = useState(0);
 
-  // Picker visibility
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showGoalPicker, setShowGoalPicker] = useState(false);
   const [showAvailPicker, setShowAvailPicker] = useState(false);
@@ -142,11 +212,44 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
         setMembershipEndAt((data.user as any)?.membershipEndAt ?? null);
         setUnreadThreads(threadsData.threads.reduce((acc, item) => acc + item.unreadCount, 0));
       } catch {
-        // Keep defaults
+        // Keep defaults when profile loading fails.
       }
     };
+
     void load();
   }, [token, user]);
+
+  const membershipInfo = useMemo(() => {
+    if (user?.role !== "member" || !membershipEndAt) return null;
+
+    const end = new Date(membershipEndAt);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffMs = end.getTime() - today.getTime();
+    const daysLeft = Math.ceil(diffMs / 86400000);
+
+    if (daysLeft <= 0) {
+      return {
+        status: "Vencida",
+        detail: `Vencio el ${end.toLocaleDateString("es-CR", { day: "2-digit", month: "short", year: "numeric" })}`,
+        color: design.color.danger,
+      };
+    }
+
+    if (daysLeft <= 7) {
+      return {
+        status: `${daysLeft} ${daysLeft === 1 ? "dia restante" : "dias restantes"}`,
+        detail: `Renovacion sugerida antes del ${end.toLocaleDateString("es-CR", { day: "2-digit", month: "short", year: "numeric" })}`,
+        color: design.color.warning,
+      };
+    }
+
+    return {
+      status: `${daysLeft} dias restantes`,
+      detail: `Vence el ${end.toLocaleDateString("es-CR", { day: "2-digit", month: "short", year: "numeric" })}`,
+      color: design.color.primary,
+    };
+  }, [membershipEndAt, user?.role]);
 
   const onPickAvatar = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -154,13 +257,16 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
       Alert.alert("Permiso requerido", "Necesitamos acceso a tus fotos para actualizar tu imagen de perfil.");
       return;
     }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 1,
     });
+
     if (result.canceled || !result.assets[0]) return;
+
     try {
       setUploadingAvatar(true);
       const manipulated = await ImageManipulator.manipulateAsync(
@@ -171,7 +277,7 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
       if (!manipulated.base64 || !user || !token) return;
       const res = await api.updateAvatar(user.id, token, manipulated.base64);
       setAvatarUri(res.avatarUrl);
-      Alert.alert("Foto actualizada", "Tu foto de perfil se guardó correctamente.");
+      Alert.alert("Foto actualizada", "Tu foto de perfil se guardo correctamente.");
     } catch (error) {
       Alert.alert("Error", error instanceof Error ? error.message : "No se pudo actualizar la foto.");
     } finally {
@@ -197,87 +303,77 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
   const displayAge = birthDate ? calculateAge(birthDate.toISOString()) : null;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Avatar */}
-      <View style={styles.avatarSection}>
-        <TouchableOpacity onPress={onPickAvatar} disabled={uploadingAvatar} style={styles.avatarWrapper}>
+    <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <View style={styles.headerRow}>
+        <TapSurface onPress={onPickAvatar} disabled={uploadingAvatar} style={styles.avatarButton}>
           {avatarUri ? (
             <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
           ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarCameraIcon}>📷</Text>
-              <Text style={styles.avatarPlaceholderText}>Foto de perfil</Text>
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarFallbackText}>
+                {user?.fullName?.charAt(0)?.toUpperCase() || "U"}
+              </Text>
             </View>
           )}
           {uploadingAvatar ? (
             <View style={styles.avatarOverlay}>
-              <ActivityIndicator color={palette.white} />
+              <ActivityIndicator color={design.color.white} />
             </View>
           ) : null}
-        </TouchableOpacity>
-        <Text style={styles.avatarName}>{user?.fullName ?? ""}</Text>
-        {displayAge !== null && displayAge >= 0 && displayAge < 120 ? (
-          <Text style={styles.avatarAge}>{displayAge} años</Text>
-        ) : null}
-      </View>
+        </TapSurface>
 
-      <View style={styles.heroCard}>
-        <Text style={styles.eyebrow}>Perfil base</Text>
-        <Text style={styles.title}>Perfil Deportivo</Text>
-        <Text style={styles.subtitle}>Estos datos alimentan la IA para rutinas y nutrición personalizadas.</Text>
-      </View>
-
-      {/* ─ Membership status (member only) ─ */}
-      {user?.role === "member" && membershipEndAt ? (() => {
-        const end = new Date(membershipEndAt);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const diffMs = end.getTime() - today.getTime();
-        const daysLeft = Math.ceil(diffMs / 86400000);
-        const expired = daysLeft <= 0;
-        const urgent = daysLeft <= 7 && !expired;
-        return (
-          <View style={[styles.membershipCard, expired && styles.membershipCardExpired, urgent && styles.membershipCardUrgent]}>
-            <Text style={styles.membershipLabel}>Membresía</Text>
-            {expired ? (
-              <Text style={styles.membershipValueExpired}>Vencida</Text>
-            ) : (
-              <Text style={[styles.membershipValue, urgent && styles.membershipValueUrgent]}>
-                {daysLeft} {daysLeft === 1 ? "día restante" : "días restantes"}
-              </Text>
-            )}
-            <Text style={styles.membershipSub}>Vence: {end.toLocaleDateString("es-CR", { day: "2-digit", month: "short", year: "numeric" })}</Text>
-          </View>
-        );
-      })() : null}
-
-      <View style={styles.card}>
-        {/* ─ Fecha de nacimiento ─ */}
-        <Text style={styles.label}>Fecha de nacimiento</Text>
-        <TouchableOpacity style={styles.pickerRow} onPress={() => setShowDatePicker(true)}>
-          <Text style={[styles.pickerRowText, !birthDate && { color: palette.textSoft }]}>
-            {birthDate ? formatDisplayDate(birthDate) : "Seleccionar fecha"}
+        <View style={styles.headerTextBlock}>
+          <Text style={styles.headerTitle}>{user?.fullName ?? "Mi perfil"}</Text>
+          <Text style={styles.headerSubtitle}>
+            {displayAge !== null && displayAge >= 0 && displayAge < 120
+              ? `${displayAge} anos`
+              : "Actualiza tus datos deportivos"}
           </Text>
-          <Text style={styles.pickerChevron}>▼</Text>
-        </TouchableOpacity>
+        </View>
+      </View>
 
-        {/* iOS inline date picker */}
-        {showDatePicker && Platform.OS === "ios" && (
+      <View style={styles.highlightCard}>
+        <Text style={styles.highlightLabel}>Estado de membresia</Text>
+        <Text style={[styles.highlightStatus, { color: membershipInfo?.color ?? design.color.primary }]}>
+          {membershipInfo?.status ?? "Activa"}
+        </Text>
+        <Text style={styles.highlightDetail}>{membershipInfo?.detail ?? "Plan vigente y listo para entrenar"}</Text>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Datos de perfil</Text>
+
+        <Text style={styles.inputLabel}>Fecha de nacimiento</Text>
+        <TapSurface
+          onPress={() => setShowDatePicker(true)}
+          style={[
+            styles.inputSurface,
+            showDatePicker && styles.inputSurfaceFocus,
+          ]}
+        >
+          <Text style={[styles.inputValue, !birthDate && styles.inputPlaceholder]}>
+            {birthDate ? formatDate(birthDate) : "Seleccionar fecha"}
+          </Text>
+        </TapSurface>
+
+        {showDatePicker && Platform.OS === "ios" ? (
           <View style={styles.iosDateWrapper}>
             <DateTimePicker
               value={birthDate ?? new Date(2000, 0, 1)}
               mode="date"
               display="spinner"
               maximumDate={new Date()}
-              onChange={(_, date) => { if (date) setBirthDate(date); }}
+              onChange={(_, date) => {
+                if (date) setBirthDate(date);
+              }}
             />
-            <TouchableOpacity style={styles.iosDoneBtn} onPress={() => setShowDatePicker(false)}>
-              <Text style={styles.iosDoneBtnText}>Listo</Text>
-            </TouchableOpacity>
+            <TapSurface onPress={() => setShowDatePicker(false)} style={styles.iosDateDoneButton}>
+              <Text style={styles.iosDateDoneText}>Listo</Text>
+            </TapSurface>
           </View>
-        )}
-        {/* Android date picker (dialog) */}
-        {showDatePicker && Platform.OS === "android" && (
+        ) : null}
+
+        {showDatePicker && Platform.OS === "android" ? (
           <DateTimePicker
             value={birthDate ?? new Date(2000, 0, 1)}
             mode="date"
@@ -288,52 +384,54 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
               if (date) setBirthDate(date);
             }}
           />
-        )}
+        ) : null}
 
-        {/* ─ Objetivo ─ */}
-        <Text style={styles.label}>Objetivo</Text>
-        <TouchableOpacity style={styles.pickerRow} onPress={() => setShowGoalPicker(true)}>
-          <Text style={[styles.pickerRowText, !goal && { color: palette.textSoft }]}>
+        <Text style={styles.inputLabel}>Objetivo</Text>
+        <TapSurface
+          onPress={() => setShowGoalPicker(true)}
+          style={[styles.inputSurface, showGoalPicker && styles.inputSurfaceFocus]}
+        >
+          <Text style={[styles.inputValue, !goal && styles.inputPlaceholder]}>
             {goal || "Seleccionar objetivo"}
           </Text>
-          <Text style={styles.pickerChevron}>▼</Text>
-        </TouchableOpacity>
+        </TapSurface>
 
-        {/* ─ Disponibilidad ─ */}
-        <Text style={styles.label}>Disponibilidad semanal</Text>
-        <TouchableOpacity style={styles.pickerRow} onPress={() => setShowAvailPicker(true)}>
-          <Text style={[styles.pickerRowText, !availability && { color: palette.textSoft }]}>
-            {availability || "Seleccionar días"}
+        <Text style={styles.inputLabel}>Disponibilidad semanal</Text>
+        <TapSurface
+          onPress={() => setShowAvailPicker(true)}
+          style={[styles.inputSurface, showAvailPicker && styles.inputSurfaceFocus]}
+        >
+          <Text style={[styles.inputValue, !availability && styles.inputPlaceholder]}>
+            {availability || "Seleccionar dias"}
           </Text>
-          <Text style={styles.pickerChevron}>▼</Text>
-        </TouchableOpacity>
+        </TapSurface>
 
-        {/* ─ Nivel ─ */}
-        <Text style={styles.label}>Nivel</Text>
-        <TouchableOpacity style={styles.pickerRow} onPress={() => setShowLevelPicker(true)}>
-          <Text style={[styles.pickerRowText, !experienceLvl && { color: palette.textSoft }]}>
+        <Text style={styles.inputLabel}>Nivel</Text>
+        <TapSurface
+          onPress={() => setShowLevelPicker(true)}
+          style={[styles.inputSurface, showLevelPicker && styles.inputSurfaceFocus]}
+        >
+          <Text style={[styles.inputValue, !experienceLvl && styles.inputPlaceholder]}>
             {experienceLvl || "Seleccionar nivel"}
           </Text>
-          <Text style={styles.pickerChevron}>▼</Text>
-        </TouchableOpacity>
+        </TapSurface>
 
-        <View style={{ height: 16 }} />
-        <AppButton label="Guardar perfil" onPress={onSave} />
+        <View style={styles.buttonRow}>
+          <TapSurface onPress={onSave} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonText}>Guardar perfil</Text>
+          </TapSurface>
 
-        <TouchableOpacity
-          style={styles.messagesButton}
-          onPress={() => navigation.navigate("MyMessages")}
-        >
-          <Text style={styles.messagesButtonText}>💬 Mis mensajes</Text>
-          {unreadThreads > 0 ? (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadBadgeText}>{unreadThreads}</Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
+          <TapSurface onPress={() => navigation.navigate("MyMessages")} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonText}>Mis mensajes</Text>
+            {unreadThreads > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadThreads}</Text>
+              </View>
+            ) : null}
+          </TapSurface>
+        </View>
       </View>
 
-      {/* ─ Modals ─ */}
       <OptionPicker
         visible={showGoalPicker}
         title="Objetivo"
@@ -362,252 +460,267 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
   );
 }
 
-const pickerStyles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  sheet: {
-    backgroundColor: palette.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    maxHeight: "60%",
-  },
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: palette.ink,
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  option: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    marginBottom: 4,
-  },
-  optionSelected: {
-    backgroundColor: palette.moss + "18",
-  },
-  optionText: {
-    fontSize: 15,
-    color: palette.ink,
-    flex: 1,
-  },
-  optionTextSelected: {
-    fontWeight: "700",
-    color: palette.moss,
-  },
-  checkmark: {
-    color: palette.moss,
-    fontWeight: "800",
-    fontSize: 16,
-  },
-});
-
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: palette.background,
-    padding: 20,
+    backgroundColor: design.color.background,
+    paddingHorizontal: design.spacing.x2,
+    paddingTop: design.spacing.x3,
+    paddingBottom: design.spacing.x4,
   },
-  avatarSection: {
+  disabled: {
+    opacity: 0.6,
+  },
+  headerRow: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingTop: 24,
-    paddingBottom: 16,
+    marginBottom: design.spacing.x3,
   },
-  avatarWrapper: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  avatarButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     overflow: "hidden",
-    backgroundColor: palette.sand,
-    borderWidth: 2,
-    borderColor: palette.line,
-    marginBottom: 10,
+    backgroundColor: design.color.card,
+    ...design.shadow.soft,
   },
-  avatarImage: { width: "100%", height: "100%" },
-  avatarPlaceholder: {
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  avatarFallback: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: design.color.input,
   },
-  avatarCameraIcon: { fontSize: 28 },
-  avatarPlaceholderText: {
-    fontSize: 10,
-    color: palette.textMuted,
-    marginTop: 4,
-    fontWeight: "600",
+  avatarFallbackText: {
+    color: design.color.textPrimary,
+    fontSize: 20,
+    fontWeight: "700",
+    fontFamily: design.fontFamily,
   },
   avatarOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(17,24,39,0.45)",
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarName: {
+  headerTextBlock: {
+    marginLeft: design.spacing.x2,
+    flex: 1,
+  },
+  headerTitle: {
+    color: design.color.textPrimary,
+    fontSize: 20,
+    fontWeight: "700",
+    fontFamily: design.fontFamily,
+  },
+  headerSubtitle: {
+    marginTop: design.spacing.x1,
+    color: design.color.textSecondary,
+    fontSize: 14,
+    fontWeight: "400",
+    fontFamily: design.fontFamily,
+  },
+  highlightCard: {
+    backgroundColor: design.color.card,
+    borderRadius: design.radius.card,
+    padding: design.spacing.x3,
+    marginBottom: design.spacing.x3,
+    ...design.shadow.card,
+  },
+  highlightLabel: {
+    color: design.color.textSecondary,
+    fontSize: 14,
+    fontWeight: "500",
+    fontFamily: design.fontFamily,
+  },
+  highlightStatus: {
+    marginTop: design.spacing.x1,
+    color: design.color.primary,
+    fontSize: 30,
+    fontWeight: "700",
+    fontFamily: design.fontFamily,
+  },
+  highlightDetail: {
+    marginTop: design.spacing.x1,
+    color: design.color.textSecondary,
+    fontSize: 14,
+    fontWeight: "400",
+    fontFamily: design.fontFamily,
+  },
+  sectionCard: {
+    backgroundColor: design.color.card,
+    borderRadius: design.radius.card,
+    padding: design.spacing.x2,
+    ...design.shadow.card,
+  },
+  sectionTitle: {
+    color: design.color.textPrimary,
     fontSize: 18,
-    fontWeight: "800",
-    color: palette.ink,
+    fontWeight: "600",
+    marginBottom: design.spacing.x2,
+    fontFamily: design.fontFamily,
   },
-  avatarAge: {
-    fontSize: 13,
-    color: palette.textMuted,
-    marginTop: 2,
+  inputLabel: {
+    color: design.color.textPrimary,
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: design.spacing.x1,
+    marginTop: design.spacing.x2,
+    fontFamily: design.fontFamily,
   },
-  heroCard: {
-    backgroundColor: palette.card,
-    borderRadius: 24,
-    padding: 20,
+  inputSurface: {
+    borderRadius: design.radius.input,
+    backgroundColor: design.color.input,
     borderWidth: 1,
-    borderColor: palette.line,
-    marginBottom: 16,
+    borderColor: design.color.border,
+    paddingHorizontal: design.spacing.x2,
+    paddingVertical: 16,
+    minHeight: 48,
+    justifyContent: "center",
   },
-  eyebrow: {
-    color: palette.coral,
+  inputSurfaceFocus: {
+    borderColor: design.color.primary,
+    shadowColor: design.color.primary,
+    shadowOpacity: 0.16,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  inputValue: {
+    color: design.color.textPrimary,
+    fontSize: 15,
+    fontWeight: "500",
+    fontFamily: design.fontFamily,
+  },
+  inputPlaceholder: {
+    color: design.color.textSecondary,
+    fontWeight: "400",
+  },
+  iosDateWrapper: {
+    backgroundColor: design.color.card,
+    borderRadius: design.radius.input,
+    marginTop: design.spacing.x2,
+    padding: design.spacing.x1,
+    ...design.shadow.soft,
+  },
+  iosDateDoneButton: {
+    alignSelf: "flex-end",
+    backgroundColor: design.color.input,
+    borderRadius: design.radius.input,
+    paddingHorizontal: design.spacing.x2,
+    paddingVertical: 8,
+    marginTop: design.spacing.x1,
+  },
+  iosDateDoneText: {
+    color: design.color.textPrimary,
+    fontWeight: "600",
+    fontFamily: design.fontFamily,
+  },
+  buttonRow: {
+    marginTop: design.spacing.x3,
+    rowGap: design.spacing.x2,
+  },
+  primaryButton: {
+    backgroundColor: design.color.primary,
+    borderRadius: design.radius.input,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    ...design.shadow.soft,
+  },
+  primaryButtonText: {
+    color: design.color.white,
+    fontSize: 16,
+    fontWeight: "600",
+    fontFamily: design.fontFamily,
+  },
+  secondaryButton: {
+    backgroundColor: design.color.input,
+    borderRadius: design.radius.input,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  secondaryButtonText: {
+    color: design.color.textPrimary,
+    fontSize: 16,
+    fontWeight: "500",
+    fontFamily: design.fontFamily,
+  },
+  badge: {
+    position: "absolute",
+    right: design.spacing.x2,
+    top: 8,
+    minWidth: 24,
+    height: 24,
+    borderRadius: design.radius.pill,
+    backgroundColor: design.color.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  badgeText: {
+    color: design.color.white,
     fontSize: 12,
     fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+    fontFamily: design.fontFamily,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: palette.ink,
-    marginTop: 8,
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(17,24,39,0.28)",
   },
-  subtitle: {
-    marginTop: 8,
-    color: palette.textMuted,
+  modalSheet: {
+    maxHeight: "62%",
+    backgroundColor: design.color.card,
+    borderTopLeftRadius: design.radius.card,
+    borderTopRightRadius: design.radius.card,
+    padding: design.spacing.x2,
+    ...design.shadow.card,
   },
-  card: {
-    backgroundColor: palette.card,
-    borderRadius: 20,
-    padding: 16,
+  modalTitle: {
+    color: design.color.textPrimary,
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: design.spacing.x2,
+    fontFamily: design.fontFamily,
+  },
+  modalOption: {
+    borderRadius: design.radius.input,
+    backgroundColor: design.color.input,
     borderWidth: 1,
-    borderColor: palette.line,
-  },
-  label: {
-    fontWeight: "700",
-    color: palette.ink,
-    marginBottom: 6,
-    marginTop: 12,
-  },
-  pickerRow: {
+    borderColor: design.color.border,
+    paddingHorizontal: design.spacing.x2,
+    paddingVertical: 16,
+    marginBottom: design.spacing.x1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: palette.line,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: palette.cream,
   },
-  pickerRowText: {
+  modalOptionPressed: {
+    opacity: 0.92,
+  },
+  modalOptionActive: {
+    borderColor: design.color.primary,
+  },
+  modalOptionText: {
+    color: design.color.textPrimary,
     fontSize: 15,
-    color: palette.ink,
-    flex: 1,
+    fontWeight: "500",
+    fontFamily: design.fontFamily,
   },
-  pickerChevron: {
-    fontSize: 11,
-    color: palette.textMuted,
+  modalOptionTextActive: {
+    color: design.color.primary,
+    fontWeight: "600",
   },
-  iosDateWrapper: {
-    backgroundColor: palette.cream,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: palette.line,
-    marginTop: 8,
-    overflow: "hidden",
-  },
-  iosDoneBtn: {
-    alignItems: "flex-end",
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: palette.line,
-  },
-  iosDoneBtnText: {
-    color: palette.moss,
-    fontWeight: "700",
-    fontSize: 15,
-  },
-  messagesButton: {
-    marginTop: 14,
-    backgroundColor: palette.sand,
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: palette.line,
-    position: "relative",
-  },
-  messagesButtonText: { fontSize: 14, fontWeight: "700", color: palette.cocoa },
-  unreadBadge: {
-    position: "absolute",
-    right: 10,
-    top: "50%",
-    marginTop: -11,
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 6,
-    backgroundColor: palette.coral,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  unreadBadgeText: {
-    color: palette.white,
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  membershipCard: {
-    backgroundColor: palette.card,
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: palette.line,
-    marginBottom: 16,
-    alignItems: "center",
-  },
-  membershipCardExpired: {
-    borderColor: "#ef4444",
-    backgroundColor: "#fff1f1",
-  },
-  membershipCardUrgent: {
-    borderColor: "#f59e0b",
-    backgroundColor: "#fffbeb",
-  },
-  membershipLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    color: palette.textMuted,
-    marginBottom: 6,
-  },
-  membershipValue: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#22c55e",
-  },
-  membershipValueUrgent: {
-    color: "#f59e0b",
-  },
-  membershipValueExpired: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#ef4444",
-  },
-  membershipSub: {
-    marginTop: 4,
+  modalCheck: {
+    color: design.color.primary,
     fontSize: 13,
-    color: palette.textMuted,
+    fontWeight: "600",
+    fontFamily: design.fontFamily,
   },
 });
 
