@@ -165,6 +165,8 @@ export function RoutineScreen() {
     );
   }, []);
 
+  const [selectedCalendarMonthIdx, setSelectedCalendarMonthIdx] = useState(2); // 0=2mo ago, 1=last, 2=current
+
   const availableWeeks = useMemo(() => {
     const weeks = new Set<string>();
     weeks.add(currentWeekStart);
@@ -723,13 +725,31 @@ export function RoutineScreen() {
 
           {/* ─ 3-month progress calendar ─ */}
           <View style={styles.calendarSection}>
-            <Text style={styles.calendarSectionTitle}>Progreso (3 meses)</Text>
-            {calendarMonths.map((monthStart) => {
+            <Text style={styles.calendarSectionTitle}>Progreso mensual</Text>
+            <View style={styles.calendarNavRow}>
+              <TouchableOpacity
+                onPress={() => setSelectedCalendarMonthIdx((i) => Math.max(0, i - 1))}
+                disabled={selectedCalendarMonthIdx === 0}
+                style={[styles.calendarNavBtn, selectedCalendarMonthIdx === 0 && styles.calendarNavBtnDisabled]}
+              >
+                <Text style={styles.calendarNavBtnText}>{'<'}</Text>
+              </TouchableOpacity>
+              <Text style={styles.calendarMonthLabel}>
+                {`${MONTH_LABELS[calendarMonths[selectedCalendarMonthIdx].getUTCMonth()]} ${calendarMonths[selectedCalendarMonthIdx].getUTCFullYear()}`}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSelectedCalendarMonthIdx((i) => Math.min(2, i + 1))}
+                disabled={selectedCalendarMonthIdx === 2}
+                style={[styles.calendarNavBtn, selectedCalendarMonthIdx === 2 && styles.calendarNavBtnDisabled]}
+              >
+                <Text style={styles.calendarNavBtnText}>{'>'}</Text>
+              </TouchableOpacity>
+            </View>
+            {(() => {
+              const monthStart = calendarMonths[selectedCalendarMonthIdx];
               const cells = buildCalMonthMatrix(monthStart);
-              const label = `${MONTH_LABELS[monthStart.getUTCMonth()]} ${monthStart.getUTCFullYear()}`;
               return (
-                <View key={monthStart.toISOString()} style={styles.calendarMonthBlock}>
-                  <Text style={styles.calendarMonthLabel}>{label}</Text>
+                <View>
                   <View style={styles.calendarWeekRow}>
                     {WEEK_HEADERS.map((h) => (
                       <Text key={h} style={styles.calendarWeekHeader}>{h}</Text>
@@ -753,7 +773,7 @@ export function RoutineScreen() {
                   ))}
                 </View>
               );
-            })}
+            })()}
           </View>
 
           {routine.sessions.map((session) => {
@@ -1697,6 +1717,28 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: palette.ink,
     marginBottom: 12,
+  },
+  calendarNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  calendarNavBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: palette.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calendarNavBtnDisabled: {
+    opacity: 0.3,
+  },
+  calendarNavBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: palette.ink,
   },
   calendarMonthBlock: {
     marginBottom: 16,

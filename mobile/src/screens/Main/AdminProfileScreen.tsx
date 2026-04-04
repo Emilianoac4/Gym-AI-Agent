@@ -3,6 +3,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { AdminKpi, AssistanceRatingEntry, ChurnRiskEntry, GymSettings, MembershipReport, TrainerPresenceSummaryDay } from "../../types/api";
@@ -111,6 +114,8 @@ const buildMonthMatrix = (monthStart: Date) => {
 export function AdminProfileScreen() {
   const { user, token, logout } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [presenceDays, setPresenceDays] = useState<TrainerPresenceSummaryDay[]>([]);
   const [report, setReport] = useState<MembershipReport | null>(null);
@@ -132,6 +137,37 @@ export function AdminProfileScreen() {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   });
   const calendarDays = useMemo(() => buildMonthMatrix(calendarMonth), [calendarMonth]);
+
+  const onPickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permiso requerido", "Necesitamos acceso a tus fotos para actualizar tu imagen de perfil.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    try {
+      setUploadingAvatar(true);
+      const manipulated = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 320, height: 320 } }],
+        { compress: 0.65, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+      if (!manipulated.base64 || !user || !token) return;
+      const res = await api.updateAvatar(user.id, token, manipulated.base64);
+      setAvatarUri(res.avatarUrl);
+      Alert.alert("Foto actualizada", "Tu foto de perfil se guardo correctamente.");
+    } catch (error) {
+      Alert.alert("Error", error instanceof Error ? error.message : "No se pudo actualizar la foto.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const loadDashboard = useCallback(async () => {
     if (!token) {
@@ -155,6 +191,10 @@ export function AdminProfileScreen() {
       if (kpiResponse) setKpi(kpiResponse.kpi);
       setChurnRisk(churnResponse.churnRisk);
       setReportRangeLabel("1 semana");
+
+      // Load admin avatar
+      const profileData = await api.getProfile(user!.id, token).catch(() => null);
+      if (profileData?.profile?.avatarUrl) setAvatarUri(profileData.profile.avatarUrl);
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo cargar el panel administrativo";
       Alert.alert("Error", message);
@@ -288,9 +328,24 @@ export function AdminProfileScreen() {
     <>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.heroCard}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{user?.fullName?.charAt(0).toUpperCase() ?? "A"}</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.avatarCircle}
+            onPress={() => void onPickAvatar()}
+            disabled={uploadingAvatar}
+            activeOpacity={0.8}
+          >
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>{user?.fullName?.charAt(0).toUpperCase() ?? "A"}</Text>
+            )}
+            {uploadingAvatar ? (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color={palette.cream} />
+              </View>
+            ) : null}
+          </TouchableOpacity>
+          <Text style={styles.avatarCameraHint}>Toca para cambiar foto</Text>
           <Text style={styles.name}>{user?.fullName ?? "Administrador"}</Text>
           <Text style={styles.email}>{user?.email ?? ""}</Text>
           <View style={styles.roleBadge}>
@@ -698,13 +753,30 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: palette.cream + "30",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 6,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarCameraHint: {
+    fontSize: 11,
+    color: palette.cream + "99",
+    marginBottom: 10,
   },
   avatarText: { fontSize: 30, fontWeight: "700", color: palette.cream },
   name: { fontSize: 22, fontWeight: "700", color: palette.cream, marginBottom: 4 },
