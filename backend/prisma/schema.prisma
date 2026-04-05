@@ -107,7 +107,7 @@ model User {
   gymId             String      @map("gym_id")
   globalUserId      String      @map("global_user_id")
   email             String
-  username          String?     @unique
+  username          String?
   fullName          String      @map("full_name")
   role              UserRole    @default(member)
   membershipStartAt DateTime?   @map("membership_start_at")
@@ -122,6 +122,7 @@ model User {
   measurements  Measurement[]
   healthConnections UserHealthConnection[]
 
+  @@unique([gymId, username], name: "users_gym_id_username_key")
   @@index([gymId])
   @@index([globalUserId])
   @@map("users")

@@ -20,6 +20,13 @@ export const updateTemplateSchema = createTemplateSchema;
 
 const DAY_VALUES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
+export const updateAssignedRoutineSchema = z.object({
+  name: z.string().min(1).max(100),
+  purpose: z.string().min(1).max(500),
+  exercises: z.array(exerciseSchema).min(1),
+  scheduledDays: z.array(z.enum(DAY_VALUES)).optional(),
+});
+
 export const assignRoutineSchema = z.object({
   memberId: z.string().uuid(),
   name: z.string().min(1).max(100),
@@ -49,8 +56,9 @@ export const validateRoutineSchema = z.object({
   ).min(1),
 });
 
-export type CreateTemplateInput    = z.infer<typeof createTemplateSchema>;
-export type UpdateTemplateInput    = z.infer<typeof updateTemplateSchema>;
-export type AssignRoutineInput     = z.infer<typeof assignRoutineSchema>;
-export type StandardizeNameInput   = z.infer<typeof standardizeNameSchema>;
-export type ValidateRoutineInput   = z.infer<typeof validateRoutineSchema>;
+export type CreateTemplateInput         = z.infer<typeof createTemplateSchema>;
+export type UpdateTemplateInput         = z.infer<typeof updateTemplateSchema>;
+export type UpdateAssignedRoutineInput  = z.infer<typeof updateAssignedRoutineSchema>;
+export type AssignRoutineInput          = z.infer<typeof assignRoutineSchema>;
+export type StandardizeNameInput        = z.infer<typeof standardizeNameSchema>;
+export type ValidateRoutineInput        = z.infer<typeof validateRoutineSchema>;

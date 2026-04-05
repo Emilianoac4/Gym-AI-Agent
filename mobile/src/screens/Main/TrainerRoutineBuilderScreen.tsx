@@ -16,14 +16,24 @@ import { api } from "../../services/api";
 import { ExerciseInput, TrainerRoutineTemplate } from "../../types/api";
 import { palette } from "../../theme/palette";
 
-type Mode = "assign" | "preset";
+type Mode = "assign" | "preset" | "edit-preset" | "edit-assigned";
 
 interface RouteParams {
   mode: Mode;
   memberId?: string;
   memberName?: string;
-  /** Pre-fill from a template (assign mode using preset) */
+  /** Pre-fill from a template (assign mode using preset, or edit-preset) */
   template?: TrainerRoutineTemplate | null;
+  /** ID of the assigned routine being edited (edit-assigned mode) */
+  assignedRoutineId?: string;
+  /** Pre-filled data for edit-assigned mode */
+  assignedRoutine?: {
+    id: string;
+    name: string;
+    purpose: string;
+    scheduledDays?: string[] | null;
+    exercises: ExerciseInput[];
+  } | null;
 }
 
 interface ExerciseRow extends ExerciseInput {
@@ -49,14 +59,23 @@ export function TrainerRoutineBuilderScreen({
   navigation: any;
   route: { params: RouteParams };
 }) {
-  const { mode, memberId, memberName, template } = route.params;
+  const { mode, memberId, memberName, template, assignedRoutineId, assignedRoutine } = route.params;
   const { token } = useAuth();
 
-  const [routineName, setRoutineName] = useState(template?.name ?? "");
-  const [purpose, setPurpose] = useState(template?.purpose ?? "");
+  const isAssign = mode === "assign";
+  const isEditPreset = mode === "edit-preset";
+  const isEditAssigned = mode === "edit-assigned";
+
+  const prefillName = assignedRoutine?.name ?? template?.name ?? "";
+  const prefillPurpose = assignedRoutine?.purpose ?? template?.purpose ?? "";
+  const prefillExercises = assignedRoutine?.exercises ?? template?.exercises;
+
+  const [routineName, setRoutineName] = useState(prefillName);
+  const [purpose, setPurpose] = useState(prefillPurpose);
   const [exercises, setExercises] = useState<ExerciseRow[]>(() => {
-    if (template?.exercises && template.exercises.length > 0) {
-      return template.exercises.map((e) => ({
+    const source = prefillExercises;
+    if (source && source.length > 0) {
+      return source.map((e) => ({
         _key: Math.random().toString(36).slice(2),
         _standardizing: false,
         name: e.name,
@@ -72,7 +91,9 @@ export function TrainerRoutineBuilderScreen({
   });
   const [submitting, setSubmitting] = useState(false);
   const [memberPreferredDays, setMemberPreferredDays] = useState<string[]>([]);
-  const [scheduledDays, setScheduledDays] = useState<string[]>([]);
+  const [scheduledDays, setScheduledDays] = useState<string[]>(
+    Array.isArray(assignedRoutine?.scheduledDays) ? assignedRoutine.scheduledDays : []
+  );
 
   const ALL_DAYS: { value: string; label: string }[] = [
     { value: "monday",    label: "Lun" },
@@ -84,11 +105,24 @@ export function TrainerRoutineBuilderScreen({
     { value: "sunday",    label: "Dom" },
   ];
 
-  const isAssign = mode === "assign";
-
   const availableDays = isAssign && memberPreferredDays.length > 0
     ? ALL_DAYS.filter((d) => memberPreferredDays.includes(d.value))
     : ALL_DAYS;
+
+  const title = isAssign
+    ? `Rutina para ${memberName ?? "usuario"}`
+    : isEditPreset
+    ? "Editar plantilla"
+    : isEditAssigned
+    ? `Editar rutina de ${memberName ?? "usuario"}`
+    : "Nueva plantilla";
+  const submitLabel = isAssign
+    ? "Subir rutina"
+    : isEditPreset
+    ? "Guardar cambios"
+    : isEditAssigned
+    ? "Guardar cambios"
+    : "Guardar plantilla";
 
   useEffect(() => {
     if (!isAssign || !memberId || !token) return;
@@ -96,11 +130,6 @@ export function TrainerRoutineBuilderScreen({
       .then((res) => setMemberPreferredDays(res.preferredDays))
       .catch(() => {});
   }, [isAssign, memberId, token]);
-
-  const title = isAssign
-    ? `Rutina para ${memberName ?? "usuario"}`
-    : "Nueva plantilla";
-  const submitLabel = isAssign ? "Subir rutina" : "Guardar plantilla";
 
   /* ─── exercise helpers ─────────────────────────────── */
 
@@ -178,6 +207,36 @@ export function TrainerRoutineBuilderScreen({
     setSubmitting(true);
 
     try {
+      if (isEditPreset) {
+        if (!template?.id) { setSubmitting(false); return; }
+        await api.updateTrainerTemplate(token, template.id, {
+          name: routineName.trim(),
+          purpose: purpose.trim(),
+          exercises: exercisePayload,
+        });
+        Alert.alert("Plantilla actualizada", `"${routineName}" se actualizó correctamente.`, [
+          { text: "OK", onPress: () => navigation.goBack() },
+        ]);
+        setSubmitting(false);
+        return;
+      }
+
+      if (isEditAssigned) {
+        const routineId = assignedRoutineId ?? assignedRoutine?.id;
+        if (!routineId) { setSubmitting(false); return; }
+        await api.updateTrainerAssignedRoutine(token, routineId, {
+          name: routineName.trim(),
+          purpose: purpose.trim(),
+          exercises: exercisePayload,
+          scheduledDays: scheduledDays.length > 0 ? scheduledDays : undefined,
+        });
+        Alert.alert("Rutina actualizada", `"${routineName}" se actualizó correctamente.`, [
+          { text: "OK", onPress: () => navigation.goBack() },
+        ]);
+        setSubmitting(false);
+        return;
+      }
+
       if (!isAssign) {
         // Save as preset/template
         await api.createTrainerTemplate(token, {
@@ -188,11 +247,12 @@ export function TrainerRoutineBuilderScreen({
         Alert.alert("Plantilla guardada", `La plantilla "${routineName}" se guardó correctamente.`, [
           { text: "OK", onPress: () => navigation.goBack() },
         ]);
+        setSubmitting(false);
         return;
       }
 
       // Assign mode: validate first
-      if (!memberId) return;
+      if (!memberId) { setSubmitting(false); return; }
 
       let acceptedWarnings: string[] = [];
 
@@ -249,6 +309,7 @@ export function TrainerRoutineBuilderScreen({
         `La rutina "${routineName}" fue asignada a ${memberName ?? "el usuario"} y se les envió una notificación.`,
         [{ text: "OK", onPress: () => navigation.goBack() }],
       );
+      setSubmitting(false);
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "No se pudo completar la operación.");
       setSubmitting(false);
@@ -276,11 +337,11 @@ export function TrainerRoutineBuilderScreen({
           </View>
         </View>
 
-        {/* Days selector — assign mode only */}
-        {isAssign && (
+        {/* Days selector — assign and edit-assigned modes */}
+        {(isAssign || isEditAssigned) && (
           <View style={styles.sectionBox}>
             <Text style={styles.sectionLabel}>Días de la rutina</Text>
-            {memberPreferredDays.length === 0 && (
+            {isAssign && memberPreferredDays.length === 0 && (
               <Text style={styles.daysHint}>El usuario no tiene días preferidos configurados. Puedes seleccionar cualquier día.</Text>
             )}
             <View style={styles.daysRow}>

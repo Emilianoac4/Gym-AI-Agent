@@ -13,6 +13,11 @@ export const registerSchema = z.object({
     email: z.string().email(),
     password: z.string().min(8),
     fullName: z.string().min(2),
+    username: z
+      .string()
+      .min(3, "El nombre de usuario debe tener al menos 3 caracteres")
+      .max(30, "El nombre de usuario no puede tener mas de 30 caracteres")
+      .regex(/^[a-zA-Z0-9]+$/, "El nombre de usuario solo puede contener letras y numeros"),
     role: z.enum(["admin", "trainer", "member"]).default("member"),
   }),
 });
@@ -23,7 +28,7 @@ export const loginSchema = z
     identifier: z.string().min(3).max(255).optional(),
     email: z.string().optional(), // backward compat
     password: z.string().min(8),
-    requestedRole: z.enum(["admin", "trainer", "member"]),
+    requestedRole: z.enum(["admin", "trainer", "member"]).optional(), // ignored by server; kept for backward compat
   })
   .transform((data) => ({
     identifier: (data.identifier ?? data.email ?? "").trim(),
@@ -42,7 +47,7 @@ export const selectGymSchema = z.object({
 
 export const oauthLoginSchema = z.object({
   idToken: z.string().min(20),
-  requestedRole: z.enum(["admin", "trainer", "member"]),
+  requestedRole: z.enum(["admin", "trainer", "member"]).optional(), // ignored by server; kept for backward compat
 });
 
 export const changeTemporaryPasswordSchema = z.object({

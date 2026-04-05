@@ -91,3 +91,16 @@ export const exerciseOptionsSchema = z.object({
   exerciseName: z.string().min(2).max(80),
   count: z.coerce.number().int().min(2).max(8).optional(),
 });
+
+export const addRoutineDaySchema = z.object({
+  day: z.enum(
+    ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+    { required_error: "Day is required", invalid_type_error: "Day must be a valid weekday" }
+  ),
+  focus: z
+    .string()
+    .min(1, "Focus is required")
+    .max(200, "Focus is too long"),
+});
+
+export type AddRoutineDayInput = z.infer<typeof addRoutineDaySchema>;

@@ -32,7 +32,6 @@ import {
   ThreadWithMessages,
   TrainerPresenceStatus,
   TrainerPresenceSummaryDay,
-  UserRole,
 } from "../types/api";
 
 const API_BASE_URL =
@@ -121,7 +120,7 @@ export const api = {
   ping: () =>
     request<unknown>("/health", { timeoutMs: 90000 }).catch(() => null),
 
-  login: (payload: { identifier: string; password: string; requestedRole: UserRole }) =>
+  login: (payload: { identifier: string; password: string }) =>
     requestWithRetry<{
       token?: string;
       user?: {
@@ -166,7 +165,7 @@ export const api = {
       timeoutMs: AUTH_TIMEOUT_MS,
     }),
 
-  loginWithGoogle: (payload: { idToken: string; requestedRole: UserRole }) =>
+  loginWithGoogle: (payload: { idToken: string }) =>
     requestWithRetry<{
       token: string;
       user: {
@@ -183,7 +182,7 @@ export const api = {
       timeoutMs: AUTH_TIMEOUT_MS,
     }),
 
-  loginWithApple: (payload: { idToken: string; requestedRole: UserRole }) =>
+  loginWithApple: (payload: { idToken: string }) =>
     requestWithRetry<{
       token: string;
       user: {
@@ -233,7 +232,7 @@ export const api = {
 
   register: (payload: {
     gym?: { name: string; ownerName: string; address?: string; phone?: string };
-    user: { email: string; password: string; fullName: string; role: "admin" | "trainer" | "member" };
+    user: { email: string; password: string; fullName: string; username: string; role: "admin" | "trainer" | "member" };
   }, token?: string) =>
     requestWithRetry<{ message: string; user: { id: string; email: string; fullName: string; role: "admin" | "trainer" | "member"; gymId: string } }>("/auth/register", {
       method: "POST",
@@ -337,6 +336,18 @@ export const api = {
       method: "POST",
       token,
       body,
+    }),
+
+  addRoutineDay: (
+    id: string,
+    token: string,
+    body: { day: string; focus: string }
+  ) =>
+    request<{ message: string; routine: GeneratedRoutine }>(`/ai/${id}/routine/add-day`, {
+      method: "POST",
+      token,
+      body,
+      timeoutMs: AI_TIMEOUT_MS,
     }),
 
   getRoutineCheckins: (id: string, token: string, days = 28) =>
@@ -467,6 +478,7 @@ export const api = {
       email: string;
       password: string;
       fullName: string;
+      username: string;
       role: "trainer" | "member";
       membershipMonths?: number;
       paymentMethod?: "card" | "transfer" | "cash";
@@ -882,6 +894,26 @@ export const api = {
       method: "DELETE",
       token,
     }),
+
+  updateTrainerTemplate: (
+    token: string,
+    id: string,
+    body: { name: string; purpose: string; exercises: ExerciseInput[] },
+  ) =>
+    request<{ template: TrainerRoutineTemplate }>(
+      `/trainer-routines/templates/${encodeURIComponent(id)}`,
+      { method: "PUT", token, body },
+    ),
+
+  updateTrainerAssignedRoutine: (
+    token: string,
+    id: string,
+    body: { name: string; purpose: string; exercises: ExerciseInput[]; scheduledDays?: string[] },
+  ) =>
+    request<{ routine: TrainerAssignedRoutine }>(
+      `/trainer-routines/assigned/${encodeURIComponent(id)}`,
+      { method: "PUT", token, body },
+    ),
 
   standardizeExerciseName: (token: string, name: string) =>
     request<{ original: string; standardized: string }>("/trainer-routines/standardize", {

@@ -3,6 +3,8 @@ import { authenticate } from "../../middleware/auth.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import {
   createTemplateSchema,
+  updateTemplateSchema,
+  updateAssignedRoutineSchema,
   assignRoutineSchema,
   standardizeNameSchema,
   validateRoutineSchema,
@@ -11,9 +13,11 @@ import {
   listTemplates,
   createTemplate,
   deleteTemplate,
+  updateTemplate,
   standardizeName,
   validateRoutine,
   assignRoutine,
+  updateAssignedRoutine,
   getRoutineForMember,
   getMyAssignedRoutine,
   getMyAllAssignedRoutines,
@@ -26,6 +30,7 @@ const trainerRoutinesRouter = Router();
 /* --- templates (presets) --- */
 trainerRoutinesRouter.get("/templates", authenticate, listTemplates);
 trainerRoutinesRouter.post("/templates", authenticate, validate(createTemplateSchema), createTemplate);
+trainerRoutinesRouter.put("/templates/:id", authenticate, validate(updateTemplateSchema), updateTemplate);
 trainerRoutinesRouter.delete("/templates/:id", authenticate, deleteTemplate);
 
 /* --- AI helpers --- */
@@ -34,6 +39,7 @@ trainerRoutinesRouter.post("/validate", authenticate, validate(validateRoutineSc
 
 /* --- assign to member --- */
 trainerRoutinesRouter.post("/assign", authenticate, validate(assignRoutineSchema), assignRoutine);
+trainerRoutinesRouter.put("/assigned/:id", authenticate, validate(updateAssignedRoutineSchema), updateAssignedRoutine);
 
 /* --- trainer: view member routine --- */
 trainerRoutinesRouter.get("/for-member/:memberId", authenticate, getRoutineForMember);

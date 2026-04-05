@@ -115,6 +115,7 @@ export function HomeScreen() {
   const [todayAvailability, setTodayAvailability] = useState<GymAvailabilityDay | null>(null);
   const [unreadThreads, setUnreadThreads] = useState<MessageThread[]>([]);
   const [activeTrainers, setActiveTrainers] = useState<string[]>([]);
+  const [activeTrainerObjects, setActiveTrainerObjects] = useState<{ id: string; fullName: string; avatarUrl: string | null }[]>([]);
   const [emergencyTickets, setEmergencyTickets] = useState<EmergencyTicket[]>([]);
   const [pendingAssistanceCount, setPendingAssistanceCount] = useState(0);
   const [unassignedAssistanceCount, setUnassignedAssistanceCount] = useState(0);
@@ -205,6 +206,7 @@ export function HomeScreen() {
           setActiveTrainers(
             isMember ? activeTrainersList.map((t) => t.fullName) : [],
           );
+          setActiveTrainerObjects(isMember ? activeTrainersList : []);
         } catch {
           if (!cancelled) {
             setTodayAvailability(null);
@@ -214,6 +216,7 @@ export function HomeScreen() {
             setCheckins([]);
             setUnreadThreads([]);
             setActiveTrainers([]);
+            setActiveTrainerObjects([]);
             setEmergencyTickets([]);
           }
         }
@@ -311,6 +314,7 @@ export function HomeScreen() {
         progressValue={memberProgressValue}
         insight={memberInsight}
         onStartWorkout={() => navigation.navigate("Rutina")}
+        activeTrainers={activeTrainerObjects}
         secondaryActions={[
           {
             key: "routine",

@@ -90,6 +90,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
   // Form state
   const [newEmail, setNewEmail] = useState("");
   const [newFullName, setNewFullName] = useState("");
+  const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<UserRole>("member");
   const [membershipMonths, setMembershipMonths] = useState(1);
@@ -111,6 +112,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
   const [renewMonths, setRenewMonths] = useState(1);
   const [renewPaymentMethod, setRenewPaymentMethod] = useState<PaymentMethod>("card");
   const [renewPaymentAmount, setRenewPaymentAmount] = useState("");
+  const [routineLoadingId, setRoutineLoadingId] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
     if (!token) return;
@@ -135,6 +137,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
     setCreateStep(1);
     setNewEmail("");
     setNewFullName("");
+    setNewUsername("");
     setNewPassword("");
     setNewRole("member");
     setMembershipMonths(1);
@@ -155,8 +158,12 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
   }, []);
 
   const onCreateUser = async () => {
-    if (!newEmail || !newFullName || !newPassword) {
+    if (!newEmail || !newFullName || !newUsername || !newPassword) {
       Alert.alert("Campos requeridos", "Todos los campos son obligatorios.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9]{3,30}$/.test(newUsername.trim())) {
+      Alert.alert("Nombre de usuario inválido", "El nombre de usuario debe tener entre 3 y 30 caracteres alfanuméricos (sin espacios ni símbolos).");
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -188,6 +195,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
       const data = await api.createUser(token, {
         email: newEmail.trim().toLowerCase(),
         fullName: newFullName.trim(),
+        username: newUsername.trim(),
         password: newPassword,
         role: newRole,
         ...(newRole === "member" ? { membershipMonths } : {}),
@@ -441,16 +449,70 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
                 <View style={styles.userActions}>
                   {isTrainer && u.role === "member" && u.isActive && (
                     <TouchableOpacity
-                      style={styles.routineBtn}
-                      onPress={() =>
-                        navigation.navigate("TrainerRoutineBuilder", {
-                          mode: "assign",
-                          memberId: u.id,
-                          memberName: u.fullName,
-                        })
-                      }
+                      style={[styles.routineBtn, routineLoadingId === u.id && { opacity: 0.5 }]}
+                      disabled={routineLoadingId === u.id}
+                      onPress={() => {
+                        if (!token) return;
+                        setRoutineLoadingId(u.id);
+                        api.getRoutineForMember(token, u.id)
+                          .then(({ routine }) => {
+                            setRoutineLoadingId(null);
+                            if (routine) {
+                              Alert.alert(
+                                "Rutina existente",
+                                `${u.fullName} ya tiene la rutina "${routine.name}". ¿Deseas editarla o crear una nueva?`,
+                                [
+                                  {
+                                    text: "Editar rutina",
+                                    onPress: () =>
+                                      navigation.navigate("TrainerRoutineBuilder", {
+                                        mode: "edit-assigned",
+                                        assignedRoutineId: routine.id,
+                                        assignedRoutine: {
+                                          id: routine.id,
+                                          name: routine.name,
+                                          purpose: routine.purpose,
+                                          scheduledDays: routine.scheduledDays ?? null,
+                                          exercises: routine.exercises,
+                                        },
+                                        memberName: u.fullName,
+                                      }),
+                                  },
+                                  {
+                                    text: "Crear nueva",
+                                    onPress: () =>
+                                      navigation.navigate("TrainerRoutineBuilder", {
+                                        mode: "assign",
+                                        memberId: u.id,
+                                        memberName: u.fullName,
+                                      }),
+                                  },
+                                  { text: "Cancelar", style: "cancel" },
+                                ],
+                              );
+                            } else {
+                              navigation.navigate("TrainerRoutineBuilder", {
+                                mode: "assign",
+                                memberId: u.id,
+                                memberName: u.fullName,
+                              });
+                            }
+                          })
+                          .catch(() => {
+                            setRoutineLoadingId(null);
+                            navigation.navigate("TrainerRoutineBuilder", {
+                              mode: "assign",
+                              memberId: u.id,
+                              memberName: u.fullName,
+                            });
+                          });
+                      }}
                     >
-                      <Text style={styles.routineBtnText}>📋 Rutina</Text>
+                      {routineLoadingId === u.id ? (
+                        <ActivityIndicator size="small" color={palette.moss} />
+                      ) : (
+                        <Text style={styles.routineBtnText}>📋 Rutina</Text>
+                      )}
                     </TouchableOpacity>
                   )}
                   {u.role === "member" && (
@@ -578,6 +640,14 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
                   placeholderTextColor={palette.cocoa + "80"}
                   value={newFullName}
                   onChangeText={setNewFullName}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nombre de usuario (ej: juan123)"
+                  placeholderTextColor={palette.cocoa + "80"}
+                  value={newUsername}
+                  onChangeText={setNewUsername}
+                  autoCapitalize="none"
                 />
                 <TextInput
                   style={styles.input}

@@ -1461,4 +1461,38 @@ export class AIController {
       next(error);
     }
   }
+
+  static async addRoutineDay(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+      const { day, focus } = req.body as { day: string; focus: string };
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const latest = await AIController.getLatestRoutineSnapshot(userId);
+      const userContext = await AIController.getUserProfileContext(userId);
+
+      const updatedRoutine = await aiService.addRoutineDay(
+        userId,
+        userContext,
+        latest.routine,
+        day,
+        focus
+      );
+
+      res.json({
+        message: "New routine day added",
+        routine: updatedRoutine,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

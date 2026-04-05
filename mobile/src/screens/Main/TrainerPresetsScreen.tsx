@@ -123,6 +123,17 @@ export function TrainerPresetsScreen({ navigation }: { navigation: any }) {
           <Text style={styles.assignBtnText}>Asignar</Text>
         </TouchableOpacity>
         <TouchableOpacity
+          style={styles.editBtn}
+          onPress={() =>
+            navigation.navigate("TrainerRoutineBuilder", {
+              mode: "edit-preset",
+              template: item,
+            })
+          }
+        >
+          <Text style={styles.editBtnText}>Editar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.deleteBtn, deleting === item.id && { opacity: 0.5 }]}
           onPress={() => onDelete(item)}
           disabled={deleting === item.id}
@@ -290,6 +301,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   assignBtnText: { color: palette.white, fontWeight: "700", fontSize: 13 },
+  editBtn: {
+    borderWidth: 1,
+    borderColor: palette.cocoa,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+  },
+  editBtnText: { color: palette.cocoa, fontWeight: "700", fontSize: 13 },
   deleteBtn: {
     borderWidth: 1,
     borderColor: palette.coral,

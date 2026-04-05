@@ -3,6 +3,7 @@ import { AIController } from "./ai.controller";
 import { validate } from "../../middleware/validate.middleware";
 import { authenticate, authorizeAction } from "../../middleware/auth.middleware";
 import {
+  addRoutineDaySchema,
   chatMessageSchema,
   exerciseCheckinSchema,
   exerciseOptionsSchema,
@@ -47,6 +48,11 @@ aiRouter.post(
   "/:userId/routine/exercises/remove",
   validate(removeRoutineExerciseSchema),
   AIController.removeRoutineExercise
+);
+aiRouter.post(
+  "/:userId/routine/add-day",
+  validate(addRoutineDaySchema),
+  AIController.addRoutineDay
 );
 
 // Persist and read weekly routine check-ins

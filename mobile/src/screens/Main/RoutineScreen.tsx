@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -45,6 +46,24 @@ const DAY_TRANSLATIONS: Record<string, string> = {
   saturday: "Sabado",
   sunday: "Domingo",
 };
+
+const DAY_OFFSETS: Record<string, number> = {
+  monday: 0,
+  tuesday: 1,
+  wednesday: 2,
+  thursday: 3,
+  friday: 4,
+  saturday: 5,
+  sunday: 6,
+};
+
+function getDateForDay(dayName: string, weekStart: string): string {
+  const offset = DAY_OFFSETS[normalize(dayName)];
+  if (offset === undefined) return "";
+  const date = new Date(`${weekStart}T00:00:00`);
+  date.setDate(date.getDate() + offset);
+  return date.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+}
 
 function getWeekStart(date: Date): string {
   const value = new Date(date);
@@ -152,6 +171,11 @@ export function RoutineScreen() {
   const [activeTab, setActiveTab] = useState<"ai" | string>("ai"); // "ai" or routineId
   const [deletingRoutineId, setDeletingRoutineId] = useState<string | null>(null);
   const [trainerRoutineExpanded, setTrainerRoutineExpanded] = useState<Record<string, boolean>>({});
+  const [showRoutineDropdown, setShowRoutineDropdown] = useState(false);
+  const [showAddDayModal, setShowAddDayModal] = useState(false);
+  const [addDayLoading, setAddDayLoading] = useState(false);
+  const [addDayDay, setAddDayDay] = useState("monday");
+  const [addDayFocus, setAddDayFocus] = useState("");
 
   const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
   const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart);
@@ -428,6 +452,30 @@ export function RoutineScreen() {
     }
   };
 
+  const onAddDay = async () => {
+    if (!user || !token) return;
+    if (!addDayFocus.trim()) {
+      Alert.alert("Campo requerido", "Escribe el enfoque del nuevo día.");
+      return;
+    }
+    setAddDayLoading(true);
+    try {
+      const data = await api.addRoutineDay(user.id, token, { day: addDayDay, focus: addDayFocus.trim() });
+      setRoutine(data.routine);
+      setGeneratedAt(new Date().toISOString());
+      setShowAddDayModal(false);
+      setAddDayFocus("");
+      Alert.alert("Día agregado", "Tuco generó un nuevo día de entrenamiento.");
+    } catch (error) {
+      Alert.alert(
+        "No se pudo agregar el día",
+        error instanceof Error ? error.message : "Intenta de nuevo"
+      );
+    } finally {
+      setAddDayLoading(false);
+    }
+  };
+
   const onMarkCompleted = async (sessionDay: string) => {
     if (!user || !token) return;
     const normalizedDay = normalize(sessionDay);
@@ -677,35 +725,124 @@ export function RoutineScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
 
-      {/* Tab selector */}
+      {/* Routine selector dropdown */}
       {trainerRoutines.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabBar}
-          contentContainerStyle={styles.tabBarContent}
+        <TouchableOpacity
+          style={styles.routineSelector}
+          onPress={() => setShowRoutineDropdown(true)}
+          activeOpacity={0.75}
         >
-          <TouchableOpacity
-            style={[styles.tab, activeTab === "ai" && styles.tabActive]}
-            onPress={() => setActiveTab("ai")}
-          >
-            <Text style={[styles.tabText, activeTab === "ai" && styles.tabTextActive]}>
-              Plan IA
-            </Text>
-          </TouchableOpacity>
-          {trainerRoutines.map((r) => (
-            <TouchableOpacity
-              key={r.id}
-              style={[styles.tab, activeTab === r.id && styles.tabActive]}
-              onPress={() => setActiveTab(r.id)}
-            >
-              <Text style={[styles.tabText, activeTab === r.id && styles.tabTextActive]}>
-                {r.trainerName ?? "Entrenador"}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+          <Text style={styles.routineSelectorLabel}>
+            {activeTab === "ai"
+              ? "Plan Tuco"
+              : trainerRoutines.find((r) => r.id === activeTab)?.name ?? "Seleccionar plan"}
+          </Text>
+          <Text style={styles.routineSelectorChevron}>{showRoutineDropdown ? "▲" : "▾"}</Text>
+        </TouchableOpacity>
       )}
+
+      {/* Dropdown modal */}
+      <Modal
+        visible={showRoutineDropdown}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRoutineDropdown(false)}
+      >
+        <TouchableOpacity
+          style={styles.dropdownBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowRoutineDropdown(false)}
+        >
+          <View style={styles.dropdownPanel}>
+            <Text style={styles.dropdownTitle}>Seleccionar plan</Text>
+            <TouchableOpacity
+              style={[styles.dropdownItem, activeTab === "ai" && styles.dropdownItemActive]}
+              onPress={() => { setActiveTab("ai"); setShowRoutineDropdown(false); }}
+            >
+              <Text style={[styles.dropdownItemText, activeTab === "ai" && styles.dropdownItemTextActive]}>
+                Plan Tuco
+              </Text>
+              {activeTab === "ai" ? <Text style={styles.dropdownItemCheck}>✓</Text> : null}
+            </TouchableOpacity>
+            {trainerRoutines.map((r) => (
+              <TouchableOpacity
+                key={r.id}
+                style={[styles.dropdownItem, activeTab === r.id && styles.dropdownItemActive]}
+                onPress={() => { setActiveTab(r.id); setShowRoutineDropdown(false); }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.dropdownItemText, activeTab === r.id && styles.dropdownItemTextActive]}>
+                    {r.name}
+                  </Text>
+                  {r.trainerName ? (
+                    <Text style={styles.dropdownItemMeta}>Entrenador: {r.trainerName}</Text>
+                  ) : null}
+                </View>
+                {activeTab === r.id ? <Text style={styles.dropdownItemCheck}>✓</Text> : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Add Day Modal */}
+      <Modal
+        visible={showAddDayModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !addDayLoading && setShowAddDayModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.addDayBackdrop}
+          activeOpacity={1}
+          onPress={() => { if (!addDayLoading) setShowAddDayModal(false); }}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.addDayPanel}>
+            <Text style={styles.addDayTitle}>Agregar nuevo día</Text>
+            <Text style={styles.addDayLabel}>Día de la semana</Text>
+            <View style={styles.addDayDaysRow}>
+              {(["monday","tuesday","wednesday","thursday","friday","saturday","sunday"] as const).map((d) => (
+                <TouchableOpacity
+                  key={d}
+                  style={[styles.addDayDayChip, addDayDay === d && styles.addDayDayChipSelected]}
+                  onPress={() => setAddDayDay(d)}
+                >
+                  <Text style={[styles.addDayDayChipText, addDayDay === d && styles.addDayDayChipTextSelected]}>
+                    {DAY_LABELS[d]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={[styles.addDayLabel, { marginTop: 16 }]}>Enfoque</Text>
+            <TextInput
+              style={styles.addDayInput}
+              placeholder="Ej: Piernas, Cardio, Espalda..."
+              placeholderTextColor="#9CA3AF"
+              value={addDayFocus}
+              onChangeText={setAddDayFocus}
+              editable={!addDayLoading}
+              returnKeyType="done"
+            />
+            <TouchableOpacity
+              style={[styles.addDaySubmitBtn, addDayLoading && { opacity: 0.6 }]}
+              onPress={onAddDay}
+              disabled={addDayLoading}
+            >
+              {addDayLoading
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.addDaySubmitText}>Generar con Tuco</Text>
+              }
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addDayCancelBtn}
+              onPress={() => setShowAddDayModal(false)}
+              disabled={addDayLoading}
+            >
+              <Text style={styles.addDayCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Trainer routine panel */}
       {activeTab !== "ai" && (() => {
@@ -755,20 +892,128 @@ export function RoutineScreen() {
                     ))}
                   </View>
                 )}
-                {r.exercises.map((ex, idx) => (
-                  <View key={ex.id} style={styles.trainerExerciseRow}>
-                    <Text style={styles.trainerExerciseNum}>{idx + 1}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.trainerExerciseName}>{ex.name}</Text>
-                      <Text style={styles.trainerExerciseMeta}>
-                        {ex.sets} series × {ex.reps} reps · descanso {ex.restSeconds}s
+                {r.exercises.map((ex) => {
+                  const trainerSessionDay = `trainer:${r.id}`;
+                  const exerciseKey = normalize(ex.name);
+                  const sessionExerciseKey = `${trainerSessionDay}::${exerciseKey}`;
+                  const progressPanelKey = `${trainerSessionDay}::${ex.name}::progress`;
+                  const progress = strengthMap[exerciseKey];
+                  const selectedWeekEntry = getWeeklyEntry(progress, selectedWeekStart);
+                  const previousWeekEntry = getWeeklyEntry(progress, previousWeekStart);
+                  const isProgressOpen = openProgressKey === progressPanelKey;
+                  const isLogOpen =
+                    activeLog?.sessionDay === trainerSessionDay &&
+                    activeLog.exerciseName === exerciseKey;
+                  const isExerciseDone = completedExercisesBySelectedWeek.has(sessionExerciseKey);
+                  const canMarkCurrentWeek = selectedWeekStart === currentWeekStart;
+                  const weeklyDelta =
+                    selectedWeekEntry && previousWeekEntry
+                      ? selectedWeekEntry.latestLoadKg - previousWeekEntry.latestLoadKg
+                      : null;
+                  const recentHistory = progress?.weeklyHistory.slice(-4).reverse() || [];
+
+                  const progressNode = (
+                    <>
+                      <Text style={styles.exerciseProgressTitle}>Progreso</Text>
+                      <Text style={styles.exerciseProgressLine}>
+                        Esta semana:{" "}
+                        {selectedWeekEntry
+                          ? `${selectedWeekEntry.latestLoadKg.toFixed(1)} kg`
+                          : "Sin registros"}
                       </Text>
-                      {ex.tips ? (
-                        <Text style={styles.trainerExerciseTips}>{ex.tips}</Text>
-                      ) : null}
-                    </View>
-                  </View>
-                ))}
+                      <Text style={styles.exerciseProgressLine}>
+                        Mejor histórico:{" "}
+                        {progress ? `${progress.bestLoadKg.toFixed(1)} kg` : "Sin datos"}
+                      </Text>
+                      <Text style={styles.exerciseProgressLine}>
+                        Último día:{" "}
+                        {progress ? formatDateTime(progress.lastPerformedAt) : "Sin datos"}
+                      </Text>
+                      {weeklyDelta !== null ? (
+                        <Text
+                          style={[
+                            styles.exerciseProgressLine,
+                            weeklyDelta >= 0 ? styles.progressUp : styles.progressDown,
+                          ]}
+                        >
+                          {weeklyDelta >= 0 ? "▲" : "▼"}{" "}
+                          {Math.abs(weeklyDelta).toFixed(1)} kg vs semana anterior
+                        </Text>
+                      ) : (
+                        <Text style={styles.exerciseProgressMuted}>
+                          Registra al menos dos semanas para comparar.
+                        </Text>
+                      )}
+                      {recentHistory.length > 0 && (
+                        <View style={styles.historyChips}>
+                          {recentHistory.map((item) => (
+                            <View
+                              key={`${ex.name}-${item.weekStart}`}
+                              style={styles.historyChip}
+                            >
+                              <Text style={styles.historyChipWeek}>
+                                {formatWeekLabel(item.weekStart)}
+                              </Text>
+                              <Text style={styles.historyChipValue}>
+                                {item.latestLoadKg.toFixed(1)} kg
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </>
+                  );
+
+                  return (
+                    <ExerciseCard
+                      key={`${r.id}-${ex.name}`}
+                      name={ex.name}
+                      sets={ex.sets}
+                      reps={String(ex.reps)}
+                      restSeconds={ex.restSeconds}
+                      tip={ex.tips ?? undefined}
+                      status={isExerciseDone ? "completed" : isLogOpen ? "active" : "default"}
+                      exerciseKey={exerciseKey}
+                      logOpen={isLogOpen}
+                      logValues={{
+                        loadValue: logKg,
+                        loadUnit: logUnit,
+                        reps: logReps,
+                        sets: logSets,
+                      }}
+                      savingLog={savingLog}
+                      lastSavedKey={lastSavedExerciseKey}
+                      onToggleLog={() => {
+                        if (isLogOpen) {
+                          setActiveLog(null);
+                        } else {
+                          setActiveLog({ sessionDay: trainerSessionDay, exerciseName: exerciseKey });
+                          setLogKg("");
+                          setLogUnit("kg");
+                          setLogReps(parseSuggestedReps(String(ex.reps)));
+                          setLogSets(String(ex.sets || ""));
+                          setLastSavedExerciseKey(null);
+                        }
+                      }}
+                      onLogChange={(vals) => {
+                        if (vals.loadValue !== undefined) setLogKg(vals.loadValue);
+                        if (vals.loadUnit !== undefined) setLogUnit(vals.loadUnit);
+                        if (vals.reps !== undefined) setLogReps(vals.reps);
+                        if (vals.sets !== undefined) setLogSets(vals.sets);
+                      }}
+                      onMarkDone={() => onMarkExerciseCompleted(trainerSessionDay, ex.name)}
+                      canMarkDone={canMarkCurrentWeek}
+                      hasProgress={!!progress}
+                      progressOpen={isProgressOpen}
+                      onToggleProgress={() =>
+                        setOpenProgressKey((prev) =>
+                          prev === progressPanelKey ? null : progressPanelKey
+                        )
+                      }
+                      progressContent={progressNode}
+                    />
+                  );
+                })}
               </View>
             )}
           </View>
@@ -802,13 +1047,13 @@ export function RoutineScreen() {
           <ActivityIndicator color={palette.cocoa} />
         ) : (
           <Text style={styles.genBtnText}>
-            {routine ? "Regenerar rutina" : "Generar rutina personalizada"}
+            {routine ? "Regenerar con Tuco" : "Crear plan con Tuco"}
           </Text>
         )}
       </TouchableOpacity>
 
       {loadingRoutine && (
-        <Text style={styles.loadingHint}>Consultando a tu coach personalizado. Esto puede tardar unos segundos.</Text>
+        <Text style={styles.loadingHint}>Tuco está creando tu plan... Esto puede tardar unos segundos.</Text>
       )}
 
       {!routine ? (
@@ -955,6 +1200,11 @@ export function RoutineScreen() {
                     <View>
                       <Text style={[styles.sessionDay, isDone && styles.sessionDayDone]}>
                         {translateDay(session.day)}
+                        {getDateForDay(session.day, selectedWeekStart) ? (
+                          <Text style={{ fontSize: 13, fontWeight: "400", opacity: 0.65 }}>
+                            {"  "}{getDateForDay(session.day, selectedWeekStart)}
+                          </Text>
+                        ) : null}
                       </Text>
                       <Text style={styles.sessionFocus}>{session.focus}</Text>
                       <Text style={styles.sessionStatus}>
@@ -977,25 +1227,27 @@ export function RoutineScreen() {
                     <TouchableOpacity
                       style={[
                         styles.completeBtn,
-                        (isDone || !canMarkCurrentWeek || !allExercisesCompleted) && styles.completeBtnDone,
+                        (isDone || !canMarkCurrentWeek) && styles.completeBtnDone,
                       ]}
-                      disabled={isDone || isSaving || !canMarkCurrentWeek || !allExercisesCompleted}
+                      disabled={isDone || isSaving || !canMarkCurrentWeek}
                       onPress={() => onMarkCompleted(session.day)}
                     >
                       <Text
                         style={[
                           styles.completeBtnText,
-                          (isDone || !canMarkCurrentWeek || !allExercisesCompleted) && styles.completeBtnTextDone,
+                          (isDone || !canMarkCurrentWeek) && styles.completeBtnTextDone,
                         ]}
                       >
                         {isDone
                           ? "Sesion completada"
                           : !canMarkCurrentWeek
                           ? "Solo puedes registrar la semana actual"
-                          : !allExercisesCompleted
-                          ? `Completa ${session.exercises.length - completedExercisesCount} ejercicio(s) para cerrar el dia`
                           : isSaving
                           ? "Guardando..."
+                          : !allExercisesCompleted && completedExercisesCount > 0
+                          ? `Cerrar sesion (${session.exercises.length - completedExercisesCount} ejercicio(s) pendiente(s))`
+                          : !allExercisesCompleted
+                          ? "Cerrar sesion sin registrar ejercicios"
                           : "Marcar sesion como completada"}
                       </Text>
                     </TouchableOpacity>
@@ -1134,7 +1386,7 @@ export function RoutineScreen() {
                           }
                           menuOptions={[
                             {
-                              label: replacingExerciseKey === actionKey ? "Reemplazando..." : "Reemplazar con IA",
+                              label: replacingExerciseKey === actionKey ? "Reemplazando..." : "Reemplazar con Tuco",
                               loading: replacingExerciseKey === actionKey,
                               onPress: () => onReplaceExercise(session.day, exercise.name),
                             },
@@ -1158,6 +1410,17 @@ export function RoutineScreen() {
               </View>
             );
           })}
+
+          <TouchableOpacity
+            style={styles.addDayBtn}
+            onPress={() => {
+              setAddDayDay("monday");
+              setAddDayFocus("");
+              setShowAddDayModal(true);
+            }}
+          >
+            <Text style={styles.addDayBtnText}>+ Agregar nuevo día</Text>
+          </TouchableOpacity>
 
           {routine.progression_tips?.length > 0 ? (
             <View style={styles.tipsCard}>
@@ -1834,35 +2097,85 @@ const styles = StyleSheet.create({
   },
 
   // Trainer-assigned routine card
-  tabBar: {
-    marginBottom: 16,
-    flexGrow: 0,
-  },
-  tabBarContent: {
-    paddingHorizontal: 16,
-    gap: 8,
+  routineSelector: {
     flexDirection: "row",
     alignItems: "center",
-  },
-  tab: {
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: palette.line,
+    justifyContent: "space-between",
     backgroundColor: palette.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: palette.moss + "80",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
   },
-  tabActive: {
-    borderColor: palette.moss,
-    backgroundColor: palette.moss + "18",
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: palette.textSoft,
-  },
-  tabTextActive: {
+  routineSelectorLabel: {
+    fontSize: 15,
+    fontWeight: "700",
     color: palette.moss,
+    flex: 1,
+  },
+  routineSelectorChevron: {
+    fontSize: 16,
+    color: palette.moss,
+    marginLeft: 8,
+  },
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  dropdownPanel: {
+    backgroundColor: palette.card,
+    borderRadius: 16,
+    paddingVertical: 8,
+    width: "100%",
+    maxWidth: 380,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  dropdownTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: palette.textSoft,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.line,
+    marginBottom: 4,
+  },
+  dropdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  dropdownItemActive: {
+    backgroundColor: palette.moss + "12",
+  },
+  dropdownItemText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: palette.ink,
+  },
+  dropdownItemTextActive: {
+    color: palette.moss,
+  },
+  dropdownItemMeta: {
+    fontSize: 12,
+    color: palette.textSoft,
+    marginTop: 2,
+  },
+  dropdownItemCheck: {
+    fontSize: 16,
+    color: palette.moss,
+    fontWeight: "700",
+    marginLeft: 8,
   },
 
   trainerRoutineCard: {
@@ -1964,5 +2277,102 @@ const styles = StyleSheet.create({
     color: palette.textSoft,
     fontStyle: "italic",
     marginTop: 3,
+  },
+  addDayBtn: {
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: palette.moss,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: palette.moss + "18",
+  },
+  addDayBtnText: {
+    color: palette.moss,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  addDayBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  addDayPanel: {
+    backgroundColor: palette.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  addDayTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: palette.ink,
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  addDayLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: palette.textSoft,
+    marginBottom: 10,
+  },
+  addDayDaysRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  addDayDayChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: palette.line,
+    backgroundColor: palette.surface,
+  },
+  addDayDayChipSelected: {
+    borderColor: palette.moss,
+    backgroundColor: palette.moss + "20",
+  },
+  addDayDayChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: palette.textMuted,
+  },
+  addDayDayChipTextSelected: {
+    color: palette.moss,
+  },
+  addDayInput: {
+    backgroundColor: palette.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: palette.ink,
+  },
+  addDaySubmitBtn: {
+    marginTop: 20,
+    backgroundColor: palette.moss,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  addDaySubmitText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  addDayCancelBtn: {
+    marginTop: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  addDayCancelText: {
+    color: palette.textSoft,
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

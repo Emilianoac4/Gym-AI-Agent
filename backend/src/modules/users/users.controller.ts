@@ -17,7 +17,6 @@ import {
   getFutureDateMinutes,
   sendEmailVerification,
 } from "../../utils/email-auth";
-import { generateGymScopedUsername } from "../../utils/username";
 import { env } from "../../config/env";
 import { forceSendDailyMembershipSummary } from "../../services/membership-summary.service";
 
@@ -513,6 +512,14 @@ export const createUser = async (
     throw new HttpError(409, "El correo ya está en uso en este gimnasio");
   }
 
+  // Validate username uniqueness within this gym
+  const existingWithUsername = await prisma.user.findFirst({
+    where: { gymId: requester.gymId, username: req.body.username },
+  });
+  if (existingWithUsername) {
+    throw new HttpError(409, "El nombre de usuario ya está en uso en este gimnasio");
+  }
+
   const isMemberRole = req.body.role === "member";
   const membershipStartAt = isMemberRole ? new Date() : null;
   const membershipEndAt = isMemberRole
@@ -567,7 +574,7 @@ export const createUser = async (
         globalUserId: globalAccount.id,
         email: emailLower,
         fullName: req.body.fullName,
-        username: await generateGymScopedUsername(tx, req.body.fullName, requester.gym?.name ?? "gym"),
+        username: req.body.username,
         role: req.body.role as UserRole,
         membershipStartAt,
         membershipEndAt,

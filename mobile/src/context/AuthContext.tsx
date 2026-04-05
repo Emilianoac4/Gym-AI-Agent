@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { api } from "../services/api";
-import { AuthUser, GymSelectionOption, UserRole } from "../types/api";
+import { AuthUser, GymSelectionOption } from "../types/api";
 
 // Show in-app notifications as banners
 Notifications.setNotificationHandler({
@@ -21,10 +21,10 @@ type AuthContextValue = {
   token: string | null;
   loading: boolean;
   pendingGymSelection: { selectorToken: string; gyms: GymSelectionOption[] } | null;
-  login: (identifier: string, password: string, requestedRole: UserRole) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   selectGym: (userId: string) => Promise<void>;
-  loginWithGoogle: (idToken: string, requestedRole: UserRole) => Promise<void>;
-  loginWithApple: (idToken: string, requestedRole: UserRole) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
+  loginWithApple: (idToken: string) => Promise<void>;
   completeTemporaryPasswordChange: (newPassword: string) => Promise<void>;
   registerAdmin: (input: {
     gymName: string;
@@ -32,6 +32,7 @@ type AuthContextValue = {
     email: string;
     password: string;
     fullName: string;
+    username: string;
   }) => Promise<void>;
   logout: () => void;
 };
@@ -82,10 +83,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [token]);
 
-  const login = async (identifier: string, password: string, requestedRole: UserRole) => {
+  const login = async (identifier: string, password: string) => {
     setLoading(true);
     try {
-      const data = await api.login({ identifier, password, requestedRole });
+      const data = await api.login({ identifier, password });
       if (data.requiresGymSelection && data.selectorToken && data.gyms) {
         setPendingGymSelection({ selectorToken: data.selectorToken, gyms: data.gyms });
         setToken(null);
@@ -124,10 +125,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginWithGoogle = async (idToken: string, requestedRole: UserRole) => {
+  const loginWithGoogle = async (idToken: string) => {
     setLoading(true);
     try {
-      const data = await api.loginWithGoogle({ idToken, requestedRole });
+      const data = await api.loginWithGoogle({ idToken });
       setToken(data.token);
       setUser(data.user);
     } finally {
@@ -135,10 +136,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginWithApple = async (idToken: string, requestedRole: UserRole) => {
+  const loginWithApple = async (idToken: string) => {
     setLoading(true);
     try {
-      const data = await api.loginWithApple({ idToken, requestedRole });
+      const data = await api.loginWithApple({ idToken });
       setToken(data.token);
       setUser(data.user);
     } finally {
@@ -169,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string;
     password: string;
     fullName: string;
+    username: string;
   }) => {
     setLoading(true);
     try {
@@ -184,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: input.email,
           password: input.password,
           fullName: input.fullName,
+          username: input.username,
           role: "admin",
         },
       });
@@ -191,7 +194,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await api.login({
         identifier: input.email,
         password: input.password,
-        requestedRole: "admin",
       });
       if (data.requiresGymSelection) {
         throw new Error("No se pudo completar el alta inicial. Intenta iniciar sesión manualmente.");

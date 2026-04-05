@@ -604,8 +604,17 @@ export function AdminProfileScreen() {
                     <Text style={styles.trainerSessionMeta}>
                       {entry.ratedAt ? formatDateTime(entry.ratedAt) : ""}
                     </Text>
+                    {entry.description ? (
+                      <>
+                        <Text style={styles.trainerSessionMeta}>Solicitud:</Text>
+                        <Text style={styles.emptyText} numberOfLines={3}>{entry.description}</Text>
+                      </>
+                    ) : null}
                     {entry.resolution ? (
-                      <Text style={styles.emptyText} numberOfLines={2}>{entry.resolution}</Text>
+                      <>
+                        <Text style={styles.trainerSessionMeta}>Resolución:</Text>
+                        <Text style={styles.emptyText} numberOfLines={2}>{entry.resolution}</Text>
+                      </>
                     ) : null}
                   </View>
                 )) : null}

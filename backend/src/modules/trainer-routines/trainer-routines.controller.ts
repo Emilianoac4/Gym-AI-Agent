@@ -6,6 +6,8 @@ import { HttpError } from "../../utils/http-error";
 import { sendExpoPushNotifications } from "../../utils/expo-push";
 import type {
   CreateTemplateInput,
+  UpdateTemplateInput,
+  UpdateAssignedRoutineInput,
   AssignRoutineInput,
   StandardizeNameInput,
   ValidateRoutineInput,
@@ -96,6 +98,44 @@ export const deleteTemplate = async (req: Request, res: Response): Promise<void>
 
   await prisma.trainerRoutineTemplate.delete({ where: { id } });
   res.json({ ok: true });
+};
+
+export const updateTemplate = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireTrainerOrAdmin(auth.userId);
+
+  const { id } = req.params as { id: string };
+  const { name, purpose, exercises } = req.body as UpdateTemplateInput;
+
+  const existing = await prisma.trainerRoutineTemplate.findUnique({ where: { id } });
+  if (!existing || existing.trainerId !== actor.id) {
+    throw new HttpError(404, "Plantilla no encontrada");
+  }
+
+  const template = await prisma.$transaction(async (tx) => {
+    await tx.trainerRoutineTemplateExercise.deleteMany({ where: { templateId: id } });
+    return tx.trainerRoutineTemplate.update({
+      where: { id },
+      data: {
+        name,
+        purpose,
+        exercises: {
+          create: exercises.map((e, i) => ({
+            name: e.name,
+            originalName: e.originalName ?? null,
+            reps: e.reps,
+            sets: e.sets,
+            restSeconds: e.restSeconds,
+            tips: e.tips ?? null,
+            sortOrder: e.sortOrder ?? i,
+          })),
+        },
+      },
+      include: { exercises: { orderBy: { sortOrder: "asc" } } },
+    });
+  });
+
+  res.json({ template });
 };
 
 /* ─── AI: standardize exercise name ──────────────────────── */
@@ -386,7 +426,7 @@ export const getMyAllAssignedRoutines = async (req: Request, res: Response): Pro
 
   const enriched = routines.map((r) => ({
     ...r,
-    trainerName: trainerMap[r.trainerId] ?? "Entrenador",
+    trainerName: trainerMap[r.trainerId] ?? null,
   }));
 
   res.json({ routines: enriched });
@@ -430,4 +470,45 @@ export const getMemberPreferredDays = async (req: Request, res: Response): Promi
 
   const days = Array.isArray(profile?.preferredDays) ? profile.preferredDays : [];
   res.json({ preferredDays: days });
+};
+
+/* ─── trainer edits an assigned routine ──────────────────── */
+
+export const updateAssignedRoutine = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireTrainerOrAdmin(auth.userId);
+
+  const { id } = req.params as { id: string };
+  const { name, purpose, exercises, scheduledDays } = req.body as UpdateAssignedRoutineInput;
+
+  const existing = await prisma.trainerAssignedRoutine.findUnique({ where: { id } });
+  if (!existing || existing.trainerId !== actor.id) {
+    throw new HttpError(404, "Rutina no encontrada");
+  }
+
+  const routine = await prisma.$transaction(async (tx) => {
+    await tx.trainerAssignedExercise.deleteMany({ where: { routineId: id } });
+    return tx.trainerAssignedRoutine.update({
+      where: { id },
+      data: {
+        name,
+        purpose,
+        scheduledDays: scheduledDays && scheduledDays.length > 0 ? scheduledDays : Prisma.JsonNull,
+        exercises: {
+          create: exercises.map((e, i) => ({
+            name: e.name,
+            originalName: e.originalName ?? null,
+            reps: e.reps,
+            sets: e.sets,
+            restSeconds: e.restSeconds,
+            tips: e.tips ?? null,
+            sortOrder: e.sortOrder ?? i,
+          })),
+        },
+      },
+      include: { exercises: { orderBy: { sortOrder: "asc" } } },
+    });
+  });
+
+  res.json({ routine });
 };

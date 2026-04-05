@@ -4,6 +4,11 @@ export const createUserSchema = z.object({
   email: z.string().email("Correo inválido"),
   password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
   fullName: z.string().min(2, "Nombre requerido"),
+  username: z
+    .string()
+    .min(3, "El nombre de usuario debe tener al menos 3 caracteres")
+    .max(30, "El nombre de usuario no puede tener mas de 30 caracteres")
+    .regex(/^[a-zA-Z0-9]+$/, "El nombre de usuario solo puede contener letras y numeros"),
   role: z.enum(["trainer", "member"]),
   membershipMonths: z.number().int().min(1).max(12).optional(),
   paymentMethod: z.enum(["card", "transfer", "cash"]).optional(),

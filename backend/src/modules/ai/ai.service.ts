@@ -61,15 +61,15 @@ class AIService {
     "Solo puedo ayudarte con entrenamiento, nutricion deportiva, recuperacion, habitos saludables y dudas del gimnasio. Si quieres, reformula tu pregunta en ese contexto.";
 
   private static readonly CHAT_SYSTEM_PROMPT = `
-You are GymIA, an assistant for a gym app.
-Mission boundaries:
-- Allowed: workout programming, exercise technique, gym habits, recovery, sleep habits, hydration, healthy lifestyle coaching, sports nutrition for fitness goals.
-- Not allowed: legal, finance, programming, academic exams, romance, politics, hacking/cybersecurity, explicit sexual content, violence, and any non-gym operational tasks.
-- Medical safety: do not diagnose diseases or prescribe medication. If user asks for medical diagnosis/treatment, suggest consulting a licensed professional.
+Eres Tuco, el coach de inteligencia artificial de tu gimnasio.
+Mision y limites:
+- Permitido: programacion de entrenamientos, tecnica de ejercicios, habitos de gym, recuperacion, sueno, hidratacion, coaching de estilo de vida saludable, nutricion deportiva para objetivos de fitness.
+- No permitido: legal, finanzas, programacion de software, examenes academicos, romance, politica, hacking/ciberseguridad, contenido sexual explicito, violencia, y cualquier tarea no relacionada con el gimnasio.
+- Seguridad medica: no diagnostiques enfermedades ni recetes medicamentos. Si el usuario pide un diagnostico medico, suggiere consultar a un profesional licenciado.
 
-If a request is out of scope, politely refuse and redirect to fitness/gym topics.
-Respond in the same language as the user.
-Keep answers practical, concise, and under 220 words.
+Si una solicitud esta fuera de alcance, recuerdala amablemente y redirige al tema de fitness/gym.
+Responde en el mismo idioma que el usuario.
+Mantén las respuestas practicas, concisas y de menos de 220 palabras.
   `;
 
   private static readonly OUT_OF_SCOPE_PATTERNS: RegExp[] = [
@@ -316,8 +316,15 @@ Keep answers practical, concise, and under 220 words.
       medicalConditions?: string;
     }
   ): Promise<string> {
+    const levelNorm = userContext.experienceLevel.toLowerCase();
+    const durationByLevel = levelNorm.includes("beginner") || levelNorm.includes("principiante")
+      ? 45
+      : levelNorm.includes("advanced") || levelNorm.includes("avanzad")
+      ? 75
+      : 60;
+
     const prompt = `
-You are an expert fitness coach creating a personalized workout routine.
+Eres Tuco, el coach de IA de tu gimnasio, creando una rutina de entrenamiento personalizada.
 
 User Profile:
 - Goal: ${userContext.goal}
@@ -331,6 +338,7 @@ CRITICAL REQUIREMENTS:
 2. Number of sessions must match weekly_sessions field
 3. Each session must have AT LEAST 4 exercises with full details
 4. Include practical progression tips and nutrition advice
+5. duration_minutes per session must be ${durationByLevel} minutes (adapted to user level: beginner=45, intermediate=60, advanced=75)
 
 Generate JSON ONLY (no markdown, no explanation, valid JSON only).
 Use Spanish for all visible values returned to the app:
@@ -350,7 +358,7 @@ JSON schema:
     {
       "day": "Lunes",
       "focus": "Empuje de tren superior",
-      "duration_minutes": 60,
+      "duration_minutes": ${durationByLevel},
       "exercises": [
         {"name": "Press de banca con barra", "sets": 4, "reps": "6-8", "rest_seconds": 120, "notes": "Enfocate en controlar el pecho y la tecnica"},
         {"name": "Press inclinado con mancuernas", "sets": 3, "reps": "8-10", "rest_seconds": 90, "notes": "Trabajo principal de pecho superior y hombro"},
@@ -436,7 +444,7 @@ Customize the routine to match the user context. Return ONLY valid JSON.
     const targetExerciseCount = Math.max(targetSession.exercises.length, 5);
 
     const prompt = `
-Eres un entrenador de gimnasio. Debes regenerar SOLO un dia de rutina manteniendo el estilo del plan actual.
+Eres Tuco, el coach de IA de tu gimnasio. Debes regenerar SOLO un dia de rutina manteniendo el estilo del plan actual.
 
 Contexto del usuario:
 - Objetivo: ${userContext.goal}
@@ -516,6 +524,98 @@ Reglas:
     return updatedRoutine;
   }
 
+  async addRoutineDay(
+    userId: string,
+    userContext: UserRoutineContext,
+    currentRoutine: GeneratedRoutine,
+    day: string,
+    focus: string
+  ): Promise<GeneratedRoutine> {
+    const existingDaysSummary = currentRoutine.sessions
+      .map((s) => `- ${s.day}: ${s.focus} (${s.duration_minutes} min, ${s.exercises.length} ejercicios)`)
+      .join("\n");
+
+    const prompt = `
+Eres Tuco, el coach de IA de tu gimnasio. El usuario quiere agregar un nuevo dia de entrenamiento a su rutina actual.
+
+Contexto del usuario:
+- Objetivo: ${userContext.goal}
+- Nivel: ${userContext.experienceLevel}
+- Disponibilidad: ${userContext.availability}
+- Lesiones: ${userContext.injuries || "Ninguna"}
+- Condiciones medicas: ${userContext.medicalConditions || "Ninguna"}
+
+Dias ya existentes en la rutina:
+${existingDaysSummary}
+
+Nuevo dia a crear:
+- Dia de la semana: ${day}
+- Enfoque deseado por el usuario: ${focus}
+
+Responde SOLO JSON valido con este esquema (sin markdown):
+{
+  "day": "${day}",
+  "focus": "string en espanol",
+  "duration_minutes": number,
+  "exercises": [
+    {"name":"string","sets":number,"reps":"string","rest_seconds":number,"notes":"string"}
+  ]
+}
+
+Reglas:
+- Crea entre 4 y 6 ejercicios apropiados para el enfoque indicado y el nivel del usuario.
+- El enfoque debe complementar los dias ya existentes cuando sea posible.
+- Usa el enfoque indicado por el usuario como guia principal.
+- Todo en espanol.
+- No incluyas markdown ni explicaciones, solo el JSON.
+    `;
+
+    let response;
+    try {
+      response = await this.openai.chat.completions.create({
+        model: this.models.routine,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 1200,
+      });
+    } catch (error) {
+      throw this.extractProviderError(error);
+    }
+
+    const rawContent = (response.choices[0]?.message?.content || "").trim();
+    const codeBlockMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const cleanContent = codeBlockMatch?.[1]?.trim() ?? rawContent;
+
+    let newSession: RoutineSession;
+    try {
+      newSession = JSON.parse(cleanContent) as RoutineSession;
+      if (!Array.isArray(newSession.exercises) || newSession.exercises.length < 1) {
+        throw new Error("Invalid session exercises");
+      }
+      newSession.day = day;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Invalid JSON from AI";
+      throw new Error(
+        `AI provider error: No se pudo generar el nuevo dia de entrenamiento. Por favor intenta de nuevo. (${detail})`
+      );
+    }
+
+    const updatedRoutine: GeneratedRoutine = {
+      ...currentRoutine,
+      weekly_sessions: currentRoutine.weekly_sessions + 1,
+      sessions: [...currentRoutine.sessions, newSession],
+    };
+
+    await this.saveLogSafely({
+      userId,
+      type: "ROUTINE_GENERATION",
+      userMessage: `ADD_ROUTINE_DAY::${day}`,
+      aiResponse: JSON.stringify(updatedRoutine),
+    });
+
+    return updatedRoutine;
+  }
+
   async replaceRoutineExercise(
     userId: string,
     userContext: UserRoutineContext,
@@ -545,7 +645,7 @@ Reglas:
       };
     } else {
       const prompt = `
-Eres entrenador de gimnasio. Debes proponer UN ejercicio alternativo para reemplazar otro ejercicio.
+Eres Tuco, el coach de IA de tu gimnasio. Debes proponer UN ejercicio alternativo para reemplazar otro ejercicio.
 
 Contexto usuario:
 - Objetivo: ${userContext.goal}
@@ -641,7 +741,7 @@ Responde SOLO JSON valido:
     }
 
     const prompt = `
-Eres entrenador de gimnasio. Debes proponer ${count} ejercicios alternativos para reemplazar uno dentro de una sesion.
+Eres Tuco, el coach de IA de tu gimnasio. Debes proponer ${count} ejercicios alternativos para reemplazar uno dentro de una sesion.
 
 Contexto usuario:
 - Objetivo: ${userContext.goal}

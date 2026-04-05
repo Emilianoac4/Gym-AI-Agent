@@ -197,6 +197,7 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
   const [availability, setAvailability] = useState("");
   const [experienceLvl, setExperienceLvl] = useState("");
   const [preferredDays, setPreferredDays] = useState<string[]>([]);
+  const originalPreferredDaysRef = useRef<string[]>([]);
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -220,6 +221,7 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
         setAvailability(data.profile?.availability ?? "");
         setExperienceLvl(data.profile?.experienceLvl ?? "");
         setPreferredDays(Array.isArray(data.profile?.preferredDays) ? data.profile.preferredDays : []);
+        originalPreferredDaysRef.current = Array.isArray(data.profile?.preferredDays) ? data.profile.preferredDays : [];
         if (data.profile?.birthDate) setBirthDate(new Date(data.profile.birthDate));
         if (data.profile?.avatarUrl) setAvatarUri(data.profile.avatarUrl);
         setMembershipEndAt((data.user as any)?.membershipEndAt ?? null);
@@ -300,6 +302,9 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
 
   const onSave = async () => {
     if (!user || !token) return;
+    const daysChanged =
+      preferredDays.length !== originalPreferredDaysRef.current.length ||
+      preferredDays.some((d) => !originalPreferredDaysRef.current.includes(d));
     try {
       await api.updateProfile(user.id, token, {
         goal,
@@ -308,7 +313,22 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
         preferredDays,
         ...(birthDate ? { birthDate: birthDate.toISOString() } : {}),
       });
-      Alert.alert("Perfil actualizado", "Tus preferencias se guardaron correctamente.");
+      originalPreferredDaysRef.current = [...preferredDays];
+      if (daysChanged && preferredDays.length > 0) {
+        Alert.alert(
+          "Perfil actualizado",
+          "\u00bfQuieres que Tuco regenere tu plan con los nuevos d\u00edas de entrenamiento?",
+          [
+            {
+              text: "S\u00ed, regenerar",
+              onPress: () => navigation.navigate("Rutina"),
+            },
+            { text: "No, despu\u00e9s", style: "cancel" },
+          ]
+        );
+      } else {
+        Alert.alert("Perfil actualizado", "Tus preferencias se guardaron correctamente.");
+      }
     } catch (error) {
       Alert.alert("No se pudo actualizar", error instanceof Error ? error.message : "Error inesperado");
     }
@@ -439,9 +459,13 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
                 key={day.value}
                 style={[styles.dayChip, active && styles.dayChipActive]}
                 onPress={() =>
-                  setPreferredDays((prev) =>
-                    active ? prev.filter((d) => d !== day.value) : [...prev, day.value]
-                  )
+                  setPreferredDays((prev) => {
+                    const next = active ? prev.filter((d) => d !== day.value) : [...prev, day.value];
+                    if (next.length > 0) {
+                      setAvailability(`${next.length} ${next.length === 1 ? "dia" : "dias"} por semana`);
+                    }
+                    return next;
+                  })
                 }
               >
                 <Text style={[styles.dayChipText, active && styles.dayChipTextActive]}>
@@ -451,6 +475,11 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
             );
           })}
         </View>
+        {preferredDays.length > 0 ? (
+          <Text style={styles.preferredDaysInfo}>
+            {preferredDays.length} día(s) seleccionado(s) · Tuco creará un plan de {preferredDays.length} sesión(es) por semana
+          </Text>
+        ) : null}
 
         <View style={styles.buttonRow}>
           <TapSurface onPress={onSave} style={styles.primaryButton}>
@@ -780,7 +809,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+    marginBottom: 4,
+  },
+  preferredDaysInfo: {
+    fontSize: 12,
+    color: design.color.textSecondary,
     marginBottom: design.spacing.x2,
+    textAlign: "center",
   },
   dayChip: {
     paddingHorizontal: 14,

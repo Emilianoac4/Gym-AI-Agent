@@ -6,7 +6,6 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useAuth } from "../context/AuthContext";
 import { designSystem } from "../theme/designSystem";
 import { palette } from "../theme/palette";
-import { RoleSelectScreen } from "../screens/Auth/RoleSelectScreen";
 import { LoginScreen } from "../screens/Auth/LoginScreen";
 import { RegisterScreen } from "../screens/Auth/RegisterScreen";
 import { GymSelectorScreen } from "../screens/Auth/GymSelectorScreen";
@@ -225,7 +224,6 @@ export function AppNavigator() {
               <Stack.Screen name="GymSelector" component={GymSelectorScreen} />
             ) : (
               <>
-                <Stack.Screen name="RoleSelect" component={RoleSelectScreen} />
                 <Stack.Screen name="Login" component={LoginScreen} />
                 <Stack.Screen name="Register" component={RegisterScreen} />
               </>

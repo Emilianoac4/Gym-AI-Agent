@@ -22,13 +22,14 @@ export function RegisterScreen() {
   const [gymName, setGymName] = useState("GymAI Central");
   const [ownerName, setOwnerName] = useState("Nombre del propietario");
   const [fullName, setFullName] = useState("Administrador principal");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("admin@gymiai.com");
   const [password, setPassword] = useState("Admin123456");
   const [showPassword, setShowPassword] = useState(false);
 
   const onRegister = async () => {
     try {
-      await registerAdmin({ gymName, ownerName, fullName, email, password });
+      await registerAdmin({ gymName, ownerName, fullName, username, email, password });
     } catch (error) {
       Alert.alert("No fue posible registrar", error instanceof Error ? error.message : "Error inesperado");
     }
@@ -59,6 +60,7 @@ export function RegisterScreen() {
             <TextInput style={styles.input} placeholder="Nombre del gimnasio" placeholderTextColor={palette.textSoft} value={gymName} onChangeText={setGymName} />
             <TextInput style={styles.input} placeholder="Nombre del propietario" placeholderTextColor={palette.textSoft} value={ownerName} onChangeText={setOwnerName} />
             <TextInput style={styles.input} placeholder="Nombre completo admin" placeholderTextColor={palette.textSoft} value={fullName} onChangeText={setFullName} />
+            <TextInput style={styles.input} placeholder="Nombre de usuario (ej: admin123)" placeholderTextColor={palette.textSoft} autoCapitalize="none" value={username} onChangeText={setUsername} />
             <TextInput style={styles.input} placeholder="Email" placeholderTextColor={palette.textSoft} autoCapitalize="none" value={email} onChangeText={setEmail} />
             <View style={styles.passwordRow}>
               <TextInput

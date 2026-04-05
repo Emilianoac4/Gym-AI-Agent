@@ -52,15 +52,6 @@ const ensureMembershipActive = async (user: {
   }
 };
 
-const assertRequestedRole = (actualRole: UserRole, requestedRole: UserRole) => {
-  if (actualRole !== requestedRole) {
-    throw new HttpError(
-      403,
-      `Este acceso es solo para perfil ${requestedRole}. Tu cuenta pertenece al perfil ${actualRole}.`,
-    );
-  }
-};
-
 const parseAdminFromHeader = (req: Request): { userId: string; role: UserRole } | null => {
   const authHeader = req.headers.authorization;
 
@@ -383,6 +374,21 @@ export const register = async (
       throw new HttpError(409, "Ya existe una cuenta con ese correo en este gimnasio.");
     }
 
+    // Validate and check username uniqueness within gym
+    const usernameRegex = /^[a-zA-Z0-9]{3,30}$/;
+    if (!usernameRegex.test(user.username)) {
+      throw new HttpError(
+        400,
+        "Nombre de usuario inválido. Solo letras y números, entre 3 y 30 caracteres.",
+      );
+    }
+    const existingWithUsername = await tx.user.findFirst({
+      where: { gymId, username: user.username },
+    });
+    if (existingWithUsername) {
+      throw new HttpError(409, "El nombre de usuario ya está en uso en este gimnasio.");
+    }
+
     // Find or create GlobalUserAccount
     let globalAccount = await tx.globalUserAccount.findUnique({ where: { email: emailLower } });
     if (!globalAccount) {
@@ -406,7 +412,7 @@ export const register = async (
         gymId,
         globalUserId: globalAccount.id,
         email: emailLower,
-        username: await generateGymScopedUsername(tx, user.fullName, gymName),
+        username: user.username,
         fullName: user.fullName,
         role: user.role as UserRole,
       },
@@ -431,7 +437,7 @@ export const login = async (
   req: Request<unknown, unknown, LoginInput>,
   res: Response,
 ): Promise<void> => {
-  const { identifier, password, requestedRole } = req.body;
+  const { identifier, password } = req.body;
 
   const isEmail = identifier.includes("@");
 
@@ -455,20 +461,24 @@ export const login = async (
       throw new HttpError(403, "Debes verificar tu correo antes de ingresar");
     }
 
+    // Return ALL active memberships across all roles
     const memberships = await prisma.user.findMany({
-      where: { globalUserId: globalAccount.id, role: requestedRole as UserRole, isActive: true },
+      where: { globalUserId: globalAccount.id, isActive: true },
       include: { gym: { select: { id: true, name: true, lockedAt: true } } },
     });
 
     if (memberships.length === 0) {
-      throw new HttpError(403, `No tienes una cuenta como ${requestedRole} en ningun gimnasio`);
+      throw new HttpError(403, "No tienes ninguna cuenta activa en un gimnasio");
     }
 
-    if (memberships.length === 1) {
-      const membership = memberships[0];
-      if (membership.gym.lockedAt) {
-        throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
-      }
+    // Filter out locked gyms
+    const unlockedMemberships = memberships.filter((m) => !m.gym.lockedAt);
+    if (unlockedMemberships.length === 0) {
+      throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
+    }
+
+    if (unlockedMemberships.length === 1) {
+      const membership = unlockedMemberships[0];
       await ensureMembershipActive(membership);
       const token = signAuthToken({ userId: membership.id, role: membership.role });
       res.json({
@@ -486,11 +496,7 @@ export const login = async (
       return;
     }
 
-    // Multiple gyms → return gym selector (filter out locked gyms silently)
-    const unlockedMemberships = memberships.filter((m) => !m.gym.lockedAt);
-    if (unlockedMemberships.length === 0) {
-      throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
-    }
+    // Multiple accounts → return account selector
     const selectorToken = signGymSelectorToken(globalAccount.id);
     res.json({
       requiresGymSelection: true,
@@ -507,46 +513,65 @@ export const login = async (
   }
 
   // ── Username-based login ─────────────────────────────────────────────
-  const userByUsername = await prisma.user.findUnique({
+  // Username is unique per gym, so multiple users across gyms may share it.
+  const usersByUsername = await prisma.user.findMany({
     where: { username: identifier },
-    include: { globalAccount: true, gym: { select: { lockedAt: true } } },
+    include: { globalAccount: true, gym: { select: { id: true, name: true, lockedAt: true } } },
   });
 
-  if (!userByUsername || !userByUsername.isActive || !userByUsername.globalAccount.isActive) {
+  // Filter to active users with active global accounts and non-locked gyms
+  const validUsers = usersByUsername.filter(
+    (u) => u.isActive && u.globalAccount.isActive && !u.gym.lockedAt,
+  );
+
+  if (validUsers.length === 0) {
     throw new HttpError(401, "Invalid credentials");
   }
 
-  if (userByUsername.gym.lockedAt) {
-    throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
-  }
-
-  const globalAccount = userByUsername.globalAccount;
+  // Validate password against the first user's global account
+  // (all users with same username share the same email → same global account)
+  const globalAccount = validUsers[0].globalAccount;
   const comparableHash = getComparablePasswordHash(globalAccount.passwordHash);
   const isValidPassword = await bcrypt.compare(password, comparableHash);
   if (!isValidPassword) {
     throw new HttpError(401, "Invalid credentials");
   }
 
-  assertRequestedRole(userByUsername.role, requestedRole as UserRole);
-
   if (!globalAccount.emailVerifiedAt) {
     throw new HttpError(403, "Debes verificar tu correo antes de ingresar");
   }
 
-  await ensureMembershipActive(userByUsername);
+  if (validUsers.length === 1) {
+    const user = validUsers[0];
+    await ensureMembershipActive(user);
+    const token = signAuthToken({ userId: user.id, role: user.role });
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: globalAccount.email,
+        fullName: globalAccount.fullName,
+        role: user.role,
+        gymId: user.gymId,
+        username: user.username ?? undefined,
+        mustChangePassword: isTemporaryPasswordHash(globalAccount.passwordHash),
+      },
+    });
+    return;
+  }
 
-  const token = signAuthToken({ userId: userByUsername.id, role: userByUsername.role });
+  // Multiple accounts with same username across gyms → account selector
+  const selectorToken = signGymSelectorToken(globalAccount.id);
   res.json({
-    token,
-    user: {
-      id: userByUsername.id,
-      email: globalAccount.email,
-      fullName: globalAccount.fullName,
-      role: userByUsername.role,
-      gymId: userByUsername.gymId,
-      username: userByUsername.username ?? undefined,
-      mustChangePassword: isTemporaryPasswordHash(globalAccount.passwordHash),
-    },
+    requiresGymSelection: true,
+    selectorToken,
+    gyms: validUsers.map((u) => ({
+      userId: u.id,
+      gymId: u.gymId,
+      gymName: u.gym.name,
+      username: u.username ?? undefined,
+      role: u.role,
+    })),
   });
 };
 
@@ -603,7 +628,6 @@ export const selectGym = async (
 
 const completeOauthLogin = async (
   email: string,
-  requestedRole: UserRole,
   res: Response,
 ): Promise<void> => {
   const globalAccount = await prisma.globalUserAccount.findUnique({ where: { email } });
@@ -622,17 +646,23 @@ const completeOauthLogin = async (
     });
   }
 
+  // Return ALL active memberships across all roles
   const memberships = await prisma.user.findMany({
-    where: { globalUserId: globalAccount.id, role: requestedRole, isActive: true },
-    include: { gym: { select: { id: true, name: true } } },
+    where: { globalUserId: globalAccount.id, isActive: true },
+    include: { gym: { select: { id: true, name: true, lockedAt: true } } },
   });
 
   if (memberships.length === 0) {
-    throw new HttpError(403, `No tienes una cuenta como ${requestedRole} en ningun gimnasio`);
+    throw new HttpError(403, "No tienes ninguna cuenta activa en un gimnasio");
   }
 
-  if (memberships.length === 1) {
-    const membership = memberships[0];
+  const unlockedMemberships = memberships.filter((m) => !m.gym.lockedAt);
+  if (unlockedMemberships.length === 0) {
+    throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
+  }
+
+  if (unlockedMemberships.length === 1) {
+    const membership = unlockedMemberships[0];
     await ensureMembershipActive(membership);
     const token = signAuthToken({ userId: membership.id, role: membership.role });
     res.json({
@@ -654,7 +684,7 @@ const completeOauthLogin = async (
   res.json({
     requiresGymSelection: true,
     selectorToken,
-    gyms: memberships.map((m) => ({
+    gyms: unlockedMemberships.map((m) => ({
       userId: m.id,
       gymId: m.gymId,
       gymName: m.gym.name,
@@ -724,7 +754,7 @@ export const oauthGoogle = async (
     throw new HttpError(401, "Google email is not verified");
   }
 
-  await completeOauthLogin(identity.email, req.body.requestedRole as UserRole, res);
+  await completeOauthLogin(identity.email, res);
 };
 
 export const oauthApple = async (
@@ -737,7 +767,7 @@ export const oauthApple = async (
     throw new HttpError(401, "Apple email is not verified");
   }
 
-  await completeOauthLogin(identity.email, req.body.requestedRole as UserRole, res);
+  await completeOauthLogin(identity.email, res);
 };
 
 export const requestEmailVerification = async (

@@ -588,8 +588,6 @@ async function loadCompanyDetail(gymId) {
         });
       });
     });
-      } catch (error) { alert(error.message); }
-    });
   } catch (error) {
     detailEl.textContent = `Error: ${error.message}`;
   }

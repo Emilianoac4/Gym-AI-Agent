@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
@@ -21,14 +21,12 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
 import { AppButton } from "../../components/AppButton";
 import { palette } from "../../theme/palette";
-import { UserRole } from "../../types/api";
 import { api } from "../../services/api";
 
 WebBrowser.maybeCompleteAuthSession();
 
 export function LoginScreen() {
   const navigation = useNavigation<any>();
-  const route = useRoute<any>();
   const { login, loginWithGoogle, loginWithApple, loading } = useAuth();
 
   const [identifier, setIdentifier] = useState("admin@gymiai.com");
@@ -36,14 +34,6 @@ export function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [sendingRecovery, setSendingRecovery] = useState(false);
-
-  const selectedRole: UserRole = route.params?.role ?? "member";
-
-  const roleLabels: Record<UserRole, string> = {
-    admin: "Administrador",
-    trainer: "Entrenador",
-    member: "Usuario",
-  };
 
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 
@@ -67,7 +57,7 @@ export function LoginScreen() {
   const onLogin = async () => {
     try {
       setAuthError(null);
-      await login(identifier.trim(), password, selectedRole);
+      await login(identifier.trim(), password);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesión.");
     }
@@ -178,7 +168,7 @@ export function LoginScreen() {
         throw new Error("Apple no devolvio un token valido.");
       }
 
-      await loginWithApple(credential.identityToken, selectedRole);
+      await loginWithApple(credential.identityToken);
     } catch (error) {
       if (
         error instanceof Error &&
@@ -211,14 +201,14 @@ export function LoginScreen() {
 
       try {
         setAuthError(null);
-        await loginWithGoogle(idToken, selectedRole);
+        await loginWithGoogle(idToken);
       } catch (error) {
         setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesión con Google.");
       }
     };
 
     run();
-  }, [googleResponse, loginWithGoogle, selectedRole]);
+  }, [googleResponse, loginWithGoogle]);
 
   return (
     <LinearGradient colors={palette.gradientHero} style={styles.container}>
@@ -237,28 +227,10 @@ export function LoginScreen() {
         <Text style={styles.title}>Entrena con inteligencia</Text>
         <Text style={styles.subtitle}>Tu progreso, mediciones y coach IA en una sola app.</Text>
 
-        <View style={styles.roleSelector}>
-          <Text style={styles.roleSelectorTitle}>Acceso seleccionado</Text>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{roleLabels[selectedRole]}</Text>
-          </View>
-          <Text style={styles.roleHint}>
-            Ingresa tus credenciales para este perfil. Si tu cuenta no coincide, el acceso será denegado.
-          </Text>
-          <TouchableOpacity
-            disabled={loading}
-            onPress={() => {
-              setAuthError(null);
-              navigation.navigate("RoleSelect");
-            }}
-          >
-            <Text style={styles.changeRoleLink}>Cambiar tipo de acceso</Text>
-          </TouchableOpacity>
-
-          {authError ? (
+        {authError ? (
             <View style={styles.errorBanner}>
               <Text style={styles.errorBadge}>Acceso</Text>
-              <Text style={styles.errorTitle}>No fue posible ingresar con este perfil</Text>
+              <Text style={styles.errorTitle}>No fue posible ingresar</Text>
               <Text style={styles.errorText}>{authError}</Text>
               {authError.toLowerCase().includes("verificar tu correo") ? (
                 <TouchableOpacity onPress={onResendVerification} style={styles.errorActionButton}>
@@ -270,7 +242,6 @@ export function LoginScreen() {
               </TouchableOpacity>
             </View>
           ) : null}
-        </View>
 
         <View style={styles.highlightStrip}>
           <View style={styles.highlightPill}>
@@ -337,11 +308,9 @@ export function LoginScreen() {
           ) : null}
         </View>
 
-        {selectedRole === "admin" ? (
-          <TouchableOpacity onPress={() => navigation.navigate("Register")}> 
+        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
             <Text style={styles.link}>Crear cuenta inicial de gimnasio</Text>
           </TouchableOpacity>
-        ) : null}
       </View>
       </ScrollView>
       </KeyboardAvoidingView>
@@ -388,38 +357,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     color: palette.textMuted,
     lineHeight: 20,
-  },
-  roleSelector: {
-    marginBottom: 14,
-  },
-  roleSelectorTitle: {
-    color: palette.ink,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  roleBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    backgroundColor: palette.cocoa,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  roleBadgeText: {
-    color: palette.gold,
-    fontWeight: "800",
-    fontSize: 12,
-  },
-  roleHint: {
-    marginTop: 8,
-    color: palette.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  changeRoleLink: {
-    marginTop: 6,
-    color: palette.cocoa,
-    fontWeight: "700",
-    textDecorationLine: "underline",
   },
   errorBanner: {
     marginTop: 10,
