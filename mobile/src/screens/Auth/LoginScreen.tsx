@@ -308,7 +308,7 @@ export function LoginScreen() {
           ) : null}
         </View>
 
-        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+        <TouchableOpacity onPress={() => navigation.navigate("ContactSales")}>
             <Text style={styles.link}>Crear cuenta inicial de gimnasio</Text>
           </TouchableOpacity>
       </View>

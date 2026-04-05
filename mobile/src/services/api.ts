@@ -224,6 +224,19 @@ export const api = {
       body: payload,
     }),
 
+  contactSales: (payload: {
+    gymName: string;
+    contactEmail: string;
+    phone: string;
+    plan: "basic" | "standard" | "premium";
+    userCount: "1-50" | "51-150" | "151-300" | "300+";
+    needs?: string;
+  }) =>
+    request<{ message: string }>("/leads/contact", {
+      method: "POST",
+      body: payload,
+    }),
+
   resetPassword: (payload: { token: string; newPassword: string }) =>
     request<{ message: string }>("/auth/reset-password", {
       method: "POST",

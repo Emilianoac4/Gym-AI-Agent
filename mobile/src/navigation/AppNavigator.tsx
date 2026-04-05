@@ -8,6 +8,7 @@ import { designSystem } from "../theme/designSystem";
 import { palette } from "../theme/palette";
 import { LoginScreen } from "../screens/Auth/LoginScreen";
 import { RegisterScreen } from "../screens/Auth/RegisterScreen";
+import { ContactSalesScreen } from "../screens/Auth/ContactSalesScreen";
 import { GymSelectorScreen } from "../screens/Auth/GymSelectorScreen";
 import { ChangeTemporaryPasswordScreen } from "../screens/Auth/ChangeTemporaryPasswordScreen";
 import { HomeScreen } from "../screens/Main/HomeScreen";
@@ -226,6 +227,7 @@ export function AppNavigator() {
               <>
                 <Stack.Screen name="Login" component={LoginScreen} />
                 <Stack.Screen name="Register" component={RegisterScreen} />
+                <Stack.Screen name="ContactSales" component={ContactSalesScreen} />
               </>
             )}
           </>

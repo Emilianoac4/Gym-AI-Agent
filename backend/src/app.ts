@@ -12,6 +12,7 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { platformRouter } from "./modules/platform/platform.routes";
 import { assistanceRouter } from "./modules/assistance/assistance.routes";
 import { trainerRoutinesRouter } from "./modules/trainer-routines/trainer-routines.routes";
+import { leadsRouter } from "./modules/leads/leads.routes";
 import { notFoundHandler } from "./middleware/not-found.middleware";
 import { errorHandler } from "./middleware/error.middleware";
 
@@ -61,6 +62,7 @@ app.use("/notifications", notificationsRouter);
 app.use("/platform", platformRouter);
 app.use("/assistance", assistanceRouter);
 app.use("/trainer-routines", trainerRoutinesRouter);
+app.use("/leads", leadsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
