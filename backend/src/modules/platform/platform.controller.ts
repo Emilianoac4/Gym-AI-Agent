@@ -1104,6 +1104,125 @@ export const confirmCompanyDeletion = async (req: Request, res: Response): Promi
   });
 };
 
+export const requestHardDelete = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const { gymId } = req.params as { gymId: string };
+  const body = req.body as DeleteCompanyRequestInput;
+
+  await verifyPlatformPassword(session.platformUserId, body.platformPassword);
+
+  const gym = await prisma.gym.findUnique({
+    where: { id: gymId },
+    select: { id: true, name: true, deletedAt: true },
+  });
+  if (!gym) {
+    throw new HttpError(404, "Empresa no encontrada");
+  }
+  if (!gym.deletedAt) {
+    throw new HttpError(409, "La empresa debe estar en estado eliminado antes de proceder con la eliminación definitiva");
+  }
+
+  const challengeToken = generateDeletionChallengeToken();
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+  await prisma.gym.update({
+    where: { id: gymId },
+    data: {
+      deletionPendingAt: new Date(),
+      deletionChallengeHash: hashDeletionChallenge(challengeToken),
+      deletionChallengeExpiresAt: expiresAt,
+      deletionRequestedByPlatformUserId: session.platformUserId,
+    },
+  });
+
+  res.json({
+    message: "Paso 1 completado. Confirma la eliminación definitiva con el token y el nombre de la empresa.",
+    challengeToken,
+    expiresAt: expiresAt.toISOString(),
+    confirmationHint: gym.name,
+  });
+};
+
+export const confirmHardDelete = async (req: Request, res: Response): Promise<void> => {
+  const session = requirePlatformSession(req);
+  const { gymId } = req.params as { gymId: string };
+  const body = req.body as DeleteCompanyConfirmInput;
+
+  const gym = await prisma.gym.findUnique({
+    where: { id: gymId },
+    select: {
+      id: true,
+      name: true,
+      deletedAt: true,
+      deletionChallengeHash: true,
+      deletionChallengeExpiresAt: true,
+    },
+  });
+  if (!gym) {
+    throw new HttpError(404, "Empresa no encontrada");
+  }
+  if (!gym.deletedAt) {
+    throw new HttpError(409, "La empresa debe estar en estado eliminado antes de proceder con la eliminación definitiva");
+  }
+
+  if (!gym.deletionChallengeHash || !gym.deletionChallengeExpiresAt) {
+    throw new HttpError(400, "Primero debes solicitar la eliminación definitiva (paso 1)");
+  }
+  if (gym.deletionChallengeExpiresAt.getTime() < Date.now()) {
+    throw new HttpError(400, "El token de eliminación expiró. Solicita uno nuevo.");
+  }
+  if (gym.name.trim().toLowerCase() !== body.confirmation.trim().toLowerCase()) {
+    throw new HttpError(400, "La confirmación no coincide con el nombre del gimnasio");
+  }
+  if (hashDeletionChallenge(body.challengeToken) !== gym.deletionChallengeHash) {
+    throw new HttpError(401, "Token de confirmación inválido");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const gymUsers = await tx.user.findMany({
+      where: { gymId },
+      select: { id: true },
+    });
+    const userIds = gymUsers.map((u) => u.id);
+
+    // Delete user-level records that don't cascade automatically in DB
+    if (userIds.length > 0) {
+      await tx.userPermissionGrant.deleteMany({ where: { userId: { in: userIds } } });
+      await tx.userHealthConnection.deleteMany({ where: { userId: { in: userIds } } });
+      await tx.aIChatLog.deleteMany({ where: { userId: { in: userIds } } });
+    }
+
+    // Delete all gym-scoped records (gymId FK — no DB cascade from gyms)
+    await tx.gymSubscriptionAudit.deleteMany({ where: { gymId } });
+    await tx.gymSubscription.deleteMany({ where: { gymId } });
+    await tx.membershipTransaction.deleteMany({ where: { gymId } });
+    await tx.membershipDailySummaryDispatch.deleteMany({ where: { gymId } });
+    await tx.gymScheduleTemplate.deleteMany({ where: { gymId } });
+    await tx.gymScheduleException.deleteMany({ where: { gymId } });
+    await tx.trainerPresenceSession.deleteMany({ where: { gymId } });
+    await tx.membershipReportExport.deleteMany({ where: { gymId } });
+    await tx.pushToken.deleteMany({ where: { gymId } });
+    await tx.generalNotification.deleteMany({ where: { gymId } });
+    await tx.messageThread.deleteMany({ where: { gymId } }); // direct_messages cascade from thread
+    await tx.emergencyTicket.deleteMany({ where: { gymId } });
+    await tx.auditLog.deleteMany({ where: { gymId } });
+    await tx.assistanceRequest.deleteMany({ where: { gymId } });
+    await tx.trainerAssignedRoutine.deleteMany({ where: { gymId } }); // assigned exercises cascade
+    await tx.trainerRoutineTemplate.deleteMany({ where: { gymId } }); // template exercises cascade
+
+    // Delete the gym — cascades users → user_profiles, measurements
+    await tx.gym.delete({ where: { id: gymId } });
+  });
+
+  res.json({
+    message: "Empresa eliminada definitivamente. Esta acción es irreversible.",
+    gymId,
+    gymName: gym.name,
+    deletedAt: new Date().toISOString(),
+  });
+};
+
 export const recoverCompany = async (req: Request, res: Response): Promise<void> => {
   const session = requirePlatformSession(req);
   const { gymId } = req.params as { gymId: string };

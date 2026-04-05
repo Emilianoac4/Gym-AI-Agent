@@ -306,6 +306,7 @@ async function loadDashboard() {
         <div class="company-actions">
           <button data-gym-id="${company.gymId}" class="ghost-btn detail-btn">Ver detalle</button>
           <button data-gym-id="${company.gymId}" data-gym-name="${company.gymName}" class="ghost-btn recover-btn">Recuperar</button>
+          <button data-gym-id="${company.gymId}" data-gym-name="${company.gymName}" class="ghost-btn danger-ghost-btn hard-delete-btn">Eliminar definitivamente</button>
         </div>
       </article>`).join("");
 
@@ -402,7 +403,60 @@ async function loadDashboard() {
         });
       });
     });
-  } catch (error) {
+    document.querySelectorAll('.hard-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const gymId   = btn.getAttribute('data-gym-id');
+        const gymName = btn.getAttribute('data-gym-name');
+        openModal({
+          eyebrow: 'Paso 1 de 2 - Eliminacion definitiva',
+          title: gymName,
+          desc: 'ADVERTENCIA: Esta accion es IRREVERSIBLE. Todos los datos del gimnasio seran eliminados permanentemente. Confirma tu identidad para continuar.',
+          step: 1,
+          confirmBtnText: 'Continuar',
+          onConfirm: async () => {
+            const password = $('modalPassword').value;
+            if (!password) { $('modalError').textContent = 'Ingresa tu contrasena.'; return; }
+            const cb = $('modalConfirmBtn');
+            cb.disabled = true; cb.textContent = 'Verificando...'; $('modalError').textContent = '';
+            try {
+              const step1 = await apiFetch(`/platform/companies/${gymId}/hard-delete/request`, {
+                method: 'POST', body: JSON.stringify({ platformPassword: password }),
+              });
+              openModal({
+                eyebrow: 'Paso 2 de 2 - Confirmar eliminacion definitiva',
+                title: '⚠️ Esta accion es irreversible',
+                desc: `Para confirmar la eliminacion PERMANENTE, escribe el nombre exacto del gimnasio.`,
+                step: 2,
+                confirmLabel: `"${gymName}"`,
+                confirmPlaceholder: gymName,
+                confirmBtnText: 'Eliminar definitivamente',
+                dangerBtn: true,
+                onConfirm: async () => {
+                  const confirmation = $('modalConfirmInput').value;
+                  if (!confirmation) { $('modalError').textContent = 'Escribe el nombre del gimnasio.'; return; }
+                  const cb2 = $('modalConfirmBtn');
+                  cb2.disabled = true; cb2.textContent = 'Eliminando...'; $('modalError').textContent = '';
+                  try {
+                    await apiFetch(`/platform/companies/${gymId}/hard-delete/confirm`, {
+                      method: 'POST', body: JSON.stringify({ challengeToken: step1.challengeToken, confirmation }),
+                    });
+                    closeModal();
+                    await loadDashboard();
+                    await loadAlerts();
+                  } catch (err) {
+                    $('modalError').textContent = err.message;
+                    cb2.disabled = false; cb2.textContent = 'Eliminar definitivamente';
+                  }
+                },
+              });
+            } catch (err) {
+              $('modalError').textContent = err.message;
+              cb.disabled = false; cb.textContent = 'Continuar';
+            }
+          },
+        });
+      });
+    });  } catch (error) {
     summaryEl.textContent = `Error: ${error.message}`;
   }
 }

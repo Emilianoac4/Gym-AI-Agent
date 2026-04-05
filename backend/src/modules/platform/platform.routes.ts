@@ -7,6 +7,7 @@ import {
 import {
   bootstrapPlatformAdmin,
   confirmCompanyDeletion,
+  confirmHardDelete,
   createCompany,
   createPlatformAdminUser,
   createCompanyAdmin,
@@ -22,12 +23,15 @@ import {
   loginPlatform,
   recoverCompany,
   requestCompanyDeletion,
+  requestHardDelete,
   updateCompanySubscription,
   updateCompanySubscriptionStatus,
 } from "./platform.controller";
 import {
   deleteCompanyConfirmSchema,
   deleteCompanyRequestSchema,
+  hardDeleteConfirmSchema,
+  hardDeleteRequestSchema,
   createCompanySchema,
   createCompanyAdminSchema,
   adminParamsSchema,
@@ -122,6 +126,18 @@ platformRouter.delete(
   validate(adminParamsSchema),
   validate(deleteCompanyAdminSchema),
   deleteCompanyAdmin,
+);
+platformRouter.post(
+  "/companies/:gymId/hard-delete/request",
+  validate(gymParamsSchema),
+  validate(hardDeleteRequestSchema),
+  requestHardDelete,
+);
+platformRouter.post(
+  "/companies/:gymId/hard-delete/confirm",
+  validate(gymParamsSchema),
+  validate(hardDeleteConfirmSchema),
+  confirmHardDelete,
 );
 
 export { platformRouter };

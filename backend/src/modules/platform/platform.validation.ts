@@ -107,3 +107,9 @@ export type DeleteCompanyConfirmInput = z.infer<typeof deleteCompanyConfirmSchem
 export type RecoverCompanyInput = z.infer<typeof recoverCompanySchema>;
 export type LockCompanyInput = z.infer<typeof lockCompanySchema>;
 export type DeleteCompanyAdminInput = z.infer<typeof deleteCompanyAdminSchema>;
+
+// Hard delete schemas (same shape as soft delete — reuse types)
+export const hardDeleteRequestSchema = deleteCompanyRequestSchema;
+export const hardDeleteConfirmSchema = deleteCompanyConfirmSchema;
+export type HardDeleteRequestInput = DeleteCompanyRequestInput;
+export type HardDeleteConfirmInput = DeleteCompanyConfirmInput;
