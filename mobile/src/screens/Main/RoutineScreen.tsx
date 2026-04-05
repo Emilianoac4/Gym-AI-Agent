@@ -13,6 +13,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
+import { ExerciseCard } from "../../components/ExerciseCard";
+import type { ExerciseReplacement } from "../../components/ExerciseCard";
 import {
   ExerciseStrengthProgress,
   GeneratedRoutine,
@@ -1033,228 +1035,122 @@ export function RoutineScreen() {
                           : null;
                       const recentHistory = progress?.weeklyHistory.slice(-4).reverse() || [];
 
-                      return (
-                        <View key={`${session.day}-${exercise.name}`} style={styles.exerciseRow}>
-                          <Text style={styles.exName}>
-                            {exercise.name}
-                            {isExerciseDone ? "  ✓" : ""}
+                      const progressNode = (
+                        <>
+                          <Text style={styles.exerciseProgressTitle}>Progreso</Text>
+                          <Text style={styles.exerciseProgressLine}>
+                            Esta semana: {selectedWeekEntry ? `${selectedWeekEntry.latestLoadKg.toFixed(1)} kg` : "Sin registros"}
                           </Text>
-                          <View style={styles.exDetails}>
-                            <Text style={styles.exTag}>{exercise.sets} series</Text>
-                            <Text style={styles.exTag}>{exercise.reps} reps</Text>
-                            <Text style={styles.exTag}>{exercise.rest_seconds}s descanso</Text>
-                          </View>
-                          {exercise.notes ? <Text style={styles.exNotes}>{exercise.notes}</Text> : null}
-
-                          <TouchableOpacity
-                            style={styles.progressToggleBtn}
-                            onPress={() =>
-                              setOpenProgressKey((prev) =>
-                                prev === progressPanelKey ? null : progressPanelKey
-                              )
-                            }
-                          >
-                            <Text style={styles.progressToggleText}>
-                              {isProgressOpen ? "Ocultar progreso del ejercicio" : "Ver progreso del ejercicio"}
+                          <Text style={styles.exerciseProgressLine}>
+                            Mejor histórico: {progress ? `${progress.bestLoadKg.toFixed(1)} kg` : "Sin datos"}
+                          </Text>
+                          <Text style={styles.exerciseProgressLine}>
+                            Último día: {progress ? formatDateTime(progress.lastPerformedAt) : "Sin datos"}
+                          </Text>
+                          {weeklyDelta !== null ? (
+                            <Text style={[styles.exerciseProgressLine, weeklyDelta >= 0 ? styles.progressUp : styles.progressDown]}>
+                              {weeklyDelta >= 0 ? "▲" : "▼"} {Math.abs(weeklyDelta).toFixed(1)} kg vs semana anterior
                             </Text>
-                          </TouchableOpacity>
-
-                          {isProgressOpen ? (
-                            <View style={styles.exerciseProgressCard}>
-                              <Text style={styles.exerciseProgressTitle}>Progreso del ejercicio</Text>
-                              <Text style={styles.exerciseProgressLine}>
-                                Semana seleccionada: {selectedWeekEntry ? `${selectedWeekEntry.latestLoadKg.toFixed(1)} kg` : "Sin registros"}
-                              </Text>
-                              <Text style={styles.exerciseProgressLine}>
-                                Mejor historico: {progress ? `${progress.bestLoadKg.toFixed(1)} kg` : "Sin datos"}
-                              </Text>
-                              <Text style={styles.exerciseProgressLine}>
-                                Ultima ejecucion: {progress ? formatDateTime(progress.lastPerformedAt) : "Sin datos"}
-                              </Text>
-                              {weeklyDelta !== null ? (
-                                <Text style={[styles.exerciseProgressLine, weeklyDelta >= 0 ? styles.progressUp : styles.progressDown]}>
-                                  {weeklyDelta >= 0 ? "Subiste" : "Bajaste"} {Math.abs(weeklyDelta).toFixed(1)} kg vs semana anterior
-                                </Text>
-                              ) : (
-                                <Text style={styles.exerciseProgressMuted}>
-                                  Registra al menos dos semanas para comparar este ejercicio.
-                                </Text>
-                              )}
-
-                              {recentHistory.length > 0 ? (
-                                <View style={styles.historyChips}>
-                                  {recentHistory.map((item) => (
-                                    <View key={`${exercise.name}-${item.weekStart}`} style={styles.historyChip}>
-                                      <Text style={styles.historyChipWeek}>{formatWeekLabel(item.weekStart)}</Text>
-                                      <Text style={styles.historyChipValue}>{item.latestLoadKg.toFixed(1)} kg</Text>
-                                    </View>
-                                  ))}
+                          ) : (
+                            <Text style={styles.exerciseProgressMuted}>
+                              Registra al menos dos semanas para comparar.
+                            </Text>
+                          )}
+                          {recentHistory.length > 0 && (
+                            <View style={styles.historyChips}>
+                              {recentHistory.map((item) => (
+                                <View key={`${exercise.name}-${item.weekStart}`} style={styles.historyChip}>
+                                  <Text style={styles.historyChipWeek}>{formatWeekLabel(item.weekStart)}</Text>
+                                  <Text style={styles.historyChipValue}>{item.latestLoadKg.toFixed(1)} kg</Text>
                                 </View>
-                              ) : null}
-                            </View>
-                          ) : null}
-
-                          <TouchableOpacity
-                            style={styles.logToggleBtn}
-                            disabled={isExerciseDone}
-                            onPress={() => {
-                              if (isLogOpen) {
-                                setActiveLog(null);
-                              } else {
-                                openExerciseLog(session.day, exercise);
-                              }
-                            }}
-                          >
-                            <Text style={styles.logToggleText}>
-                              {isExerciseDone
-                                ? "Ejercicio completado"
-                                : isLogOpen
-                                ? "Cancelar"
-                                : progress
-                                ? "Actualizar carga"
-                                : "Registrar carga"}
-                            </Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={[styles.completeExerciseBtn, isExerciseDone && styles.completeBtnDone]}
-                            disabled={isExerciseDone || !canMarkCurrentWeek}
-                            onPress={() => onMarkExerciseCompleted(session.day, exercise.name)}
-                          >
-                            <Text style={[styles.completeExerciseBtnText, isExerciseDone && styles.completeBtnTextDone]}>
-                              {isExerciseDone
-                                ? "Ejercicio realizado"
-                                : !canMarkCurrentWeek
-                                ? "Solo semana actual"
-                                : "Marcar ejercicio realizado"}
-                            </Text>
-                          </TouchableOpacity>
-
-                          <View style={styles.exerciseActionsRow}>
-                            <TouchableOpacity
-                              style={[
-                                styles.exerciseActionBtn,
-                                (isExerciseDone || replacingExerciseKey === actionKey) && styles.genBtnDisabled,
-                              ]}
-                              onPress={() => onReplaceExercise(session.day, exercise.name)}
-                              disabled={isExerciseDone || replacingExerciseKey === actionKey}
-                            >
-                              <Text style={styles.exerciseActionBtnText}>
-                                {replacingExerciseKey === actionKey
-                                  ? "Recomendando..."
-                                  : "Recomendar otro"}
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[
-                                styles.exerciseActionBtn,
-                                (isExerciseDone || optionsLoadingKey === actionKey || manualReplacingKey === actionKey) &&
-                                  styles.genBtnDisabled,
-                              ]}
-                              onPress={() => onLoadReplacementOptions(session.day, exercise)}
-                              disabled={isExerciseDone || optionsLoadingKey === actionKey || manualReplacingKey === actionKey}
-                            >
-                              <Text style={styles.exerciseActionBtnText}>
-                                {optionsLoadingKey === actionKey
-                                  ? "Buscando opciones..."
-                                  : manualReplacingKey === actionKey
-                                  ? "Aplicando opcion..."
-                                  : "Elegir siguiente"}
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[
-                                styles.exerciseActionBtnDanger,
-                                (isExerciseDone || removingExerciseKey === actionKey) && styles.genBtnDisabled,
-                              ]}
-                              onPress={() => onRemoveExercise(session.day, exercise.name)}
-                              disabled={isExerciseDone || removingExerciseKey === actionKey}
-                            >
-                              <Text style={styles.exerciseActionBtnDangerText}>
-                                {removingExerciseKey === actionKey
-                                  ? "Eliminando..."
-                                  : "Eliminar"}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-
-                          {openOptionsKey === actionKey ? (
-                            <View style={styles.optionsPanel}>
-                              <Text style={styles.optionsPanelTitle}>Opciones sugeridas para este ejercicio</Text>
-                              {(replacementOptionsByKey[actionKey] || []).map((option) => (
-                                <TouchableOpacity
-                                  key={`${actionKey}-${option.name}`}
-                                  style={styles.optionRow}
-                                  onPress={() =>
-                                    onSelectManualReplacement(session.day, exercise.name, option)
-                                  }
-                                  disabled={manualReplacingKey === actionKey}
-                                >
-                                  <Text style={styles.optionName}>{option.name}</Text>
-                                  <Text style={styles.optionMeta}>
-                                    {option.sets} series • {option.reps} reps • {option.rest_seconds}s
-                                  </Text>
-                                </TouchableOpacity>
                               ))}
                             </View>
-                          ) : null}
+                          )}
+                        </>
+                      );
 
-                          {isLogOpen ? (
-                            <View style={styles.logForm}>
-                              <View style={styles.unitSelectorRow}>
-                                <TouchableOpacity
-                                  style={[styles.unitChip, logUnit === "kg" && styles.unitChipSelected]}
-                                  onPress={() => setLogUnit("kg")}
-                                >
-                                  <Text style={[styles.unitChipText, logUnit === "kg" && styles.unitChipTextSelected]}>
-                                    kg
-                                  </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={[styles.unitChip, logUnit === "lb" && styles.unitChipSelected]}
-                                  onPress={() => setLogUnit("lb")}
-                                >
-                                  <Text style={[styles.unitChipText, logUnit === "lb" && styles.unitChipTextSelected]}>
-                                    lb
-                                  </Text>
-                                </TouchableOpacity>
-                              </View>
-                              <View style={styles.logFormRow}>
-                                <TextInput
-                                  placeholder={logUnit === "kg" ? "Carga (kg)" : "Carga (lb)"}
-                                  placeholderTextColor={palette.textSoft}
-                                  style={[styles.input, styles.inputKg]}
-                                  keyboardType="decimal-pad"
-                                  value={logKg}
-                                  onChangeText={setLogKg}
-                                />
-                                <TextInput
-                                  placeholder="Reps"
-                                  placeholderTextColor={palette.textSoft}
-                                  style={[styles.input, styles.inputSmall]}
-                                  keyboardType="number-pad"
-                                  value={logReps}
-                                  onChangeText={setLogReps}
-                                />
-                                <TextInput
-                                  placeholder="Series"
-                                  placeholderTextColor={palette.textSoft}
-                                  style={[styles.input, styles.inputSmall]}
-                                  keyboardType="number-pad"
-                                  value={logSets}
-                                  onChangeText={setLogSets}
-                                />
-                              </View>
-                              <Text style={styles.autoSaveHint}>
-                                Guardado automatico al escribir una carga valida.
-                              </Text>
-                              {savingLog ? <Text style={styles.autoSaveStatus}>Guardando...</Text> : null}
-                              {lastSavedExerciseKey?.startsWith(`${exerciseKey}::`) ? (
-                                <Text style={styles.autoSaveStatusSuccess}>Ultimo registro guardado correctamente.</Text>
-                              ) : null}
-                            </View>
-                          ) : null}
-                        </View>
+                      return (
+                        <ExerciseCard
+                          key={`${session.day}-${exercise.name}`}
+                          name={exercise.name}
+                          sets={exercise.sets}
+                          reps={exercise.reps}
+                          restSeconds={exercise.rest_seconds}
+                          tip={exercise.notes}
+                          status={isExerciseDone ? "completed" : isLogOpen ? "active" : "default"}
+                          exerciseKey={exerciseKey}
+                          logOpen={isLogOpen}
+                          logValues={{
+                            loadValue: logKg,
+                            loadUnit: logUnit,
+                            reps: logReps,
+                            sets: logSets,
+                          }}
+                          savingLog={savingLog}
+                          lastSavedKey={lastSavedExerciseKey}
+                          onToggleLog={() => {
+                            if (isLogOpen) {
+                              setActiveLog(null);
+                            } else {
+                              openExerciseLog(session.day, exercise);
+                            }
+                          }}
+                          onLogChange={(vals) => {
+                            if (vals.loadValue !== undefined) setLogKg(vals.loadValue);
+                            if (vals.loadUnit  !== undefined) setLogUnit(vals.loadUnit);
+                            if (vals.reps      !== undefined) setLogReps(vals.reps);
+                            if (vals.sets      !== undefined) setLogSets(vals.sets);
+                          }}
+                          onMarkDone={() => onMarkExerciseCompleted(session.day, exercise.name)}
+                          canMarkDone={canMarkCurrentWeek}
+                          hasProgress={!!progress}
+                          progressOpen={isProgressOpen}
+                          onToggleProgress={() =>
+                            setOpenProgressKey((prev) =>
+                              prev === progressPanelKey ? null : progressPanelKey
+                            )
+                          }
+                          progressContent={progressNode}
+                          replacements={
+                            openOptionsKey === actionKey
+                              ? (replacementOptionsByKey[actionKey] || []).map(
+                                  (o): ExerciseReplacement => ({
+                                    name: o.name,
+                                    sets: o.sets,
+                                    reps: o.reps,
+                                    rest_seconds: o.rest_seconds,
+                                  })
+                                )
+                              : undefined
+                          }
+                          replacementsLoading={optionsLoadingKey === actionKey}
+                          onSelectReplacement={(opt) =>
+                            onSelectManualReplacement(session.day, exercise.name, {
+                              name: opt.name,
+                              sets: opt.sets,
+                              reps: opt.reps,
+                              rest_seconds: opt.rest_seconds,
+                            })
+                          }
+                          menuOptions={[
+                            {
+                              label: replacingExerciseKey === actionKey ? "Reemplazando..." : "Reemplazar con IA",
+                              loading: replacingExerciseKey === actionKey,
+                              onPress: () => onReplaceExercise(session.day, exercise.name),
+                            },
+                            {
+                              label: optionsLoadingKey === actionKey ? "Buscando opciones..." : "Elegir alternativa",
+                              loading: optionsLoadingKey === actionKey,
+                              onPress: () => onLoadReplacementOptions(session.day, exercise),
+                            },
+                            {
+                              label: removingExerciseKey === actionKey ? "Eliminando..." : "Eliminar ejercicio",
+                              loading: removingExerciseKey === actionKey,
+                              destructive: true,
+                              onPress: () => onRemoveExercise(session.day, exercise.name),
+                            },
+                          ]}
+                        />
                       );
                     })}
                   </View>
