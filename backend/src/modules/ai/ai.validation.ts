@@ -104,3 +104,16 @@ export const addRoutineDaySchema = z.object({
 });
 
 export type AddRoutineDayInput = z.infer<typeof addRoutineDaySchema>;
+
+export const addExerciseToRoutineSchema = z.object({
+  sessionDay: z.string().min(1).max(50),
+  manual: z
+    .object({
+      name: z.string().min(2).max(80),
+      sets: z.coerce.number().int().min(1).max(20),
+      reps: z.string().min(1).max(20),
+    })
+    .optional(),
+});
+
+export type AddExerciseToRoutineInput = z.infer<typeof addExerciseToRoutineSchema>;

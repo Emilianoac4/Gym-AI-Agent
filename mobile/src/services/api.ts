@@ -363,6 +363,18 @@ export const api = {
       timeoutMs: AI_TIMEOUT_MS,
     }),
 
+  addExerciseToRoutine: (
+    id: string,
+    token: string,
+    body: { sessionDay: string; manual?: { name: string; sets: number; reps: string } }
+  ) =>
+    request<{ message: string; routine: GeneratedRoutine }>(`/ai/${id}/routine/exercises/add`, {
+      method: "POST",
+      token,
+      body,
+      timeoutMs: AI_TIMEOUT_MS,
+    }),
+
   getRoutineCheckins: (id: string, token: string, days = 28) =>
     request<{
       message: string;

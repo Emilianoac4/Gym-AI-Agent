@@ -176,6 +176,13 @@ export function RoutineScreen() {
   const [addDayLoading, setAddDayLoading] = useState(false);
   const [addDayDay, setAddDayDay] = useState("monday");
   const [addDayFocus, setAddDayFocus] = useState("");
+  const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
+  const [addExerciseSessionDay, setAddExerciseSessionDay] = useState<string | null>(null);
+  const [addExerciseMode, setAddExerciseMode] = useState<"choose" | "ai" | "manual">("choose");
+  const [addingExercise, setAddingExercise] = useState(false);
+  const [manualExName, setManualExName] = useState("");
+  const [manualExSets, setManualExSets] = useState("");
+  const [manualExReps, setManualExReps] = useState("");
 
   const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
   const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart);
@@ -449,6 +456,64 @@ export function RoutineScreen() {
       );
     } finally {
       setRegeneratingSessionDay(null);
+    }
+  };
+
+  const handleOpenAddExercise = (sessionDay: string) => {
+    setAddExerciseSessionDay(sessionDay);
+    setAddExerciseMode("choose");
+    setManualExName("");
+    setManualExSets("");
+    setManualExReps("");
+    setShowAddExerciseModal(true);
+  };
+
+  const onAddExercise = async (mode: "ai" | "manual") => {
+    if (!user || !token || !addExerciseSessionDay) return;
+    if (mode === "manual") {
+      if (!manualExName.trim()) {
+        Alert.alert("Campo requerido", "Escribe el nombre del ejercicio.");
+        return;
+      }
+      const s = parseInt(manualExSets, 10);
+      if (isNaN(s) || s < 1) {
+        Alert.alert("Series inválidas", "Escribe un número de series entre 1 y 20.");
+        return;
+      }
+      if (!manualExReps.trim()) {
+        Alert.alert("Campo requerido", "Escribe las repeticiones.");
+        return;
+      }
+    }
+    setAddExerciseMode(mode);
+    setAddingExercise(true);
+    try {
+      const body: { sessionDay: string; manual?: { name: string; sets: number; reps: string } } = {
+        sessionDay: addExerciseSessionDay,
+      };
+      if (mode === "manual") {
+        body.manual = {
+          name: manualExName.trim(),
+          sets: parseInt(manualExSets, 10),
+          reps: manualExReps.trim(),
+        };
+      }
+      const data = await api.addExerciseToRoutine(user.id, token, body);
+      setRoutine(data.routine);
+      setGeneratedAt(new Date().toISOString());
+      setShowAddExerciseModal(false);
+      setManualExName("");
+      setManualExSets("");
+      setManualExReps("");
+      setAddExerciseMode("choose");
+    } catch (error) {
+      Alert.alert(
+        "No se pudo agregar",
+        error instanceof Error ? error.message : "Intenta de nuevo"
+      );
+      setAddExerciseMode(mode === "manual" ? "manual" : "choose");
+    } finally {
+      setAddingExercise(false);
     }
   };
 
@@ -840,6 +905,106 @@ export function RoutineScreen() {
             >
               <Text style={styles.addDayCancelText}>Cancelar</Text>
             </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Add Exercise Modal */}
+      <Modal
+        visible={showAddExerciseModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !addingExercise && setShowAddExerciseModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.addDayBackdrop}
+          activeOpacity={1}
+          onPress={() => { if (!addingExercise) setShowAddExerciseModal(false); }}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.addDayPanel}>
+            <Text style={styles.addDayTitle}>Agregar ejercicio</Text>
+            {addExerciseMode === "choose" && (
+              <>
+                <TouchableOpacity
+                  style={styles.addDaySubmitBtn}
+                  onPress={() => onAddExercise("ai")}
+                >
+                  <Text style={styles.addDaySubmitText}>Generar con Tuco</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.addDaySubmitBtn, { marginTop: 10, backgroundColor: "transparent", borderWidth: 1.5, borderColor: palette.moss }]}
+                  onPress={() => setAddExerciseMode("manual")}
+                >
+                  <Text style={[styles.addDaySubmitText, { color: palette.moss }]}>Agregar manualmente</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.addDayCancelBtn}
+                  onPress={() => setShowAddExerciseModal(false)}
+                >
+                  <Text style={styles.addDayCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {addExerciseMode === "ai" && (
+              <View style={{ alignItems: "center", paddingVertical: 20 }}>
+                <ActivityIndicator color={palette.moss} size="large" />
+                <Text style={[styles.addDayLabel, { marginTop: 16, textAlign: "center" }]}>
+                  Tuco está eligiendo el mejor ejercicio para esta sesión...
+                </Text>
+              </View>
+            )}
+            {addExerciseMode === "manual" && (
+              <>
+                <Text style={styles.addDayLabel}>Nombre del ejercicio</Text>
+                <TextInput
+                  style={styles.addDayInput}
+                  placeholder="Ej: Press de banca, Sentadillas..."
+                  placeholderTextColor="#9CA3AF"
+                  value={manualExName}
+                  onChangeText={setManualExName}
+                  editable={!addingExercise}
+                  returnKeyType="next"
+                />
+                <Text style={[styles.addDayLabel, { marginTop: 14 }]}>Series</Text>
+                <TextInput
+                  style={styles.addDayInput}
+                  placeholder="Ej: 3"
+                  placeholderTextColor="#9CA3AF"
+                  value={manualExSets}
+                  onChangeText={setManualExSets}
+                  editable={!addingExercise}
+                  keyboardType="number-pad"
+                  returnKeyType="next"
+                />
+                <Text style={[styles.addDayLabel, { marginTop: 14 }]}>Repeticiones</Text>
+                <TextInput
+                  style={styles.addDayInput}
+                  placeholder="Ej: 10-12 o 8"
+                  placeholderTextColor="#9CA3AF"
+                  value={manualExReps}
+                  onChangeText={setManualExReps}
+                  editable={!addingExercise}
+                  returnKeyType="done"
+                />
+                <TouchableOpacity
+                  style={[styles.addDaySubmitBtn, addingExercise && { opacity: 0.6 }]}
+                  onPress={() => onAddExercise("manual")}
+                  disabled={addingExercise}
+                >
+                  {addingExercise
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.addDaySubmitText}>Agregar</Text>
+                  }
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.addDayCancelBtn}
+                  onPress={() => setAddExerciseMode("choose")}
+                  disabled={addingExercise}
+                >
+                  <Text style={styles.addDayCancelText}>Volver</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -1405,6 +1570,12 @@ export function RoutineScreen() {
                         />
                       );
                     })}
+                    <TouchableOpacity
+                      style={styles.addExerciseBtn}
+                      onPress={() => handleOpenAddExercise(session.day)}
+                    >
+                      <Text style={styles.addExerciseBtnText}>＋ Agregar ejercicio</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : null}
               </View>
@@ -2374,5 +2545,20 @@ const styles = StyleSheet.create({
     color: palette.textSoft,
     fontSize: 14,
     fontWeight: "600",
+  },
+  addExerciseBtn: {
+    marginTop: 10,
+    marginHorizontal: 4,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: palette.moss,
+    paddingVertical: 10,
+    alignItems: "center",
+    backgroundColor: palette.moss + "12",
+  },
+  addExerciseBtnText: {
+    color: palette.moss,
+    fontWeight: "700",
+    fontSize: 13,
   },
 });

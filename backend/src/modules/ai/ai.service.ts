@@ -317,65 +317,69 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
     }
   ): Promise<string> {
     const levelNorm = userContext.experienceLevel.toLowerCase();
-    const durationByLevel = levelNorm.includes("beginner") || levelNorm.includes("principiante")
-      ? 45
-      : levelNorm.includes("advanced") || levelNorm.includes("avanzad")
-      ? 75
-      : 60;
+    const durationByLevel =
+      levelNorm.includes("principiante") || levelNorm.includes("beginner")
+        ? 45
+        : levelNorm.includes("basico") || levelNorm.includes("basic")
+        ? 50
+        : levelNorm.includes("avanzado") || levelNorm.includes("advanced")
+        ? 75
+        : levelNorm.includes("elite")
+        ? 90
+        : 60; // intermedio / default
+
+    const weeklySessions = userContext.availability.includes("5")
+      ? 5
+      : userContext.availability.includes("4")
+      ? 4
+      : userContext.availability.includes("3")
+      ? 3
+      : 3;
 
     const prompt = `
 Eres Tuco, el coach de IA de tu gimnasio, creando una rutina de entrenamiento personalizada.
 
-User Profile:
-- Goal: ${userContext.goal}
-- Experience Level: ${userContext.experienceLevel}
-- Weekly Availability: ${userContext.availability}
-- Medical Conditions: ${userContext.medicalConditions || "None"}
-- Current Injuries: ${userContext.injuries || "None"}
+Perfil del usuario:
+- Objetivo: ${userContext.goal}
+- Nivel de experiencia: ${userContext.experienceLevel}
+- Disponibilidad semanal: ${userContext.availability}
+- Condiciones medicas: ${userContext.medicalConditions || "Ninguna"}
+- Lesiones actuales: ${userContext.injuries || "Ninguna"}
 
-CRITICAL REQUIREMENTS:
-1. Generate a complete, detailed routine with exercises for ALL sessions
-2. Number of sessions must match weekly_sessions field
-3. Each session must have AT LEAST 4 exercises with full details
-4. Include practical progression tips and nutrition advice
-5. duration_minutes per session must be ${durationByLevel} minutes (adapted to user level: beginner=45, intermediate=60, advanced=75)
+GUIA DE VOLUMEN E INTENSIDAD POR NIVEL (aplica la que corresponda al usuario):
+- Principiante: 4-5 ejercicios por sesion | series 2-3 | repeticiones 10-15 | descanso 90-120s | enfoque en tecnica y aprendizaje de patron de movimiento | cargas bajas
+- Basico:       5-6 ejercicios por sesion | series 3   | repeticiones 8-12  | descanso 75-90s  | consolidar tecnica, introducir progresion lineal | cargas moderadas-bajas
+- Intermedio:   6-7 ejercicios por sesion | series 3-4 | repeticiones 6-12  | descanso 60-90s  | mezcla de compuestos y accesorios, periodizacion basica | cargas moderadas
+- Avanzado:     7-8 ejercicios por sesion | series 4   | repeticiones 4-10  | descanso 60-90s  | periodizacion, supersets opcionales | cargas altas
+- Elite:        8-10 ejercicios por sesion | series 4-5 | repeticiones 3-8  | descanso 45-90s  | tecnicas de intensidad avanzadas (drop sets, cluster sets, tempo) | cargas maximas
 
-Generate JSON ONLY (no markdown, no explanation, valid JSON only).
-Use Spanish for all visible values returned to the app:
-- routine_name in Spanish
-- sessions[].day in Spanish (e.g. Lunes, Martes)
-- sessions[].focus in Spanish
-- sessions[].exercises[].notes in Spanish
-- progression_tips in Spanish
-- nutrition_notes in Spanish
+REQUISITOS:
+1. Genera una rutina completa con ejercicios para TODAS las sesiones semanales (${weeklySessions} sesiones)
+2. Selecciona la cantidad de ejercicios por sesion segun el nivel del usuario y el enfoque del dia (dias de grupo muscular grande pueden tener mas ejercicios que dias de grupo pequeno)
+3. Incluye consejos de progresion practicos y notas de nutricion
+4. La duracion de cada sesion debe ser de ${durationByLevel} minutos aprox.
+5. Todo en espanol (nombres de ejercicios, enfoque, notas, consejos)
 
-JSON schema:
+Genera SOLO JSON valido (sin markdown, sin explicaciones):
 {
-  "routine_name": "Rutina ${userContext.goal} ${userContext.experienceLevel}",
+  "routine_name": "string en espanol",
   "duration_weeks": 12,
-  "weekly_sessions": ${userContext.availability.includes("3") ? 3 : userContext.availability.includes("4") ? 4 : userContext.availability.includes("5") ? 5 : 3},
+  "weekly_sessions": ${weeklySessions},
   "sessions": [
     {
       "day": "Lunes",
-      "focus": "Empuje de tren superior",
+      "focus": "string en espanol",
       "duration_minutes": ${durationByLevel},
       "exercises": [
-        {"name": "Press de banca con barra", "sets": 4, "reps": "6-8", "rest_seconds": 120, "notes": "Enfocate en controlar el pecho y la tecnica"},
-        {"name": "Press inclinado con mancuernas", "sets": 3, "reps": "8-10", "rest_seconds": 90, "notes": "Trabajo principal de pecho superior y hombro"},
-        {"name": "Aperturas en polea", "sets": 3, "reps": "12-15", "rest_seconds": 60, "notes": "Busca amplitud y estiramiento"},
-        {"name": "Press militar", "sets": 3, "reps": "8-10", "rest_seconds": 90, "notes": "Prioriza estabilidad y rango completo"}
+        {"name": "string", "sets": number, "reps": "string", "rest_seconds": number, "notes": "string en espanol"}
       ]
     }
   ],
-  "progression_tips": [
-    "Aumenta la carga entre 2.5% y 5% cuando completes todas las repeticiones con buena tecnica",
-    "Registra cada ejercicio para comparar tu progreso semana a semana",
-    "Deja al menos 48 horas antes de repetir el mismo grupo muscular"
-  ],
-  "nutrition_notes": "Prioriza una ingesta suficiente de proteina, hidratacion constante y una distribucion de comidas que favorezca tu objetivo"
+  "progression_tips": ["string en espanol"],
+  "nutrition_notes": "string en espanol"
 }
 
-Customize the routine to match the user context. Return ONLY valid JSON.
+Personaliza la rutina completamente segun el perfil. Devuelve SOLO JSON valido.
     `;
 
     let response;
@@ -610,6 +614,110 @@ Reglas:
       userId,
       type: "ROUTINE_GENERATION",
       userMessage: `ADD_ROUTINE_DAY::${day}`,
+      aiResponse: JSON.stringify(updatedRoutine),
+    });
+
+    return updatedRoutine;
+  }
+
+  async addExerciseToRoutine(
+    userId: string,
+    userContext: UserRoutineContext,
+    currentRoutine: GeneratedRoutine,
+    sessionDay: string,
+    manualExercise?: { name: string; sets: number; reps: string }
+  ): Promise<GeneratedRoutine> {
+    const targetSession = currentRoutine.sessions.find(
+      (session) => normalizeDay(session.day) === normalizeDay(sessionDay)
+    );
+
+    if (!targetSession) {
+      throw new Error("Session day not found in routine");
+    }
+
+    let newExercise: RoutineExercise;
+
+    if (manualExercise) {
+      newExercise = {
+        name: manualExercise.name.trim(),
+        sets: manualExercise.sets,
+        reps: manualExercise.reps.trim(),
+        rest_seconds: 60,
+        notes: "Agregado manualmente por el usuario.",
+      };
+    } else {
+      const existingNames = targetSession.exercises.map((e) => e.name).join(", ");
+
+      const prompt = `
+Eres Tuco, el coach de IA de tu gimnasio. El usuario quiere agregar UN nuevo ejercicio a su sesion de entrenamiento.
+
+Contexto del usuario:
+- Objetivo: ${userContext.goal}
+- Nivel: ${userContext.experienceLevel}
+- Lesiones: ${userContext.injuries || "Ninguna"}
+- Condiciones medicas: ${userContext.medicalConditions || "Ninguna"}
+
+Sesion: ${targetSession.day} (${targetSession.focus})
+Ejercicios ya presentes en la sesion: ${existingNames}
+
+Genera UN ejercicio nuevo que complemente esta sesion, diferente a los ya existentes.
+
+Responde SOLO JSON valido:
+{
+  "name": "string en espanol",
+  "sets": number,
+  "reps": "string",
+  "rest_seconds": number,
+  "notes": "string en espanol"
+}
+`;
+
+      let response;
+      try {
+        response = await this.openai.chat.completions.create({
+          model: this.models.routine,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens: 300,
+        });
+      } catch (error) {
+        throw this.extractProviderError(error);
+      }
+
+      const rawContent = (response.choices[0]?.message?.content || "").trim();
+      const codeBlock = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      const content = codeBlock?.[1]?.trim() ?? rawContent;
+
+      try {
+        newExercise = JSON.parse(content) as RoutineExercise;
+        if (!newExercise.name || typeof newExercise.sets !== "number") {
+          throw new Error("Invalid exercise structure");
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "Invalid JSON from AI";
+        throw new Error(`AI provider error: No se pudo generar el ejercicio. Por favor intenta de nuevo. (${detail})`);
+      }
+    }
+
+    const updatedSessions = currentRoutine.sessions.map((session) => {
+      if (normalizeDay(session.day) !== normalizeDay(sessionDay)) {
+        return session;
+      }
+      return {
+        ...session,
+        exercises: [...session.exercises, newExercise],
+      };
+    });
+
+    const updatedRoutine: GeneratedRoutine = {
+      ...currentRoutine,
+      sessions: updatedSessions,
+    };
+
+    await this.saveLogSafely({
+      userId,
+      type: "ROUTINE_GENERATION",
+      userMessage: `ADD_EXERCISE::${sessionDay}::${manualExercise ? "manual" : "ai"}`,
       aiResponse: JSON.stringify(updatedRoutine),
     });
 

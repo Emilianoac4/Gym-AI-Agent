@@ -1495,4 +1495,41 @@ export class AIController {
       next(error);
     }
   }
+
+  static async addExerciseToRoutine(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+      const { sessionDay, manual } = req.body as {
+        sessionDay: string;
+        manual?: { name: string; sets: number; reps: string };
+      };
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const latest = await AIController.getLatestRoutineSnapshot(userId);
+      const userContext = await AIController.getUserProfileContext(userId);
+
+      const updatedRoutine = await aiService.addExerciseToRoutine(
+        userId,
+        userContext,
+        latest.routine,
+        sessionDay,
+        manual
+      );
+
+      res.json({
+        message: "Exercise added to routine",
+        routine: updatedRoutine,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
