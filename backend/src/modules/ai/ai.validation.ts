@@ -95,7 +95,7 @@ export const exerciseOptionsSchema = z.object({
 export const addRoutineDaySchema = z.object({
   day: z.enum(
     ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
-    { required_error: "Day is required", invalid_type_error: "Day must be a valid weekday" }
+    { error: "Day must be a valid weekday" }
   ),
   focus: z
     .string()
