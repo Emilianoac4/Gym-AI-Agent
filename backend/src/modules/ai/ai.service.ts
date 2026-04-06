@@ -312,10 +312,26 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       goal: string;
       experienceLevel: string;
       availability: string;
+      preferredDays?: string[];
       injuries?: string;
       medicalConditions?: string;
     }
   ): Promise<string> {
+    const DAY_MAP: Record<string, string> = {
+      monday: "Lunes",
+      tuesday: "Martes",
+      wednesday: "Miércoles",
+      thursday: "Jueves",
+      friday: "Viernes",
+      saturday: "Sábado",
+      sunday: "Domingo",
+    };
+
+    const mappedDays =
+      Array.isArray(userContext.preferredDays) && userContext.preferredDays.length > 0
+        ? userContext.preferredDays.map((d) => DAY_MAP[d] ?? d)
+        : null;
+
     const levelNorm = userContext.experienceLevel.toLowerCase();
     const durationByLevel =
       levelNorm.includes("principiante") || levelNorm.includes("beginner")
@@ -328,7 +344,9 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
         ? 90
         : 60; // intermedio / default
 
-    const weeklySessions = userContext.availability.includes("5")
+    const weeklySessions = mappedDays
+      ? mappedDays.length
+      : userContext.availability.includes("5")
       ? 5
       : userContext.availability.includes("4")
       ? 4
@@ -336,13 +354,19 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       ? 3
       : 3;
 
+    const daysInstruction = mappedDays
+      ? `- Dias de entrenamiento del usuario: ${mappedDays.join(", ")}
+IMPORTANTE: Las sesiones DEBEN usar EXACTAMENTE esos dias en ese orden como campo "day". No uses otros dias.`
+      : `- Disponibilidad semanal: ${userContext.availability}
+La IA puede elegir libremente los dias de entrenamiento.`;
+
     const prompt = `
 Eres Tuco, el coach de IA de tu gimnasio, creando una rutina de entrenamiento personalizada.
 
 Perfil del usuario:
 - Objetivo: ${userContext.goal}
 - Nivel de experiencia: ${userContext.experienceLevel}
-- Disponibilidad semanal: ${userContext.availability}
+${daysInstruction}
 - Condiciones medicas: ${userContext.medicalConditions || "Ninguna"}
 - Lesiones actuales: ${userContext.injuries || "Ninguna"}
 

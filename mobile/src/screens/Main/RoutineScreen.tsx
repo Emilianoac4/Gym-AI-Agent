@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -916,12 +918,16 @@ export function RoutineScreen() {
         animationType="slide"
         onRequestClose={() => !addingExercise && setShowAddExerciseModal(false)}
       >
-        <TouchableOpacity
-          style={styles.addDayBackdrop}
-          activeOpacity={1}
-          onPress={() => { if (!addingExercise) setShowAddExerciseModal(false); }}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.addDayPanel}>
+          <TouchableOpacity
+            style={styles.addDayBackdrop}
+            activeOpacity={1}
+            onPress={() => { if (!addingExercise) setShowAddExerciseModal(false); }}
+          >
+            <TouchableOpacity activeOpacity={1} style={styles.addDayPanel}>
             <Text style={styles.addDayTitle}>Agregar ejercicio</Text>
             {addExerciseMode === "choose" && (
               <>
@@ -1006,10 +1012,9 @@ export function RoutineScreen() {
               </>
             )}
           </TouchableOpacity>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
-
-      {/* Trainer routine panel */}
       {activeTab !== "ai" && (() => {
         const r = trainerRoutines.find((tr) => tr.id === activeTab);
         if (!r) return null;

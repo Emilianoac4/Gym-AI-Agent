@@ -166,6 +166,9 @@ export class AIController {
       goal: userWithProfile.profile.goal || "General fitness",
       experienceLevel: userWithProfile.profile.experienceLvl || "Beginner",
       availability: userWithProfile.profile.availability || "3 days per week",
+      preferredDays: Array.isArray(userWithProfile.profile.preferredDays)
+        ? (userWithProfile.profile.preferredDays as string[])
+        : [],
       injuries: userWithProfile.profile.injuries,
       medicalConditions: userWithProfile.profile.medicalConds,
     };
@@ -1114,6 +1117,9 @@ export class AIController {
         goal: userWithProfile.profile.goal || "General fitness",
         experienceLevel: userWithProfile.profile.experienceLvl || "Beginner",
         availability: userWithProfile.profile.availability || "3 days per week",
+        preferredDays: Array.isArray(userWithProfile.profile.preferredDays)
+          ? (userWithProfile.profile.preferredDays as string[])
+          : [],
         injuries: userWithProfile.profile.injuries,
         medicalConditions: userWithProfile.profile.medicalConds,
       });
