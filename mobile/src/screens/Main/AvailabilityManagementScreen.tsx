@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
@@ -105,20 +107,6 @@ const toDayOfWeek = (date: Date): GymDayOfWeek => {
   return daySequence[value - 1];
 };
 
-const buildTimeOptions = () => {
-  const result: string[] = [];
-
-  for (let hour = 0; hour < 24; hour += 1) {
-    for (let minute = 0; minute < 60; minute += 30) {
-      result.push(`${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`);
-    }
-  }
-
-  return result;
-};
-
-const timeOptions = buildTimeOptions();
-
 const addThirtyMinutes = (time: string) => {
   const [h, m] = time.split(":").map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return "14:00";
@@ -126,6 +114,21 @@ const addThirtyMinutes = (time: string) => {
   const hour = Math.floor(total / 60).toString().padStart(2, "0");
   const minute = (total % 60).toString().padStart(2, "0");
   return `${hour}:${minute}`;
+};
+
+const timeStringToDate = (time: string): Date => {
+  const [h, m] = time.split(":").map(Number);
+  const date = new Date();
+  date.setHours(Number.isNaN(h) ? 8 : h, Number.isNaN(m) ? 0 : m, 0, 0);
+  return date;
+};
+
+const dateToTimeString = (date: Date): string =>
+  `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+
+const isTimeConflict = (closesAt: string, opensAtSecondary: string): boolean => {
+  if (!closesAt || !opensAtSecondary) return false;
+  return closesAt >= opensAtSecondary;
 };
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -219,6 +222,7 @@ export function AvailabilityManagementScreen() {
   });
   const [exceptionForm, setExceptionForm] = useState<ExceptionDraft>(emptyExceptionForm);
   const [timePickerTarget, setTimePickerTarget] = useState<TimePickerTarget>(null);
+  const [timePickerDate, setTimePickerDate] = useState<Date>(new Date());
   const [expandedTemplateDays, setExpandedTemplateDays] = useState<Record<GymDayOfWeek, boolean>>({
     monday: false,
     tuesday: false,
@@ -423,6 +427,20 @@ export function AvailabilityManagementScreen() {
     });
   };
 
+  const getCurrentFieldValue = (target: NonNullable<TimePickerTarget>): string => {
+    if (target.kind === "template") {
+      const draft = templateDrafts.find((item) => item.dayOfWeek === target.dayOfWeek);
+      return draft ? (draft[target.field] ?? "") : "";
+    }
+    return exceptionForm[target.field] ?? "";
+  };
+
+  const openTimePicker = (target: NonNullable<TimePickerTarget>) => {
+    const currentValue = getCurrentFieldValue(target);
+    setTimePickerDate(timeStringToDate(currentValue || "08:00"));
+    setTimePickerTarget(target);
+  };
+
   const applySelectedTime = (value: string) => {
     if (!timePickerTarget) {
       return;
@@ -448,8 +466,34 @@ export function AvailabilityManagementScreen() {
     setTimePickerTarget(null);
   };
 
+  const onTimePickerChange = (_event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === "android") {
+      setTimePickerTarget(null);
+    }
+    if (date) {
+      setTimePickerDate(date);
+      if (Platform.OS === "android") {
+        applySelectedTime(dateToTimeString(date));
+      }
+    } else if (Platform.OS === "android") {
+      setTimePickerTarget(null);
+    }
+  };
+
+  const onTimePickerConfirm = () => {
+    applySelectedTime(dateToTimeString(timePickerDate));
+  };
+
   const onSaveTemplateDay = async (draft: TemplateDraft) => {
     if (!token || !permissions.canWrite) {
+      return;
+    }
+
+    if (draft.hasSplitSchedule && isTimeConflict(draft.closesAt, draft.opensAtSecondary)) {
+      Alert.alert(
+        "Horario inválido",
+        "La hora de cierre del primer turno debe ser anterior a la apertura del segundo turno.",
+      );
       return;
     }
 
@@ -477,6 +521,18 @@ export function AvailabilityManagementScreen() {
 
   const onSaveException = async () => {
     if (!token || !permissions.canWrite) {
+      return;
+    }
+
+    if (
+      !exceptionForm.isClosed &&
+      exceptionForm.hasSplitSchedule &&
+      isTimeConflict(exceptionForm.closesAt, exceptionForm.opensAtSecondary)
+    ) {
+      Alert.alert(
+        "Horario inválido",
+        "La hora de cierre del primer turno debe ser anterior a la apertura del segundo turno.",
+      );
       return;
     }
 
@@ -638,7 +694,7 @@ export function AvailabilityManagementScreen() {
                   style={[styles.selectInput, (!permissions.canWrite || !draft.isOpen) && styles.selectInputDisabled]}
                   disabled={!permissions.canWrite || !draft.isOpen}
                   onPress={() =>
-                    setTimePickerTarget({
+                    openTimePicker({
                       kind: "template",
                       dayOfWeek: draft.dayOfWeek,
                       field: "opensAt",
@@ -654,7 +710,7 @@ export function AvailabilityManagementScreen() {
                   style={[styles.selectInput, (!permissions.canWrite || !draft.isOpen) && styles.selectInputDisabled]}
                   disabled={!permissions.canWrite || !draft.isOpen}
                   onPress={() =>
-                    setTimePickerTarget({
+                    openTimePicker({
                       kind: "template",
                       dayOfWeek: draft.dayOfWeek,
                       field: "closesAt",
@@ -691,7 +747,7 @@ export function AvailabilityManagementScreen() {
                         style={styles.selectInput}
                         disabled={!permissions.canWrite}
                         onPress={() =>
-                          setTimePickerTarget({
+                          openTimePicker({
                             kind: "template",
                             dayOfWeek: draft.dayOfWeek,
                             field: "opensAtSecondary",
@@ -704,10 +760,13 @@ export function AvailabilityManagementScreen() {
                     <View style={styles.fieldHalf}>
                       <Text style={styles.fieldLabel}>Cierre 2</Text>
                       <Pressable
-                        style={styles.selectInput}
+                        style={[
+                          styles.selectInput,
+                          isTimeConflict(draft.closesAt, draft.opensAtSecondary) && styles.selectInputError,
+                        ]}
                         disabled={!permissions.canWrite}
                         onPress={() =>
-                          setTimePickerTarget({
+                          openTimePicker({
                             kind: "template",
                             dayOfWeek: draft.dayOfWeek,
                             field: "closesAtSecondary",
@@ -716,6 +775,9 @@ export function AvailabilityManagementScreen() {
                       >
                         <Text style={styles.selectInputText}>{draft.closesAtSecondary || "Seleccionar"}</Text>
                       </Pressable>
+                      {isTimeConflict(draft.closesAt, draft.opensAtSecondary) ? (
+                        <Text style={styles.fieldError}>El cierre del turno 1 debe ser anterior a la apertura del turno 2</Text>
+                      ) : null}
                     </View>
                   </View>
                 ) : null}
@@ -766,7 +828,7 @@ export function AvailabilityManagementScreen() {
             <Pressable
               style={[styles.selectInput, (!permissions.canWrite || exceptionForm.isClosed) && styles.selectInputDisabled]}
               disabled={!permissions.canWrite || exceptionForm.isClosed}
-              onPress={() => setTimePickerTarget({ kind: "exception", field: "opensAt" })}
+              onPress={() => openTimePicker({ kind: "exception", field: "opensAt" })}
             >
               <Text style={styles.selectInputText}>{exceptionForm.opensAt || "Seleccionar"}</Text>
             </Pressable>
@@ -776,7 +838,7 @@ export function AvailabilityManagementScreen() {
             <Pressable
               style={[styles.selectInput, (!permissions.canWrite || exceptionForm.isClosed) && styles.selectInputDisabled]}
               disabled={!permissions.canWrite || exceptionForm.isClosed}
-              onPress={() => setTimePickerTarget({ kind: "exception", field: "closesAt" })}
+              onPress={() => openTimePicker({ kind: "exception", field: "closesAt" })}
             >
               <Text style={styles.selectInputText}>{exceptionForm.closesAt || "Seleccionar"}</Text>
             </Pressable>
@@ -802,7 +864,7 @@ export function AvailabilityManagementScreen() {
                   <Pressable
                     style={[styles.selectInput, !permissions.canWrite && styles.selectInputDisabled]}
                     disabled={!permissions.canWrite}
-                    onPress={() => setTimePickerTarget({ kind: "exception", field: "opensAtSecondary" })}
+                    onPress={() => openTimePicker({ kind: "exception", field: "opensAtSecondary" })}
                   >
                     <Text style={styles.selectInputText}>{exceptionForm.opensAtSecondary || "Seleccionar"}</Text>
                   </Pressable>
@@ -810,12 +872,19 @@ export function AvailabilityManagementScreen() {
                 <View style={styles.fieldHalf}>
                   <Text style={styles.fieldLabel}>Cierre 2</Text>
                   <Pressable
-                    style={[styles.selectInput, !permissions.canWrite && styles.selectInputDisabled]}
+                    style={[
+                      styles.selectInput,
+                      !permissions.canWrite && styles.selectInputDisabled,
+                      isTimeConflict(exceptionForm.closesAt, exceptionForm.opensAtSecondary) && styles.selectInputError,
+                    ]}
                     disabled={!permissions.canWrite}
-                    onPress={() => setTimePickerTarget({ kind: "exception", field: "closesAtSecondary" })}
+                    onPress={() => openTimePicker({ kind: "exception", field: "closesAtSecondary" })}
                   >
                     <Text style={styles.selectInputText}>{exceptionForm.closesAtSecondary || "Seleccionar"}</Text>
                   </Pressable>
+                  {isTimeConflict(exceptionForm.closesAt, exceptionForm.opensAtSecondary) ? (
+                    <Text style={styles.fieldError}>El cierre del turno 1 debe ser anterior a la apertura del turno 2</Text>
+                  ) : null}
                 </View>
               </View>
             ) : null}
@@ -939,25 +1008,43 @@ export function AvailabilityManagementScreen() {
         </View>
       ) : null}
 
+      {/* Native time picker — Android shows dialog directly */}
+      {Boolean(timePickerTarget) && Platform.OS === "android" ? (
+        <DateTimePicker
+          value={timePickerDate}
+          mode="time"
+          is24Hour
+          display="default"
+          onChange={onTimePickerChange}
+        />
+      ) : null}
+
+      {/* Native time picker — iOS spinner in modal */}
       <Modal
-        visible={Boolean(timePickerTarget)}
-        animationType="fade"
+        visible={Boolean(timePickerTarget) && Platform.OS === "ios"}
+        animationType="slide"
         transparent
         onRequestClose={() => setTimePickerTarget(null)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Selecciona una hora</Text>
-            <ScrollView style={styles.modalList} contentContainerStyle={styles.modalListContent}>
-              {timeOptions.map((value) => (
-                <Pressable key={value} style={styles.modalOption} onPress={() => applySelectedTime(value)}>
-                  <Text style={styles.modalOptionText}>{value}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <Pressable style={styles.modalCloseButton} onPress={() => setTimePickerTarget(null)}>
-              <Text style={styles.modalCloseButtonText}>Cancelar</Text>
-            </Pressable>
+            <DateTimePicker
+              value={timePickerDate}
+              mode="time"
+              is24Hour
+              display="spinner"
+              onChange={onTimePickerChange}
+              style={{ width: "100%" }}
+            />
+            <View style={styles.iosTimePickerActions}>
+              <Pressable style={styles.modalCloseButton} onPress={() => setTimePickerTarget(null)}>
+                <Text style={styles.modalCloseButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable style={styles.iosTimePickerConfirm} onPress={onTimePickerConfirm}>
+                <Text style={styles.iosTimePickerConfirmText}>Listo</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1177,6 +1264,16 @@ const styles = StyleSheet.create({
   selectInputDisabled: {
     opacity: 0.6,
   },
+  selectInputError: {
+    borderColor: "#EF4444",
+    borderWidth: 1.5,
+  },
+  fieldError: {
+    color: "#EF4444",
+    fontSize: 11,
+    marginTop: 4,
+    fontWeight: "600",
+  },
   selectInputText: {
     color: palette.ink,
     fontWeight: "700",
@@ -1309,6 +1406,21 @@ const styles = StyleSheet.create({
   },
   modalCloseButtonText: {
     color: palette.cocoa,
+    fontWeight: "800",
+  },
+  iosTimePickerActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  iosTimePickerConfirm: {
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: palette.cocoa,
+  },
+  iosTimePickerConfirmText: {
+    color: "#fff",
     fontWeight: "800",
   },
   calendarHeader: {
