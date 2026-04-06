@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { HttpError } from "../../utils/http-error";
 import {
   getAvailabilityNext7Days,
+  getAvailabilityNext30Days,
   getAvailabilityTemplate,
   getAvailabilityToday,
   grantTrainerAvailabilityWrite,
@@ -40,6 +41,12 @@ export const getNext7DaysAvailability = async (req: Request, res: Response): Pro
   const auth = requireAuth(req);
   const fromDate = typeof req.query.from === "string" ? req.query.from : undefined;
   res.json(await getAvailabilityNext7Days(auth, fromDate));
+};
+
+export const getNext30DaysAvailability = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const fromDate = typeof req.query.from === "string" ? req.query.from : undefined;
+  res.json(await getAvailabilityNext30Days(auth, fromDate));
 };
 
 export const getTemplateAvailability = async (req: Request, res: Response): Promise<void> => {

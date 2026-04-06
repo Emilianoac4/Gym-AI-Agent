@@ -10,6 +10,7 @@ import { palette } from "../../theme/palette";
 import {
   EmergencyTicket,
   GymAvailabilityDay,
+  GeneralNotification,
   GeneratedRoutine,
   MessageThread,
   ProgressSummary,
@@ -113,6 +114,8 @@ export function HomeScreen() {
   const [routine, setRoutine] = useState<GeneratedRoutine | null>(null);
   const [checkins, setCheckins] = useState<RoutineCheckin[]>([]);
   const [todayAvailability, setTodayAvailability] = useState<GymAvailabilityDay | null>(null);
+  const [next30Days, setNext30Days] = useState<GymAvailabilityDay[]>([]);
+  const [gymNotifications, setGymNotifications] = useState<GeneralNotification[]>([]);
   const [unreadThreads, setUnreadThreads] = useState<MessageThread[]>([]);
   const [activeTrainers, setActiveTrainers] = useState<string[]>([]);
   const [activeTrainerObjects, setActiveTrainerObjects] = useState<{ id: string; fullName: string; avatarUrl: string | null }[]>([]);
@@ -169,7 +172,7 @@ export function HomeScreen() {
         }
 
         try {
-        const [availabilityData, progress, strength, latestRoutine, checkinData, threadsData, ticketsData, assistanceData, presenceData] = await Promise.all([
+        const [availabilityData, progress, strength, latestRoutine, checkinData, threadsData, ticketsData, assistanceData, presenceData, next30DaysData, notificationsData] = await Promise.all([
             availabilityPromise,
             api.getProgressSummary(user.id, token).catch(() => ({ summary: null as any })),
             api.getStrengthProgress(user.id, token, 120).catch(() => ({ summary: null as any })),
@@ -183,6 +186,12 @@ export function HomeScreen() {
             isMember
               ? api.getActiveTrainers(token).catch(() => ({ trainers: [] as { id: string; fullName: string; avatarUrl: string | null }[] }))
               : Promise.resolve({ trainers: [] as { id: string; fullName: string; avatarUrl: string | null }[] }),
+            isMember
+              ? api.getAvailabilityNext30Days(token).catch(() => ({ days: [] as GymAvailabilityDay[] }))
+              : Promise.resolve({ days: [] as GymAvailabilityDay[] }),
+            isMember
+              ? api.listGeneralNotifications(token).catch(() => ({ notifications: [] as GeneralNotification[] }))
+              : Promise.resolve({ notifications: [] as GeneralNotification[] }),
           ]);
 
           if (cancelled) {
@@ -207,6 +216,8 @@ export function HomeScreen() {
             isMember ? activeTrainersList.map((t) => t.fullName) : [],
           );
           setActiveTrainerObjects(isMember ? activeTrainersList : []);
+          setNext30Days(isMember ? (next30DaysData as { days: GymAvailabilityDay[] }).days : []);
+          setGymNotifications(isMember ? (notificationsData as { notifications: GeneralNotification[] }).notifications : []);
         } catch {
           if (!cancelled) {
             setTodayAvailability(null);
@@ -218,6 +229,8 @@ export function HomeScreen() {
             setActiveTrainers([]);
             setActiveTrainerObjects([]);
             setEmergencyTickets([]);
+            setNext30Days([]);
+            setGymNotifications([]);
           }
         }
       };
@@ -315,6 +328,9 @@ export function HomeScreen() {
         insight={memberInsight}
         onStartWorkout={() => navigation.navigate("Rutina")}
         activeTrainers={activeTrainerObjects}
+        todayAvailability={todayAvailability}
+        upcomingDays={next30Days}
+        notifications={gymNotifications}
         secondaryActions={[
           {
             key: "routine",

@@ -1,10 +1,14 @@
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppButton } from "./AppButton";
 import { AppCard } from "./AppCard";
 import { AppProgressBar } from "./AppProgressBar";
 import { AppScreen } from "./AppScreen";
 import { designSystem } from "../theme/designSystem";
+import { palette } from "../theme/palette";
+import type { GymAvailabilityDay, GeneralNotification } from "../types/api";
+import { palette } from "../theme/palette";
+import type { GymAvailabilityDay, GeneralNotification } from "../types/api";
 
 type SecondaryAction = {
   key: string;
@@ -14,6 +18,41 @@ type SecondaryAction = {
 };
 
 type ActiveTrainer = { id: string; fullName: string; avatarUrl: string | null };
+
+const DAY_LABELS: Record<string, string> = {
+  monday: "Lunes", tuesday: "Martes", wednesday: "Miércoles",
+  thursday: "Jueves", friday: "Viernes", saturday: "Sábado", sunday: "Domingo",
+};
+
+function formatDateShort(dateStr: string): string {
+  const [, month, day] = dateStr.split("-");
+  return `${day}/${month}`;
+}
+
+function formatWindow(day: GymAvailabilityDay): string {
+  if (day.status !== "open" || !day.opensAt || !day.closesAt) return "";
+  if (day.opensAtSecondary && day.closesAtSecondary) {
+    return `${day.opensAt}–${day.closesAt}  ·  ${day.opensAtSecondary}–${day.closesAtSecondary}`;
+  }
+  return `${day.opensAt}–${day.closesAt}`;
+}
+
+const NOTIF_CATEGORY_LABEL: Record<string, string> = {
+  emergency: "Emergencia",
+  maintenance: "Mantenimiento",
+  schedule: "Horario",
+  promo: "Promoción",
+  general: "General",
+};
+
+function notifCategoryColor(category: string): string {
+  switch (category) {
+    case "emergency": return "#EF4444";
+    case "maintenance": return "#F59E0B";
+    case "schedule": return palette.moss;
+    default: return palette.gold;
+  }
+}
 
 type Props = {
   userName: string;
@@ -25,6 +64,9 @@ type Props = {
   onStartWorkout: () => void;
   secondaryActions: SecondaryAction[];
   activeTrainers?: ActiveTrainer[];
+  todayAvailability?: GymAvailabilityDay | null;
+  upcomingDays?: GymAvailabilityDay[];
+  notifications?: GeneralNotification[];
 };
 
 export function MemberHomeContent({
@@ -37,7 +79,12 @@ export function MemberHomeContent({
   onStartWorkout,
   secondaryActions,
   activeTrainers = [],
+  todayAvailability,
+  upcomingDays = [],
+  notifications = [],
 }: Props) {
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
+  const futureDays = upcomingDays.slice(1); // skip today (shown above)
   return (
     <AppScreen scrollable contentStyle={styles.content}>
       <AppCard variant="hero" style={styles.heroCard}>
@@ -98,6 +145,98 @@ export function MemberHomeContent({
           ))}
         </View>
       </AppCard>
+
+      {/* ── Disponibilidad del gimnasio ── */}
+      <AppCard variant="default">
+        <Text style={styles.sectionEyebrow}>Disponibilidad del gimnasio</Text>
+
+        {/* Hoy */}
+        <View style={styles.todayRow}>
+          <View style={styles.todayLeft}>
+            <Text style={styles.todayLabel}>Hoy</Text>
+            {todayAvailability?.status === "open" && todayAvailability.opensAt ? (
+              <Text style={styles.todayHours}>{formatWindow(todayAvailability)}</Text>
+            ) : (
+              <Text style={styles.todayClosed}>
+                {todayAvailability?.status === "closed" ? "Cerrado hoy" : "Sin horario publicado"}
+              </Text>
+            )}
+            {todayAvailability?.note ? (
+              <Text style={styles.todayNote}>{todayAvailability.note}</Text>
+            ) : null}
+          </View>
+          <View style={[
+            styles.todayBadge,
+            todayAvailability?.status === "open" ? styles.todayBadgeOpen : styles.todayBadgeClosed,
+          ]}>
+            <Text style={styles.todayBadgeText}>
+              {todayAvailability?.status === "open" ? "Abierto" : "Cerrado"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Próximos 30 días — desplegable */}
+        {futureDays.length > 0 ? (
+          <>
+            <Pressable style={styles.expandRow} onPress={() => setScheduleExpanded((v) => !v)}>
+              <Text style={styles.expandLabel}>Próximos 30 días</Text>
+              <Text style={styles.expandChevron}>{scheduleExpanded ? "▲" : "▼"}</Text>
+            </Pressable>
+
+            {scheduleExpanded ? (
+              <View style={styles.upcomingList}>
+                {futureDays.map((day) => {
+                  const isOpen = day.status === "open";
+                  const window = formatWindow(day);
+                  return (
+                    <View key={day.date} style={styles.upcomingRow}>
+                      <View style={styles.upcomingLeft}>
+                        <Text style={styles.upcomingDayName}>
+                          {DAY_LABELS[day.dayOfWeek] ?? day.dayOfWeek}
+                        </Text>
+                        <Text style={styles.upcomingDate}>{formatDateShort(day.date)}</Text>
+                      </View>
+                      <View style={styles.upcomingRight}>
+                        {isOpen && window ? (
+                          <Text style={styles.upcomingHours}>{window}</Text>
+                        ) : (
+                          <Text style={styles.upcomingClosed}>Cerrado</Text>
+                        )}
+                        {day.note ? (
+                          <Text style={styles.upcomingNote}>{day.note}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+          </>
+        ) : null}
+      </AppCard>
+
+      {/* ── Notificaciones del gimnasio ── */}
+      {notifications.length > 0 ? (
+        <AppCard variant="default">
+          <Text style={styles.sectionEyebrow}>Notificaciones</Text>
+          <View style={styles.notifList}>
+            {notifications.map((notif) => (
+              <View key={notif.id} style={styles.notifItem}>
+                <View style={[styles.notifDot, { backgroundColor: notifCategoryColor(notif.category) }]} />
+                <View style={styles.notifBody}>
+                  <View style={styles.notifTopRow}>
+                    <Text style={styles.notifTitle}>{notif.title}</Text>
+                    <Text style={styles.notifCategory}>
+                      {NOTIF_CATEGORY_LABEL[notif.category] ?? notif.category}
+                    </Text>
+                  </View>
+                  <Text style={styles.notifMessage}>{notif.body}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </AppCard>
+      ) : null}
     </AppScreen>
   );
 }
@@ -213,5 +352,174 @@ const styles = StyleSheet.create({
     fontFamily: designSystem.typography.fontFamily,
     textAlign: "center",
     maxWidth: 64,
+  },
+  // ── Disponibilidad ──────────────────────
+  todayRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginTop: designSystem.spacing.x1,
+    gap: 12,
+  },
+  todayLeft: {
+    flex: 1,
+    gap: 4,
+  },
+  todayLabel: {
+    color: palette.cocoa,
+    fontSize: designSystem.typography.titleMD,
+    fontWeight: "800",
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  todayHours: {
+    color: palette.cocoa,
+    fontSize: designSystem.typography.bodyLG,
+    fontWeight: "700",
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  todayClosed: {
+    color: palette.textMuted,
+    fontSize: designSystem.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  todayNote: {
+    color: palette.textMuted,
+    fontSize: designSystem.typography.bodySM,
+    lineHeight: 18,
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  todayBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: "flex-start",
+  },
+  todayBadgeOpen: {
+    backgroundColor: palette.moss,
+  },
+  todayBadgeClosed: {
+    backgroundColor: palette.cocoa,
+  },
+  todayBadgeText: {
+    color: "#fff",
+    fontSize: designSystem.typography.bodySM,
+    fontWeight: "800",
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  expandRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: designSystem.spacing.x2,
+    paddingTop: designSystem.spacing.x2,
+    borderTopWidth: 1,
+    borderTopColor: palette.line,
+  },
+  expandLabel: {
+    color: palette.cocoa,
+    fontSize: designSystem.typography.bodyMD,
+    fontWeight: "700",
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  expandChevron: {
+    color: palette.textMuted,
+    fontSize: 13,
+  },
+  upcomingList: {
+    marginTop: designSystem.spacing.x1,
+    gap: 8,
+  },
+  upcomingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.line,
+  },
+  upcomingLeft: {
+    gap: 2,
+  },
+  upcomingDayName: {
+    color: palette.cocoa,
+    fontSize: designSystem.typography.bodyMD,
+    fontWeight: "700",
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  upcomingDate: {
+    color: palette.textMuted,
+    fontSize: designSystem.typography.bodySM,
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  upcomingRight: {
+    alignItems: "flex-end",
+    gap: 2,
+    flex: 1,
+    paddingLeft: 12,
+  },
+  upcomingHours: {
+    color: palette.cocoa,
+    fontSize: designSystem.typography.bodyMD,
+    fontWeight: "600",
+    textAlign: "right",
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  upcomingClosed: {
+    color: palette.textMuted,
+    fontSize: designSystem.typography.bodyMD,
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  upcomingNote: {
+    color: palette.textMuted,
+    fontSize: designSystem.typography.bodySM,
+    textAlign: "right",
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  // ── Notificaciones ──────────────────────
+  notifList: {
+    marginTop: designSystem.spacing.x1,
+    gap: 12,
+  },
+  notifItem: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "flex-start",
+  },
+  notifDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 5,
+    flexShrink: 0,
+  },
+  notifBody: {
+    flex: 1,
+    gap: 4,
+  },
+  notifTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  notifTitle: {
+    color: palette.cocoa,
+    fontSize: designSystem.typography.bodyMD,
+    fontWeight: "700",
+    flex: 1,
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  notifCategory: {
+    color: palette.textMuted,
+    fontSize: designSystem.typography.bodySM,
+    fontWeight: "600",
+    fontFamily: designSystem.typography.fontFamily,
+  },
+  notifMessage: {
+    color: palette.textMuted,
+    fontSize: designSystem.typography.bodyMD,
+    lineHeight: 20,
+    fontFamily: designSystem.typography.fontFamily,
   },
 });

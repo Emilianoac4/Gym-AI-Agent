@@ -404,6 +404,64 @@ export const getAvailabilityNext7Days = async (auth: AuthContext, fromDate?: str
   };
 };
 
+export const getAvailabilityNext30Days = async (auth: AuthContext, fromDate?: string) => {
+  const requester = await getRequester(auth);
+  const startDate = fromDate ? parseDateKey(fromDate) : parseDateKey(formatDateKey(new Date()));
+  const dates = Array.from({ length: 30 }, (_, index) => addDays(startDate, index));
+  const endDate = dates[dates.length - 1];
+
+  const [templates, exceptions] = await Promise.all([
+    prisma.gymScheduleTemplate.findMany({
+      where: { gymId: requester.gymId },
+      select: {
+        dayOfWeek: true,
+        isOpen: true,
+        opensAt: true,
+        closesAt: true,
+        opensAtSecondary: true,
+        closesAtSecondary: true,
+        updatedByUserId: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.gymScheduleException.findMany({
+      where: {
+        gymId: requester.gymId,
+        date: { gte: startDate, lte: endDate },
+      },
+      select: {
+        date: true,
+        isClosed: true,
+        opensAt: true,
+        closesAt: true,
+        opensAtSecondary: true,
+        closesAtSecondary: true,
+        note: true,
+        updatedByUserId: true,
+        updatedAt: true,
+      },
+    }),
+  ]);
+
+  const templateMap = new Map(templates.map((item) => [item.dayOfWeek, item]));
+  const exceptionMap = new Map(exceptions.map((item) => [formatDateKey(item.date), item]));
+  const updaters = await getUpdaterMap([
+    ...templates.map((item) => item.updatedByUserId),
+    ...exceptions.map((item) => item.updatedByUserId),
+  ]);
+
+  return {
+    days: dates.map((date) =>
+      resolveAvailabilityDay(
+        date,
+        templateMap.get(getDayOfWeek(date)),
+        exceptionMap.get(formatDateKey(date)),
+        updaters,
+      ),
+    ),
+  };
+};
+
 export const getAvailabilityTemplate = async (auth: AuthContext) => {
   const requester = await getRequester(auth);
   const [templates, canWrite, canGrant] = await Promise.all([

@@ -5,6 +5,7 @@ import {
   deleteAvailabilityExceptionByDate,
   getAvailabilityExceptionsRange,
   getNext7DaysAvailability,
+  getNext30DaysAvailability,
   getTemplateAvailability,
   getTodayAvailability,
   grantAvailabilityWriteToTrainer,
@@ -33,6 +34,12 @@ availabilityRouter.get(
   authenticate,
   authorizeAction("availability.read"),
   getNext7DaysAvailability,
+);
+availabilityRouter.get(
+  "/next-30-days",
+  authenticate,
+  authorizeAction("availability.read"),
+  getNext30DaysAvailability,
 );
 availabilityRouter.get(
   "/template",
