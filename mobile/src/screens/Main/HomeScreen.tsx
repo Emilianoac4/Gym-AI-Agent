@@ -7,6 +7,7 @@ import { MemberHomeContent } from "../../components/MemberHomeContent";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
+import { getCostaRicaWeekStart, getCostaRicaWeekdayKey } from "../../utils/costaRicaTime";
 import {
   EmergencyTicket,
   GymAvailabilityDay,
@@ -17,15 +18,6 @@ import {
   RoutineCheckin,
   StrengthProgressSummary,
 } from "../../types/api";
-
-function getWeekStart(date: Date): string {
-  const value = new Date(date);
-  const day = value.getDay();
-  const diff = (day + 6) % 7;
-  value.setDate(value.getDate() - diff);
-  value.setHours(0, 0, 0, 0);
-  return value.toISOString().slice(0, 10);
-}
 
 function normalize(value: string): string {
   return value.trim().toLowerCase();
@@ -77,7 +69,7 @@ function getTodayRoutineSession(routine: GeneratedRoutine | null): GeneratedRout
     return null;
   }
 
-  const todayKey = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][new Date().getDay()];
+  const todayKey = getCostaRicaWeekdayKey();
   return routine.sessions.find((session) => normalize(session.day) === todayKey) ?? null;
 }
 
@@ -107,7 +99,7 @@ export function HomeScreen() {
   const isTrainer = user?.role === "trainer";
   const isMember = user?.role === "member";
   const canManageAvailability = user?.role === "admin" || user?.role === "trainer";
-  const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
+  const currentWeekStart = useMemo(() => getCostaRicaWeekStart(), []);
 
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
   const [strengthSummary, setStrengthSummary] = useState<StrengthProgressSummary | null>(null);

@@ -67,10 +67,8 @@ export interface ExerciseCardProps {
   onToggleLog?: () => void;
   /** Called when any log field changes */
   onLogChange?: (values: Partial<ExerciseLogValues>) => void;
-  /** Called when user confirms the set and completes the exercise */
-  onMarkDone?: () => void;
-  /** Whether marking done is allowed (e.g. only current week) */
-  canMarkDone?: boolean;
+  /** Allow editing today's log even when exercise is already completed */
+  allowEditWhenCompleted?: boolean;
   /** Whether "View progress" is available */
   hasProgress?: boolean;
   /** Whether the progress panel is open */
@@ -106,8 +104,7 @@ export function ExerciseCard({
   exerciseKey,
   onToggleLog,
   onLogChange,
-  onMarkDone,
-  canMarkDone = true,
+  allowEditWhenCompleted = false,
   hasProgress = false,
   progressOpen = false,
   onToggleProgress,
@@ -126,15 +123,17 @@ export function ExerciseCard({
   const statusTextTone = isDone ? styles.statusBadgeTextCompleted : isActive ? styles.statusBadgeTextActive : styles.statusBadgeTextPending;
 
   const primaryLabel = isDone
-    ? "Completado"
+    ? allowEditWhenCompleted
+      ? "Editar marca"
+      : "Completado"
     : logOpen
-    ? "Registrar serie"
+    ? "Registro activo"
     : "Iniciar serie";
 
   const justSaved =
     lastSavedKey != null && exerciseKey != null && lastSavedKey.startsWith(`${exerciseKey}::`);
 
-  const primaryDisabled = isDone || (logOpen ? !canMarkDone : !onToggleLog);
+  const primaryDisabled = logOpen || (isDone ? !allowEditWhenCompleted || !onToggleLog : !onToggleLog);
 
   return (
     <View
@@ -182,7 +181,7 @@ export function ExerciseCard({
           isDone && styles.primaryBtnDone,
           primaryDisabled && !isDone && styles.primaryBtnDisabled,
         ]}
-        onPress={logOpen ? onMarkDone : onToggleLog}
+        onPress={onToggleLog}
         disabled={primaryDisabled}
         activeOpacity={0.8}
       >
@@ -199,16 +198,6 @@ export function ExerciseCard({
           activeOpacity={0.75}
         >
           <Text style={styles.progressToggleText}>{progressOpen ? "Ocultar progreso" : "Ver progreso"}</Text>
-        </TouchableOpacity>
-      )}
-
-      {!isDone && logOpen && canMarkDone && (
-        <TouchableOpacity
-          style={styles.secondaryInlineAction}
-          onPress={onMarkDone}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.secondaryInlineActionText}>Completar ejercicio</Text>
         </TouchableOpacity>
       )}
 

@@ -340,6 +340,12 @@ export interface AIChatLog {
   createdAt: string;
 }
 
+export interface RoutineHistorySnapshot {
+  id: string;
+  createdAt: string;
+  routine: GeneratedRoutine;
+}
+
 /* ─── Notifications ──────────────────────────────────────── */
 
 export type NotificationCategory = "schedule" | "pricing" | "event" | "maintenance" | "general";

@@ -23,11 +23,21 @@ import { ExerciseCard } from "../../components/ExerciseCard";
 import type { ExerciseReplacement } from "../../components/ExerciseCard";
 import { designSystem as ds } from "../../theme/designSystem";
 import {
+  formatCostaRicaDate,
+  getCostaRicaDateKey,
+  getCostaRicaMonthStart,
+  getCostaRicaWeekStart,
+  getCostaRicaWeekdayKey,
+  shiftCostaRicaWeekStart,
+} from "../../utils/costaRicaTime";
+import {
   ExerciseStrengthProgress,
   GeneratedRoutine,
   RoutineCheckin,
   RoutineExercise,
   RoutineExerciseCheckin,
+  RoutineHistorySnapshot,
+  StrengthLog,
   StrengthProgressSummary,
   StrengthWeeklyHistoryPoint,
   TrainerAssignedRoutine,
@@ -64,34 +74,22 @@ const DAY_OFFSETS: Record<string, number> = {
 };
 
 function getDateForDay(dayName: string, weekStart: string): string {
-  const offset = DAY_OFFSETS[normalize(dayName)];
+  const offset = DAY_OFFSETS[normalizeDayValue(dayName)];
   if (offset === undefined) return "";
   const date = new Date(`${weekStart}T00:00:00`);
   date.setDate(date.getDate() + offset);
-  return date.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
-}
-
-function getWeekStart(date: Date): string {
-  const value = new Date(date);
-  const day = value.getDay();
-  const diff = (day + 6) % 7;
-  value.setDate(value.getDate() - diff);
-  value.setHours(0, 0, 0, 0);
-  return value.toISOString().slice(0, 10);
+  return formatCostaRicaDate(date, { day: "numeric", month: "short" }, true);
 }
 
 function shiftWeek(weekStart: string, offset: number): string {
-  const value = new Date(`${weekStart}T00:00:00`);
-  value.setDate(value.getDate() + offset * 7);
-  return getWeekStart(value);
+  return shiftCostaRicaWeekStart(weekStart, offset);
 }
 
 function formatWeekLabel(weekStart: string): string {
-  const value = new Date(`${weekStart}T00:00:00`);
-  return value.toLocaleDateString("es-ES", {
+  return formatCostaRicaDate(weekStart, {
     day: "2-digit",
     month: "short",
-  });
+  }, true);
 }
 
 function formatDateTime(value?: string): string {
@@ -99,7 +97,7 @@ function formatDateTime(value?: string): string {
     return "Sin registro";
   }
 
-  return new Date(value).toLocaleDateString("es-ES", {
+  return formatCostaRicaDate(value, {
     day: "2-digit",
     month: "short",
   });
@@ -109,8 +107,48 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function normalizeExerciseValue(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeDayValue(value: string): string {
+  const normalized = normalize(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const aliases: Record<string, string> = {
+    lun: "monday",
+    lunes: "monday",
+    mon: "monday",
+    mar: "tuesday",
+    martes: "tuesday",
+    tue: "tuesday",
+    mie: "wednesday",
+    miercoles: "wednesday",
+    wed: "wednesday",
+    jue: "thursday",
+    jueves: "thursday",
+    thu: "thursday",
+    vie: "friday",
+    viernes: "friday",
+    fri: "friday",
+    sab: "saturday",
+    sabado: "saturday",
+    sat: "saturday",
+    dom: "sunday",
+    domingo: "sunday",
+    sun: "sunday",
+  };
+
+  return aliases[normalized] ?? normalized;
+}
+
 function translateDay(value: string): string {
-  const translated = DAY_TRANSLATIONS[normalize(value)];
+  const translated = DAY_TRANSLATIONS[normalizeDayValue(value)];
   return translated || value;
 }
 
@@ -128,6 +166,7 @@ function getWeeklyEntry(
 
 const WEEK_HEADERS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const MONTH_LABELS = ["Jan","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const WEEK_DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 function buildCalMonthMatrix(monthStart: Date): Array<Date | null> {
   const start = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1));
@@ -144,6 +183,10 @@ function buildCalMonthMatrix(monthStart: Date): Array<Date | null> {
 
 function estimateRoutineDuration(exerciseCount: number): number {
   return Math.max(exerciseCount * 8, 30);
+}
+
+function getDayKeyFromISODate(value: string): string {
+  return getCostaRicaDateKey(value);
 }
 
 export function RoutineScreen() {
@@ -177,11 +220,23 @@ export function RoutineScreen() {
   const [localCompletedExercises, setLocalCompletedExercises] = useState<Set<string>>(new Set());
   const [strengthSummary, setStrengthSummary] = useState<StrengthProgressSummary | null>(null);
   const [strengthByExercise, setStrengthByExercise] = useState<ExerciseStrengthProgress[]>([]);
+  const [recentStrengthLogs, setRecentStrengthLogs] = useState<StrengthLog[]>([]);
+  const [routineHistorySnapshots, setRoutineHistorySnapshots] = useState<RoutineHistorySnapshot[]>([]);
   const [trainerRoutines, setTrainerRoutines] = useState<TrainerAssignedRoutine[]>([]);
   const [activeTab, setActiveTab] = useState<"ai" | string>("ai"); // "ai" or routineId
   const [deletingRoutineId, setDeletingRoutineId] = useState<string | null>(null);
   const [trainerRoutineExpanded, setTrainerRoutineExpanded] = useState<Record<string, boolean>>({});
   const [showRoutineDropdown, setShowRoutineDropdown] = useState(false);
+  const [showFeatureMenu, setShowFeatureMenu] = useState(false);
+  const [visibleModules, setVisibleModules] = useState({
+    planSelector: true,
+    weekSelector: false,
+    weekSummary: true,
+    calendar: false,
+    addDay: false,
+    notes: true,
+    deleteAssigned: false,
+  });
   const [showAddDayModal, setShowAddDayModal] = useState(false);
   const [addDayLoading, setAddDayLoading] = useState(false);
   const [addDayDay, setAddDayDay] = useState("monday");
@@ -193,40 +248,207 @@ export function RoutineScreen() {
   const [manualExName, setManualExName] = useState("");
   const [manualExSets, setManualExSets] = useState("");
   const [manualExReps, setManualExReps] = useState("");
+  const [selectedCalendarMonthIdx, setSelectedCalendarMonthIdx] = useState(1);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
+  const [showDayMarksModal, setShowDayMarksModal] = useState(false);
+  const [dayDetailTab, setDayDetailTab] = useState<"summary" | "marks">("summary");
 
-  const currentWeekStart = useMemo(() => getWeekStart(new Date()), []);
+  const currentWeekStart = useMemo(() => getCostaRicaWeekStart(), []);
   const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart);
+  const calendarMonths = useMemo(() => {
+    return [
+      getCostaRicaMonthStart(new Date(), -1),
+      getCostaRicaMonthStart(),
+      getCostaRicaMonthStart(new Date(), 1),
+    ];
+  }, []);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSubmittedRef = useRef<string>("");
 
   const strengthMap = useMemo(() => {
     const map: Record<string, ExerciseStrengthProgress> = {};
     strengthByExercise.forEach((item) => {
-      map[normalize(item.exerciseName)] = item;
+      map[normalizeExerciseValue(item.exerciseName)] = item;
     });
     return map;
   }, [strengthByExercise]);
 
-  const checkinDateSet = useMemo(() => {
+  const exerciseCompletedDateSet = useMemo(() => {
     const set = new Set<string>();
-    checkins.forEach((item) => {
-      const d = new Date(item.completedAt);
-      set.add(d.toISOString().slice(0, 10));
+    exerciseCheckins.forEach((item) => {
+      if (item.completedAt) {
+        set.add(getDayKeyFromISODate(item.completedAt));
+      }
     });
+
+    recentStrengthLogs.forEach((log) => {
+      if (log.performedAt) {
+        set.add(getDayKeyFromISODate(log.performedAt));
+      }
+    });
+
     return set;
-  }, [checkins]);
+  }, [exerciseCheckins, recentStrengthLogs]);
 
-  const calendarMonths = useMemo(() => {
-    const now = new Date();
-    return [2, 1, 0].map((offset) =>
-      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset, 1))
-    );
-  }, []);
+  const selectedCalendarDayKey = useMemo(() => {
+    if (!selectedCalendarDate) {
+      return null;
+    }
 
-  const [selectedCalendarMonthIdx, setSelectedCalendarMonthIdx] = useState(2); // 0=2mo ago, 1=last, 2=current
+    return normalizeDayValue(getCostaRicaWeekdayKey(selectedCalendarDate));
+  }, [selectedCalendarDate]);
+
+  const assignedExercisesForSelectedDate = useMemo(() => {
+    if (!selectedCalendarDayKey) {
+      return [] as Array<{ name: string; sets: number; reps: string; restSeconds: number }>;
+    }
+
+    if (activeTab === "ai") {
+      const routineForSelectedDate = (() => {
+        if (!selectedCalendarDate || routineHistorySnapshots.length === 0) {
+          return routine;
+        }
+
+        const snapshot = routineHistorySnapshots.find(
+          (item) => getCostaRicaDateKey(item.createdAt) <= selectedCalendarDate
+        );
+
+        return snapshot?.routine ?? routine;
+      })();
+
+      const session = routineForSelectedDate?.sessions.find(
+        (item) => normalizeDayValue(item.day) === selectedCalendarDayKey
+      );
+      if (!session) {
+        return [] as Array<{ name: string; sets: number; reps: string; restSeconds: number }>;
+      }
+
+      return session.exercises.map((exercise) => ({
+        name: exercise.name,
+        sets: exercise.sets,
+        reps: String(exercise.reps),
+        restSeconds: exercise.rest_seconds,
+      }));
+    }
+
+    const activeTrainerRoutine = trainerRoutines.find((item) => item.id === activeTab) ?? null;
+    if (!activeTrainerRoutine) {
+      return [] as Array<{ name: string; sets: number; reps: string; restSeconds: number }>;
+    }
+
+    const scheduledDays = activeTrainerRoutine.scheduledDays?.map((item) => normalizeDayValue(item)) ?? [];
+    if (scheduledDays.length > 0 && !scheduledDays.includes(selectedCalendarDayKey)) {
+      return [] as Array<{ name: string; sets: number; reps: string; restSeconds: number }>;
+    }
+
+    return activeTrainerRoutine.exercises.map((exercise) => ({
+      name: exercise.name,
+      sets: exercise.sets,
+      reps: String(exercise.reps),
+      restSeconds: exercise.restSeconds,
+    }));
+  }, [activeTab, routine, routineHistorySnapshots, selectedCalendarDate, selectedCalendarDayKey, trainerRoutines]);
+
+  const dayExerciseCheckins = useMemo(() => {
+    if (!selectedCalendarDate) {
+      return [] as RoutineExerciseCheckin[];
+    }
+
+    return exerciseCheckins.filter((item) => {
+      return item.completedAt ? getDayKeyFromISODate(item.completedAt) === selectedCalendarDate : false;
+    });
+  }, [exerciseCheckins, selectedCalendarDate]);
+
+  const dayStrengthLogs = useMemo(() => {
+    if (!selectedCalendarDate) {
+      return [] as StrengthLog[];
+    }
+
+    return recentStrengthLogs.filter((log) => getDayKeyFromISODate(log.performedAt) === selectedCalendarDate);
+  }, [recentStrengthLogs, selectedCalendarDate]);
+
+  const assignedExerciseNameSet = useMemo(() => {
+    const assigned = new Set<string>();
+    assignedExercisesForSelectedDate.forEach((exercise) => {
+      assigned.add(normalizeExerciseValue(exercise.name));
+    });
+    return assigned;
+  }, [assignedExercisesForSelectedDate]);
+
+  const assignedDayExerciseCheckins = useMemo(() => {
+    if (assignedExerciseNameSet.size === 0) {
+      return [] as RoutineExerciseCheckin[];
+    }
+
+    return dayExerciseCheckins.filter((entry) => assignedExerciseNameSet.has(normalizeExerciseValue(entry.exerciseName)));
+  }, [assignedExerciseNameSet, dayExerciseCheckins]);
+
+  const assignedDayStrengthLogs = useMemo(() => {
+    if (assignedExerciseNameSet.size === 0) {
+      return [] as StrengthLog[];
+    }
+
+    return dayStrengthLogs.filter((entry) => assignedExerciseNameSet.has(normalizeExerciseValue(entry.exerciseName)));
+  }, [assignedExerciseNameSet, dayStrengthLogs]);
+
+  const completedExerciseNameSet = useMemo(() => {
+    const completed = new Set<string>();
+
+    assignedDayExerciseCheckins.forEach((entry) => {
+      completed.add(normalizeExerciseValue(entry.exerciseName));
+    });
+
+    assignedDayStrengthLogs.forEach((entry) => {
+      completed.add(normalizeExerciseValue(entry.exerciseName));
+    });
+
+    return completed;
+  }, [assignedDayExerciseCheckins, assignedDayStrengthLogs]);
+
+  const assignedExercisesWithStatus = useMemo(
+    () =>
+      assignedExercisesForSelectedDate.map((exercise) => ({
+        ...exercise,
+        completed: completedExerciseNameSet.has(normalizeExerciseValue(exercise.name)),
+      })),
+    [assignedExercisesForSelectedDate, completedExerciseNameSet]
+  );
+
+  const completedAssignedCount = useMemo(
+    () => assignedExercisesWithStatus.filter((exercise) => exercise.completed).length,
+    [assignedExercisesWithStatus]
+  );
+
+  const registeredMarksCount = useMemo(
+    () => assignedDayExerciseCheckins.length + assignedDayStrengthLogs.length,
+    [assignedDayExerciseCheckins.length, assignedDayStrengthLogs.length]
+  );
+
+  const todayDateKey = useMemo(() => getCostaRicaDateKey(), []);
+
+  const todayStrengthLogBySessionExercise = useMemo(() => {
+    const map: Record<string, StrengthLog> = {};
+
+    recentStrengthLogs.forEach((log) => {
+      if (getCostaRicaDateKey(log.performedAt) !== todayDateKey) {
+        return;
+      }
+
+      const sessionDay = normalizeDayValue(getCostaRicaWeekdayKey(log.performedAt));
+      const exerciseName = normalizeExerciseValue(log.exerciseName);
+      const key = `${sessionDay}::${exerciseName}`;
+      const current = map[key];
+
+      if (!current || new Date(log.performedAt).getTime() > new Date(current.performedAt).getTime()) {
+        map[key] = log;
+      }
+    });
+
+    return map;
+  }, [recentStrengthLogs, todayDateKey]);
 
   const todayDayKey = useMemo(
-    () => ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][new Date().getDay()],
+    () => getCostaRicaWeekdayKey(),
     []
   );
 
@@ -272,7 +494,7 @@ export function RoutineScreen() {
 
     exerciseCheckins.forEach((item) => {
       if (item.weekStart === selectedWeekStart) {
-        value.add(`${normalize(item.sessionDay)}::${normalize(item.exerciseName)}`);
+        value.add(`${normalize(item.sessionDay)}::${normalizeExerciseValue(item.exerciseName)}`);
       }
     });
 
@@ -280,8 +502,25 @@ export function RoutineScreen() {
       localCompletedExercises.forEach((item) => value.add(item));
     }
 
+    recentStrengthLogs.forEach((log) => {
+      const weekStart = getCostaRicaWeekStart(log.performedAt);
+      if (weekStart !== selectedWeekStart) {
+        return;
+      }
+
+      const sessionDay = normalizeDayValue(getCostaRicaWeekdayKey(log.performedAt));
+      const exerciseName = normalizeExerciseValue(log.exerciseName);
+      value.add(`${sessionDay}::${exerciseName}`);
+    });
+
     return value;
-  }, [currentWeekStart, exerciseCheckins, localCompletedExercises, selectedWeekStart]);
+  }, [
+    currentWeekStart,
+    exerciseCheckins,
+    localCompletedExercises,
+    recentStrengthLogs,
+    selectedWeekStart,
+  ]);
 
   const previousWeekStart = useMemo(
     () => shiftWeek(selectedWeekStart, -1),
@@ -329,6 +568,14 @@ export function RoutineScreen() {
     () => trainerRoutines.find((item) => item.id === activeTab) ?? null,
     [activeTab, trainerRoutines]
   );
+
+  const routineToDelete = useMemo(() => {
+    if (activeTab !== "ai" && selectedTrainerRoutine) {
+      return selectedTrainerRoutine;
+    }
+
+    return trainerRoutines[0] ?? null;
+  }, [activeTab, selectedTrainerRoutine, trainerRoutines]);
 
   const selectedAiSession = useMemo(() => {
     if (!routine) {
@@ -408,7 +655,7 @@ export function RoutineScreen() {
     }
 
     return executionPlan.exercises.filter((exercise) =>
-      completedExercisesBySelectedWeek.has(`${normalize(executionPlan.sessionDay)}::${normalize(exercise.name)}`)
+      completedExercisesBySelectedWeek.has(`${normalize(executionPlan.sessionDay)}::${normalizeExerciseValue(exercise.name)}`)
     ).length;
   }, [completedExercisesBySelectedWeek, executionPlan]);
 
@@ -461,9 +708,11 @@ export function RoutineScreen() {
       const data = await api.getStrengthProgress(user.id, token, 120);
       setStrengthSummary(data.summary);
       setStrengthByExercise(data.exercises);
+      setRecentStrengthLogs(data.recentLogs || []);
     } catch {
       setStrengthSummary(null);
       setStrengthByExercise([]);
+      setRecentStrengthLogs([]);
     }
   };
 
@@ -477,13 +726,32 @@ export function RoutineScreen() {
     }
   };
 
+  const loadRoutineHistory = async () => {
+    if (!user || !token) {
+      return;
+    }
+
+    try {
+      const data = await api.getRoutineHistory(user.id, token, 180);
+      setRoutineHistorySnapshots(data.snapshots || []);
+    } catch {
+      setRoutineHistorySnapshots([]);
+    }
+  };
+
   const reloadAll = useCallback(async () => {
     if (!user || !token) {
       return;
     }
 
     try {
-      await Promise.all([loadLatestRoutine(), loadCheckins(), loadStrengthProgress(), loadTrainerRoutine()]);
+      await Promise.all([
+        loadLatestRoutine(),
+        loadRoutineHistory(),
+        loadCheckins(),
+        loadStrengthProgress(),
+        loadTrainerRoutine(),
+      ]);
     } catch (error) {
       Alert.alert(
         "No se pudo cargar la rutina",
@@ -670,17 +938,45 @@ export function RoutineScreen() {
     }
   };
 
-  const openExerciseLog = (sessionDay: string, exercise: RoutineExercise) => {
-    const exerciseName = normalize(exercise.name);
+  const openExerciseLog = (
+    sessionDay: string,
+    exercise: RoutineExercise,
+    existingTodayLog?: StrengthLog
+  ) => {
+    const exerciseName = normalizeExerciseValue(exercise.name);
     setActiveLog({ sessionDay, exerciseName });
-    setLogKg("");
+
+    const defaultKg = existingTodayLog ? existingTodayLog.loadKg.toFixed(1) : "";
+    const defaultReps =
+      typeof existingTodayLog?.reps === "number"
+        ? String(existingTodayLog.reps)
+        : parseSuggestedReps(exercise.reps);
+    const defaultSets =
+      typeof existingTodayLog?.sets === "number"
+        ? String(existingTodayLog.sets)
+        : String(exercise.sets || "");
+
+    setLogKg(defaultKg);
     setLogUnit("kg");
-    setLogReps(parseSuggestedReps(exercise.reps));
-    setLogSets(String(exercise.sets || ""));
+    setLogReps(defaultReps);
+    setLogSets(defaultSets);
+
+    if (defaultKg) {
+      const numeric = Number.parseFloat(defaultKg);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        lastSubmittedRef.current = `${exerciseName}::kg::${numeric}`;
+      }
+    }
+
     setLastSavedExerciseKey(null);
   };
 
-  const onSaveExerciseLog = async (exerciseName: string, loadText: string, unit: "kg" | "lb") => {
+  const onSaveExerciseLog = async (
+    sessionDay: string,
+    exerciseName: string,
+    loadText: string,
+    unit: "kg" | "lb"
+  ) => {
     if (!user || !token) return;
     const loadValue = Number.parseFloat(loadText);
     if (!Number.isFinite(loadValue) || loadValue <= 0) {
@@ -689,6 +985,9 @@ export function RoutineScreen() {
 
     const reps = logReps.trim() ? Number.parseInt(logReps.trim(), 10) : undefined;
     const sets = logSets.trim() ? Number.parseInt(logSets.trim(), 10) : undefined;
+
+    const optimisticExerciseKey = `${normalize(sessionDay)}::${normalizeExerciseValue(exerciseName)}`;
+    setLocalCompletedExercises((prev) => new Set([...prev, optimisticExerciseKey]));
 
     setSavingLog(true);
     try {
@@ -699,9 +998,14 @@ export function RoutineScreen() {
         reps,
         sets,
       });
-      setLastSavedExerciseKey(`${normalize(exerciseName)}::${unit}::${loadValue}`);
+      setLastSavedExerciseKey(`${normalizeExerciseValue(exerciseName)}::${unit}::${loadValue}`);
       await loadStrengthProgress();
     } catch (error) {
+      setLocalCompletedExercises((prev) => {
+        const next = new Set(prev);
+        next.delete(optimisticExerciseKey);
+        return next;
+      });
       Alert.alert(
         "No se pudo guardar",
         error instanceof Error ? error.message : "Intenta de nuevo"
@@ -793,7 +1097,7 @@ export function RoutineScreen() {
   const onMarkExerciseCompleted = async (sessionDay: string, exerciseName: string) => {
     if (!user || !token) return;
 
-    const exerciseKey = `${normalize(sessionDay)}::${normalize(exerciseName)}`;
+    const exerciseKey = `${normalize(sessionDay)}::${normalizeExerciseValue(exerciseName)}`;
     if (completedExercisesBySelectedWeek.has(exerciseKey)) {
       return;
     }
@@ -890,7 +1194,7 @@ export function RoutineScreen() {
 
     autoSaveTimerRef.current = setTimeout(() => {
       lastSubmittedRef.current = submitKey;
-      void onSaveExerciseLog(activeLog.exerciseName, value, logUnit);
+      void onSaveExerciseLog(activeLog.sessionDay, activeLog.exerciseName, value, logUnit);
     }, 900);
 
     return () => {
@@ -923,9 +1227,84 @@ export function RoutineScreen() {
     savingSessionDay,
   ]);
 
+  const toggleModule = (
+    key: "planSelector" | "weekSelector" | "weekSummary" | "calendar" | "addDay" | "notes" | "deleteAssigned"
+  ) => {
+    setVisibleModules((prev) => ({ ...prev, [key]: !prev[key] }));
+    setShowFeatureMenu(false);
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {trainerRoutines.length > 0 ? (
+      <View style={styles.topHeaderRow}>
+        <TouchableOpacity
+          style={styles.menuTrigger}
+          onPress={() => setShowFeatureMenu(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.menuTriggerIcon}>☰</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Modal
+        visible={showFeatureMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFeatureMenu(false)}
+      >
+        <View style={styles.featureMenuRoot}>
+          <View style={styles.featureMenuPanel}>
+            <Text style={styles.featureMenuTitle}>Funciones de rutina</Text>
+
+            <TouchableOpacity style={styles.featureMenuItem} onPress={() => toggleModule("planSelector")}>
+              <Text style={styles.featureMenuItemText}>Selector de plan</Text>
+              <Text style={styles.featureMenuItemState}>{visibleModules.planSelector ? "Visible" : "Oculta"}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.featureMenuItem} onPress={() => toggleModule("weekSelector")}>
+              <Text style={styles.featureMenuItemText}>Seleccionar semana</Text>
+              <Text style={styles.featureMenuItemState}>{visibleModules.weekSelector ? "Visible" : "Oculta"}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.featureMenuItem} onPress={() => toggleModule("weekSummary")}>
+              <Text style={styles.featureMenuItemText}>Resumen semanal</Text>
+              <Text style={styles.featureMenuItemState}>{visibleModules.weekSummary ? "Visible" : "Oculta"}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.featureMenuItem} onPress={() => toggleModule("calendar")}>
+              <Text style={styles.featureMenuItemText}>Calendario mensual</Text>
+              <Text style={styles.featureMenuItemState}>{visibleModules.calendar ? "Visible" : "Oculta"}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.featureMenuItem} onPress={() => toggleModule("addDay")}>
+              <Text style={styles.featureMenuItemText}>Agregar nuevo día</Text>
+              <Text style={styles.featureMenuItemState}>{visibleModules.addDay ? "Visible" : "Oculta"}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.featureMenuItem} onPress={() => toggleModule("notes")}>
+              <Text style={styles.featureMenuItemText}>Notas nutricionales</Text>
+              <Text style={styles.featureMenuItemState}>{visibleModules.notes ? "Visible" : "Oculta"}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.featureMenuItem} onPress={() => toggleModule("deleteAssigned")}>
+              <Text style={styles.featureMenuItemText}>Eliminar rutina asignada</Text>
+              <Text style={styles.featureMenuItemState}>{visibleModules.deleteAssigned ? "Visible" : "Oculta"}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.featureMenuClose} onPress={() => setShowFeatureMenu(false)}>
+              <Text style={styles.featureMenuCloseText}>Cerrar menú</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.featureMenuBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowFeatureMenu(false)}
+          />
+        </View>
+      </Modal>
+
+      {visibleModules.planSelector && trainerRoutines.length > 0 ? (
         <TouchableOpacity
           style={styles.planSelector}
           onPress={() => setShowRoutineDropdown(true)}
@@ -980,12 +1359,327 @@ export function RoutineScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal
+        visible={showAddDayModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !addDayLoading && setShowAddDayModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.addDayBackdrop}
+          activeOpacity={1}
+          onPress={() => {
+            if (!addDayLoading) {
+              setShowAddDayModal(false);
+            }
+          }}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.addDayPanel}>
+            <Text style={styles.addDayTitle}>Agregar nuevo día</Text>
+            <Text style={styles.addDayLabel}>Día de la semana</Text>
+            <View style={styles.addDayDaysRow}>
+              {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const).map((day) => (
+                <TouchableOpacity
+                  key={day}
+                  style={[styles.addDayDayChip, addDayDay === day && styles.addDayDayChipSelected]}
+                  onPress={() => setAddDayDay(day)}
+                >
+                  <Text style={[styles.addDayDayChipText, addDayDay === day && styles.addDayDayChipTextSelected]}>
+                    {DAY_LABELS[day]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={[styles.addDayLabel, { marginTop: 16 }]}>Enfoque</Text>
+            <TextInput
+              style={styles.addDayInput}
+              placeholder="Ej: Empuje, Piernas, Cardio..."
+              placeholderTextColor={ds.colors.textSecondary}
+              value={addDayFocus}
+              onChangeText={setAddDayFocus}
+              editable={!addDayLoading}
+              returnKeyType="done"
+            />
+
+            <TouchableOpacity
+              style={[styles.addDaySubmitBtn, addDayLoading && styles.refreshButtonDisabled]}
+              onPress={onAddDay}
+              disabled={addDayLoading}
+            >
+              {addDayLoading ? (
+                <ActivityIndicator size="small" color={ds.colors.textPrimary} />
+              ) : (
+                <Text style={styles.addDaySubmitText}>Generar con TUCO</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.addDayCancelBtn} onPress={() => setShowAddDayModal(false)}>
+              <Text style={styles.addDayCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={showDayMarksModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDayMarksModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.dayMarksBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowDayMarksModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.dayMarksPanel}>
+            <Text style={styles.dayMarksTitle}>Marcas del día</Text>
+            <Text style={styles.dayMarksDate}>
+              {selectedCalendarDate
+                ? formatCostaRicaDate(selectedCalendarDate, {
+                    weekday: "long",
+                    day: "2-digit",
+                    month: "short",
+                  }, true)
+                : "Sin fecha"}
+            </Text>
+
+            <View style={styles.dayTabsRow}>
+              <TouchableOpacity
+                style={[styles.dayTabButton, dayDetailTab === "summary" && styles.dayTabButtonActive]}
+                onPress={() => setDayDetailTab("summary")}
+              >
+                <Text style={[styles.dayTabText, dayDetailTab === "summary" && styles.dayTabTextActive]}>
+                  Resumen del día
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dayTabButton, dayDetailTab === "marks" && styles.dayTabButtonActive]}
+                onPress={() => setDayDetailTab("marks")}
+              >
+                <Text style={[styles.dayTabText, dayDetailTab === "marks" && styles.dayTabTextActive]}>
+                  Marcas completadas
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {dayDetailTab === "summary" ? (
+              <>
+                <View style={styles.dayResumeGrid}>
+                  <View style={styles.dayResumeCard}>
+                    <Text style={styles.dayResumeLabel}>Ejercicios asignados</Text>
+                    <Text style={styles.dayResumeValue}>{assignedExercisesWithStatus.length}</Text>
+                  </View>
+                  <View style={styles.dayResumeCard}>
+                    <Text style={styles.dayResumeLabel}>Ejercicios completados</Text>
+                    <Text style={styles.dayResumeValue}>{completedAssignedCount}</Text>
+                  </View>
+                  <View style={styles.dayResumeCard}>
+                    <Text style={styles.dayResumeLabel}>Marcas registradas</Text>
+                    <Text style={styles.dayResumeValue}>{registeredMarksCount}</Text>
+                  </View>
+                </View>
+
+                {assignedExercisesWithStatus.length === 0 ? (
+                  <Text style={styles.dayMarksEmpty}>No hay ejercicios asignados para este día en el plan activo.</Text>
+                ) : (
+                  <View style={styles.dayMarksSection}>
+                    <Text style={styles.dayMarksSectionTitle}>Ejercicios asignados</Text>
+                    {assignedExercisesWithStatus.map((exercise) => (
+                      <View key={`assigned-${exercise.name}`} style={styles.dayExerciseRow}>
+                        <View style={styles.dayExerciseCopy}>
+                          <Text style={styles.dayExerciseName}>{exercise.name}</Text>
+                          <Text style={styles.dayExerciseMeta}>
+                            {exercise.sets} series · {exercise.reps} reps · {exercise.restSeconds}s
+                          </Text>
+                        </View>
+                        <Text style={[styles.dayExerciseStatus, exercise.completed ? styles.dayExerciseDone : styles.dayExercisePending]}>
+                          {exercise.completed ? "Completado" : "Pendiente"}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            ) : (
+              <>
+                {assignedDayExerciseCheckins.length === 0 && assignedDayStrengthLogs.length === 0 ? (
+                  <Text style={styles.dayMarksEmpty}>No hay marcas completadas para esta fecha.</Text>
+                ) : (
+                  <>
+                    {assignedDayExerciseCheckins.length > 0 ? (
+                      <View style={styles.dayMarksSection}>
+                        <Text style={styles.dayMarksSectionTitle}>Check-ins de ejercicios</Text>
+                        {assignedDayExerciseCheckins.map((entry) => (
+                          <Text key={entry.id} style={styles.dayMarksItem}>
+                            • {entry.exerciseName} ({translateDay(entry.sessionDay)})
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {assignedDayStrengthLogs.length > 0 ? (
+                      <View style={styles.dayMarksSection}>
+                        <Text style={styles.dayMarksSectionTitle}>Marcas de carga</Text>
+                        {assignedDayStrengthLogs.map((log) => (
+                          <Text key={log.id} style={styles.dayMarksItem}>
+                            • {log.exerciseName}: {log.loadKg.toFixed(1)} kg{log.reps ? ` · ${log.reps} reps` : ""}{log.sets ? ` · ${log.sets} series` : ""}
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
+                  </>
+                )}
+              </>
+            )}
+
+            <TouchableOpacity style={styles.dayMarksCloseButton} onPress={() => setShowDayMarksModal(false)}>
+              <Text style={styles.dayMarksCloseText}>Cerrar</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       <View style={styles.executionStack}>
         <ScreenHeader
           title="Rutina de hoy"
           subtitle={executionPlan?.subtitle ?? "Plan pendiente · 0 min"}
           auxiliary={executionPlan?.sourceLabel ?? "Genera tu rutina para comenzar"}
         />
+
+        {visibleModules.weekSelector ? (
+          <AppCard variant="flat">
+            <Text style={styles.moduleTitle}>Seleccionar semana</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weekSelector}>
+              {availableWeeks.map((week) => {
+                const selected = week === selectedWeekStart;
+                const label = week === currentWeekStart ? "Actual" : formatWeekLabel(week);
+
+                return (
+                  <TouchableOpacity
+                    key={week}
+                    style={[styles.weekChip, selected && styles.weekChipSelected]}
+                    onPress={() => setSelectedWeekStart(week)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.weekChipText, selected && styles.weekChipTextSelected]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <View style={styles.weekSummaryCard}>
+                <Text style={styles.weekSummaryLabel}>Ejercicios al alza</Text>
+                <Text style={styles.weekSummaryValue}>{improvingThisWeek}</Text>
+              </View>
+            </ScrollView>
+          </AppCard>
+        ) : null}
+
+        {visibleModules.calendar ? (
+          <AppCard variant="flat" style={styles.calendarSection}>
+            <Text style={styles.calendarSectionTitle}>Calendario mensual de progreso</Text>
+            <View style={styles.calendarNavRow}>
+              <TouchableOpacity
+                onPress={() => setSelectedCalendarMonthIdx((index) => Math.max(0, index - 1))}
+                disabled={selectedCalendarMonthIdx === 0}
+                style={[styles.calendarNavBtn, selectedCalendarMonthIdx === 0 && styles.calendarNavBtnDisabled]}
+              >
+                <Text style={styles.calendarNavBtnText}>{"<"}</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.calendarMonthLabel}>
+                {`${MONTH_LABELS[calendarMonths[selectedCalendarMonthIdx].getUTCMonth()]} ${calendarMonths[selectedCalendarMonthIdx].getUTCFullYear()}`}
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => setSelectedCalendarMonthIdx((index) => Math.min(2, index + 1))}
+                disabled={selectedCalendarMonthIdx === 2}
+                style={[styles.calendarNavBtn, selectedCalendarMonthIdx === 2 && styles.calendarNavBtnDisabled]}
+              >
+                <Text style={styles.calendarNavBtnText}>{">"}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {(() => {
+              const monthStart = calendarMonths[selectedCalendarMonthIdx];
+              const cells = buildCalMonthMatrix(monthStart);
+
+              return (
+                <View>
+                  <View style={styles.calendarWeekRow}>
+                    {WEEK_HEADERS.map((header) => (
+                      <Text key={header} style={styles.calendarWeekHeader}>{header}</Text>
+                    ))}
+                  </View>
+
+                  {Array.from({ length: cells.length / 7 }, (_, row) => (
+                    <View key={row} style={styles.calendarWeekRow}>
+                      {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
+                        if (!day) {
+                          return <View key={col} style={styles.calendarCell} />;
+                        }
+
+                        const dayKey = day.toISOString().slice(0, 10);
+                        const done = exerciseCompletedDateSet.has(dayKey);
+
+                        return (
+                          <TouchableOpacity
+                            key={col}
+                            style={[styles.calendarCell, done && styles.calendarCellDone]}
+                            onPress={() => {
+                              setSelectedCalendarDate(dayKey);
+                              setDayDetailTab("summary");
+                              setShowDayMarksModal(true);
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={[styles.calendarDayText, done && styles.calendarDayTextDone]}>{day.getUTCDate()}</Text>
+                            {done ? <View style={styles.calendarCompletionDot} /> : null}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              );
+            })()}
+          </AppCard>
+        ) : null}
+
+        {visibleModules.addDay && executionPlan?.allowEditing ? (
+          <TouchableOpacity
+            style={styles.addDayModuleButton}
+            onPress={() => {
+              setAddDayDay("monday");
+              setAddDayFocus("");
+              setShowAddDayModal(true);
+            }}
+          >
+            <Text style={styles.addDayModuleButtonText}>Agregar nuevo día</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {visibleModules.deleteAssigned ? (
+          <TouchableOpacity
+            style={[styles.deleteAssignedButton, !routineToDelete && styles.deleteAssignedButtonDisabled]}
+            onPress={() => {
+              if (!routineToDelete) {
+                Alert.alert("Sin rutinas asignadas", "No hay rutinas asignadas para eliminar en este momento.");
+                return;
+              }
+
+              onDeleteTrainerRoutine(routineToDelete.id, routineToDelete.name);
+            }}
+            disabled={routineToDelete ? deletingRoutineId === routineToDelete.id : false}
+          >
+            <Text style={styles.deleteAssignedButtonText}>
+              {!routineToDelete
+                ? "Eliminar rutina asignada"
+                : deletingRoutineId === routineToDelete.id
+                ? "Eliminando rutina..."
+                : "Eliminar rutina asignada"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
         {activeTab === "ai" ? (
           <TouchableOpacity
@@ -1023,7 +1717,7 @@ export function RoutineScreen() {
           </AppCard>
         ) : (
           executionPlan.exercises.map((exercise) => {
-            const exerciseKey = normalize(exercise.name);
+            const exerciseKey = normalizeExerciseValue(exercise.name);
             const sessionExerciseKey = `${normalize(executionPlan.sessionDay)}::${exerciseKey}`;
             const actionKey = `${executionPlan.sessionDay}::${exercise.name}`;
             const progressPanelKey = `${executionPlan.sessionDay}::${exercise.name}::progress`;
@@ -1039,6 +1733,7 @@ export function RoutineScreen() {
             const isLogOpen =
               activeLog?.sessionDay === executionPlan.sessionDay && activeLog.exerciseName === exerciseKey;
             const isExerciseDone = completedExercisesBySelectedWeek.has(sessionExerciseKey);
+            const hasTodayLogForExercise = Boolean(todayStrengthLogBySessionExercise[sessionExerciseKey]);
             const status = isExerciseDone ? "completed" : isLogOpen ? "in_progress" : "pending";
 
             const progressNode = (
@@ -1096,13 +1791,22 @@ export function RoutineScreen() {
                 savingLog={savingLog}
                 lastSavedKey={lastSavedExerciseKey}
                 onToggleLog={() => {
-                  openExerciseLog(executionPlan.sessionDay, {
-                    name: exercise.name,
-                    sets: exercise.sets,
-                    reps: exercise.reps,
-                    rest_seconds: exercise.restSeconds,
-                    notes: exercise.tip,
-                  });
+                  if (isLogOpen) {
+                    setActiveLog(null);
+                    return;
+                  }
+
+                  openExerciseLog(
+                    executionPlan.sessionDay,
+                    {
+                      name: exercise.name,
+                      sets: exercise.sets,
+                      reps: exercise.reps,
+                      rest_seconds: exercise.restSeconds,
+                      notes: exercise.tip,
+                    },
+                    todayStrengthLogBySessionExercise[sessionExerciseKey]
+                  );
                 }}
                 onLogChange={(vals) => {
                   if (vals.loadValue !== undefined) setLogKg(vals.loadValue);
@@ -1110,8 +1814,7 @@ export function RoutineScreen() {
                   if (vals.reps !== undefined) setLogReps(vals.reps);
                   if (vals.sets !== undefined) setLogSets(vals.sets);
                 }}
-                onMarkDone={() => onMarkExerciseCompleted(executionPlan.sessionDay, exercise.name)}
-                canMarkDone={selectedWeekStart === currentWeekStart}
+                allowEditWhenCompleted={hasTodayLogForExercise}
                 hasProgress={!!progress}
                 progressOpen={isProgressOpen}
                 onToggleProgress={() =>
@@ -1143,35 +1846,60 @@ export function RoutineScreen() {
                 }
                 menuOptions={[
                   {
-                    label: executionPlan.allowEditing
-                      ? replacingExerciseKey === actionKey
-                        ? "Reemplazando..."
-                        : "Reemplazar ejercicio"
-                      : "Reemplazo no disponible",
-                    loading: executionPlan.allowEditing && replacingExerciseKey === actionKey,
-                    onPress: () =>
-                      executionPlan.allowEditing
-                        ? onReplaceExercise(executionPlan.sessionDay, exercise.name)
-                        : Alert.alert("No disponible", "Esta rutina fue asignada y no puede editarse desde la app."),
+                    label: "Editar",
+                    onPress: () => {
+                      if (isExerciseDone && !hasTodayLogForExercise) {
+                        Alert.alert("No disponible", "Solo puedes editar marcas registradas hoy.");
+                        return;
+                      }
+
+                      openExerciseLog(
+                        executionPlan.sessionDay,
+                        {
+                          name: exercise.name,
+                          sets: exercise.sets,
+                          reps: exercise.reps,
+                          rest_seconds: exercise.restSeconds,
+                          notes: exercise.tip,
+                        },
+                        todayStrengthLogBySessionExercise[sessionExerciseKey]
+                      );
+                    },
                   },
-                  {
-                    label: executionPlan.allowEditing
-                      ? optionsLoadingKey === actionKey
-                        ? "Buscando alternativas..."
-                        : "Elegir alternativa"
-                      : "Alternativas no disponibles",
-                    loading: executionPlan.allowEditing && optionsLoadingKey === actionKey,
-                    onPress: () =>
-                      executionPlan.allowEditing
-                        ? onLoadReplacementOptions(executionPlan.sessionDay, {
-                            name: exercise.name,
-                            sets: exercise.sets,
-                            reps: exercise.reps,
-                            rest_seconds: exercise.restSeconds,
-                            notes: exercise.tip,
-                          })
-                        : Alert.alert("No disponible", "Esta rutina fue asignada y no puede editarse desde la app."),
-                  },
+                  ...(!isExerciseDone
+                    ? [
+                        {
+                          label: executionPlan.allowEditing
+                            ? replacingExerciseKey === actionKey
+                              ? "Reemplazando..."
+                              : "Reemplazar ejercicio"
+                            : "Reemplazo no disponible",
+                          loading: executionPlan.allowEditing && replacingExerciseKey === actionKey,
+                          onPress: () =>
+                            executionPlan.allowEditing
+                              ? onReplaceExercise(executionPlan.sessionDay, exercise.name)
+                              : Alert.alert("No disponible", "Esta rutina fue asignada y no puede editarse desde la app."),
+                        },
+                        {
+                          label: executionPlan.allowEditing
+                            ? optionsLoadingKey === actionKey
+                              ? "Buscando alternativas..."
+                              : "Elegir alternativa"
+                            : "Alternativas no disponibles",
+                          loading: executionPlan.allowEditing && optionsLoadingKey === actionKey,
+                          onPress: () =>
+                            executionPlan.allowEditing
+                              ? onLoadReplacementOptions(executionPlan.sessionDay, {
+                                  name: exercise.name,
+                                  sets: exercise.sets,
+                                  reps: exercise.reps,
+                                  rest_seconds: exercise.restSeconds,
+                                  notes: exercise.tip,
+                                })
+                              : Alert.alert("No disponible", "Esta rutina fue asignada y no puede editarse desde la app."),
+                        },
+                      ]
+                    : []),
                   {
                     label: executionPlan.allowEditing
                       ? removingExerciseKey === actionKey
@@ -1195,7 +1923,7 @@ export function RoutineScreen() {
           })
         )}
 
-        {executionPlan?.allowEditing && activeTab === "ai" && routine?.nutrition_notes ? (
+        {visibleModules.notes && executionPlan?.allowEditing && activeTab === "ai" && routine?.nutrition_notes ? (
           <AppCard variant="flat" style={styles.noteCard}>
             <Text style={styles.noteTitle}>Nota operativa</Text>
             <Text style={styles.noteCopy}>{routine.nutrition_notes}</Text>
@@ -1216,6 +1944,119 @@ const styles = StyleSheet.create({
   },
   executionStack: {
     gap: ds.spacing.x3,
+  },
+  topHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    marginBottom: ds.spacing.x2,
+  },
+  menuTrigger: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: ds.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuTriggerIcon: {
+    color: ds.colors.textPrimary,
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  featureMenuRoot: {
+    flex: 1,
+    flexDirection: "row",
+  },
+  featureMenuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(2, 6, 23, 0.62)",
+  },
+  featureMenuPanel: {
+    width: "75%",
+    height: "100%",
+    backgroundColor: ds.colors.surfaceElevated,
+    paddingTop: 56,
+    paddingHorizontal: ds.spacing.x2,
+    paddingBottom: ds.spacing.x3,
+    gap: ds.spacing.x1,
+    ...ds.shadows.card,
+  },
+  featureMenuTitle: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.titleMD,
+    fontWeight: "700",
+    fontFamily: ds.typography.fontFamily,
+    marginBottom: ds.spacing.x1,
+  },
+  featureMenuItem: {
+    paddingVertical: ds.spacing.x2,
+    paddingHorizontal: ds.spacing.x1,
+    borderRadius: ds.radius.sm,
+    backgroundColor: ds.colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.colors.borderSubtle,
+  },
+  featureMenuItemText: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "500",
+    fontFamily: ds.typography.fontFamily,
+  },
+  featureMenuItemState: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodySM,
+    marginTop: 2,
+    fontFamily: ds.typography.fontFamily,
+  },
+  featureMenuClose: {
+    marginTop: ds.spacing.x2,
+    backgroundColor: ds.colors.actionPrimary,
+    borderRadius: ds.radius.md,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  featureMenuCloseText: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  moduleTitle: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+    marginBottom: ds.spacing.x1,
+  },
+  addDayModuleButton: {
+    alignSelf: "flex-start",
+    backgroundColor: ds.colors.surfaceElevated,
+    borderRadius: ds.radius.md,
+    paddingHorizontal: ds.spacing.x2,
+    paddingVertical: 12,
+  },
+  addDayModuleButtonText: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  deleteAssignedButton: {
+    alignSelf: "flex-start",
+    borderRadius: ds.radius.md,
+    backgroundColor: ds.colors.accent + "22",
+    paddingHorizontal: ds.spacing.x2,
+    paddingVertical: 12,
+  },
+  deleteAssignedButtonDisabled: {
+    opacity: 0.7,
+  },
+  deleteAssignedButtonText: {
+    color: ds.colors.accent,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
   },
   planSelector: {
     alignSelf: "flex-start",
@@ -1926,17 +2767,171 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
   },
   calendarCellDone: {
-    backgroundColor: "#22c55e",
+    borderWidth: 1,
+    borderColor: ds.colors.success,
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
   },
   calendarDayText: {
     fontSize: 11,
     color: palette.textSoft,
   },
   calendarDayTextDone: {
-    color: "#fff",
+    color: palette.textSoft,
     fontWeight: "700",
+  },
+  calendarCompletionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: ds.colors.success,
+    position: "absolute",
+    bottom: 6,
+    alignSelf: "center",
+  },
+  dayMarksBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(2, 6, 23, 0.62)",
+    justifyContent: "center",
+    paddingHorizontal: ds.spacing.x3,
+  },
+  dayMarksPanel: {
+    backgroundColor: ds.colors.surfaceElevated,
+    borderRadius: ds.radius.lg,
+    padding: ds.spacing.x3,
+    gap: ds.spacing.x2,
+    ...ds.shadows.card,
+  },
+  dayMarksTitle: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.titleMD,
+    fontWeight: "700",
+    fontFamily: ds.typography.fontFamily,
+  },
+  dayMarksDate: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodyMD,
+    fontFamily: ds.typography.fontFamily,
+    textTransform: "capitalize",
+  },
+  dayMarksEmpty: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodyMD,
+    fontFamily: ds.typography.fontFamily,
+  },
+  dayTabsRow: {
+    flexDirection: "row",
+    gap: ds.spacing.x1,
+  },
+  dayTabButton: {
+    flex: 1,
+    borderRadius: ds.radius.sm,
+    paddingVertical: 10,
+    alignItems: "center",
+    backgroundColor: ds.colors.surface,
+  },
+  dayTabButtonActive: {
+    backgroundColor: ds.colors.actionPrimary,
+  },
+  dayTabText: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodySM,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  dayTabTextActive: {
+    color: ds.colors.textPrimary,
+  },
+  dayResumeGrid: {
+    flexDirection: "row",
+    gap: ds.spacing.x1,
+    flexWrap: "wrap",
+  },
+  dayResumeCard: {
+    minWidth: "31%",
+    flexGrow: 1,
+    borderRadius: ds.radius.sm,
+    backgroundColor: ds.colors.surface,
+    padding: ds.spacing.x2,
+  },
+  dayResumeLabel: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodySM,
+    fontFamily: ds.typography.fontFamily,
+  },
+  dayResumeValue: {
+    marginTop: 4,
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.titleMD,
+    fontWeight: "700",
+    fontFamily: ds.typography.fontFamily,
+  },
+  dayMarksSection: {
+    gap: ds.spacing.x1,
+  },
+  dayMarksSectionTitle: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  dayMarksItem: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodySM,
+    fontFamily: ds.typography.fontFamily,
+    lineHeight: 19,
+  },
+  dayExerciseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: ds.spacing.x2,
+    backgroundColor: ds.colors.surface,
+    borderRadius: ds.radius.sm,
+    paddingHorizontal: ds.spacing.x2,
+    paddingVertical: 10,
+  },
+  dayExerciseCopy: {
+    flex: 1,
+  },
+  dayExerciseName: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  dayExerciseMeta: {
+    marginTop: 2,
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodySM,
+    fontFamily: ds.typography.fontFamily,
+  },
+  dayExerciseStatus: {
+    fontSize: ds.typography.bodySM,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  dayExerciseDone: {
+    color: ds.colors.success,
+  },
+  dayExercisePending: {
+    color: ds.colors.textSecondary,
+  },
+  dayMarksCloseButton: {
+    marginTop: ds.spacing.x1,
+    alignSelf: "flex-end",
+    backgroundColor: ds.colors.actionPrimary,
+    borderRadius: ds.radius.md,
+    paddingHorizontal: ds.spacing.x2,
+    paddingVertical: 10,
+  },
+  dayMarksCloseText: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
   },
 
   // Trainer-assigned routine card

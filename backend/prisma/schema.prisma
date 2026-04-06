@@ -234,6 +234,45 @@ model AIChatLog {
   @@map("ai_chat_logs")
 }
 
+model RoutineSessionLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  weekStart  String   @map("week_start")
+  dateKey    String   @map("date_key")
+  sessionDay String   @map("session_day")
+  completedAt DateTime @map("completed_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, dateKey, sessionDay], name: "routine_session_logs_user_id_date_key_session_day_key")
+  @@index([userId, weekStart])
+  @@index([userId, completedAt])
+  @@map("routine_session_logs")
+}
+
+model RoutineExerciseLog {
+  id                     String   @id @default(uuid())
+  userId                 String   @map("user_id")
+  weekStart              String   @map("week_start")
+  dateKey                String   @map("date_key")
+  sessionDay             String   @map("session_day")
+  exerciseName           String   @map("exercise_name")
+  normalizedExerciseName String   @map("normalized_exercise_name")
+  loadKg                 Float?   @map("load_kg")
+  loadUnit               String?  @map("load_unit")
+  reps                   Int?
+  sets                   Int?
+  performedAt            DateTime @map("performed_at")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, dateKey, sessionDay, normalizedExerciseName], name: "routine_exercise_logs_user_id_date_key_session_day_normalized_exercise_name_key")
+  @@index([userId, weekStart])
+  @@index([userId, performedAt])
+  @@index([userId, normalizedExerciseName])
+  @@map("routine_exercise_logs")
+}
+
 model MembershipTransaction {
   id                String                    @id @default(uuid())
   gymId             String                    @map("gym_id")

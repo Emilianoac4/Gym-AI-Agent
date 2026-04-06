@@ -8,6 +8,16 @@ const ROUTINE_CHECKIN_PREFIX = "ROUTINE_CHECKIN::";
 const EXERCISE_CHECKIN_PREFIX = "EXERCISE_CHECKIN::";
 const STRENGTH_LOG_PREFIX = "STRENGTH_LOG::";
 
+const UTC_DAY_KEYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
 type RoutineExercise = {
   name: string;
   sets: number;
@@ -41,6 +51,16 @@ function getWeekStartIso(date: Date): string {
   const diff = (day + 6) % 7;
   clone.setUTCDate(clone.getUTCDate() - diff);
   return clone.toISOString().slice(0, 10);
+}
+
+function getDateKeyIso(date: Date): string {
+  const clone = new Date(date);
+  clone.setUTCHours(0, 0, 0, 0);
+  return clone.toISOString().slice(0, 10);
+}
+
+function getSessionDayFromDate(date: Date): string {
+  return UTC_DAY_KEYS[date.getUTCDay()];
 }
 
 function normalizeSessionDay(value: string): string {
@@ -174,6 +194,43 @@ export class AIController {
     };
   }
 
+    private static async getRoutineHistorySnapshots(
+      userId: string,
+      days = 180
+    ): Promise<Array<{ id: string; createdAt: Date; routine: GeneratedRoutine }>> {
+      const safeDays = Number.isFinite(days) ? Math.max(1, Math.min(365, days)) : 180;
+      const fromDate = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+
+      const logs = await prisma.aIChatLog.findMany({
+        where: {
+          userId,
+          type: "ROUTINE_GENERATION",
+          createdAt: {
+            gte: fromDate,
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 200,
+      });
+
+      return logs
+        .map((entry) => {
+          const routine = parseRoutinePayload(entry.aiResponse) as GeneratedRoutine | null;
+          if (!routine || !Array.isArray(routine.sessions)) {
+            return null;
+          }
+
+          return {
+            id: entry.id,
+            createdAt: entry.createdAt,
+            routine,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    }
+
   private static async getLatestRoutineSnapshot(userId: string): Promise<{
     routine: GeneratedRoutine;
     createdAt: Date;
@@ -229,44 +286,31 @@ export class AIController {
     const weekStart = getWeekStartIso(new Date());
 
     const [dayLogs, exerciseLogs] = await Promise.all([
-      prisma.aIChatLog.findMany({
+      prisma.routineSessionLog.findMany({
         where: {
           userId,
-          type: "CHAT",
-          userMessage: {
-            startsWith: `${ROUTINE_CHECKIN_PREFIX}${weekStart}::`,
-          },
+          weekStart,
         },
       }),
-      prisma.aIChatLog.findMany({
+      prisma.routineExerciseLog.findMany({
         where: {
           userId,
-          type: "CHAT",
-          userMessage: {
-            startsWith: `${EXERCISE_CHECKIN_PREFIX}${weekStart}::`,
-          },
+          weekStart,
         },
       }),
     ]);
 
     const completedDays = new Set<string>();
     dayLogs.forEach((item) => {
-      const parts = item.userMessage.split("::");
-      if (parts.length >= 3) {
-        completedDays.add(parts[2]);
-      }
+      completedDays.add(item.sessionDay);
     });
 
     const completedExercisesByDay = new Map<string, Set<string>>();
     exerciseLogs.forEach((item) => {
-      const parts = item.userMessage.split("::");
-      if (parts.length >= 4) {
-        const day = parts[2];
-        const exercise = parts[3];
-        const current = completedExercisesByDay.get(day) || new Set<string>();
-        current.add(exercise);
-        completedExercisesByDay.set(day, current);
-      }
+      const day = item.sessionDay;
+      const current = completedExercisesByDay.get(day) || new Set<string>();
+      current.add(item.normalizedExerciseName);
+      completedExercisesByDay.set(day, current);
     });
 
     return {
@@ -325,8 +369,10 @@ export class AIController {
       const unit: "kg" | "lb" = loadUnit === "lb" ? "lb" : "kg";
       const loadKg = convertToKg(loadValue, unit);
       const performedDate = new Date(toIsoString(performedAt));
+      const weekStart = getWeekStartIso(performedDate);
+      const dateKey = getDateKeyIso(performedDate);
+      const sessionDay = getSessionDayFromDate(performedDate);
       const normalizedExercise = normalizeExerciseName(exerciseName);
-      const marker = `${STRENGTH_LOG_PREFIX}${normalizedExercise}`;
 
       const payload = {
         exerciseName: exerciseName.trim(),
@@ -340,13 +386,36 @@ export class AIController {
         performedAt: performedDate.toISOString(),
       };
 
-      const created = await prisma.aIChatLog.create({
-        data: {
+      const created = await prisma.routineExerciseLog.upsert({
+        where: {
+          routine_exercise_logs_user_id_date_key_session_day_normalized_exercise_name_key: {
+            userId,
+            dateKey,
+            sessionDay,
+            normalizedExerciseName: normalizedExercise,
+          },
+        },
+        create: {
           userId,
-          type: "CHAT",
-          userMessage: marker,
-          aiResponse: JSON.stringify(payload),
-          createdAt: performedDate,
+          weekStart,
+          dateKey,
+          sessionDay,
+          exerciseName: exerciseName.trim(),
+          normalizedExerciseName: normalizedExercise,
+          loadKg,
+          loadUnit: unit,
+          reps: typeof reps === "number" ? reps : null,
+          sets: typeof sets === "number" ? sets : null,
+          performedAt: performedDate,
+        },
+        update: {
+          exerciseName: exerciseName.trim(),
+          loadKg,
+          loadUnit: unit,
+          reps: typeof reps === "number" ? reps : null,
+          sets: typeof sets === "number" ? sets : null,
+          performedAt: performedDate,
+          weekStart,
         },
       });
 
@@ -684,43 +753,39 @@ export class AIController {
         throw new HttpError(403, "Forbidden");
       }
 
-      const completedIso = toIsoString(completedAt);
-      const completedDate = new Date(completedIso);
+      const completedDate = new Date(toIsoString(completedAt));
       const weekStart = getWeekStartIso(completedDate);
+      const dateKey = getDateKeyIso(completedDate);
       const normalizedDay = normalizeSessionDay(sessionDay);
       const normalizedExercise = normalizeExerciseName(exerciseName);
-      const marker = `${EXERCISE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}::${normalizedExercise}`;
       const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
 
-      const existing = await prisma.aIChatLog.findFirst({
+      const upserted = await prisma.routineExerciseLog.upsert({
         where: {
-          userId,
-          type: "CHAT",
-          userMessage: marker,
-        },
-      });
-
-      if (existing) {
-        res.json({
-          message: "Exercise check-in already registered",
-          checkin: {
-            id: existing.id,
-            weekStart,
-            sessionDay,
-            exerciseName,
-            completedAt: existing.createdAt,
+          routine_exercise_logs_user_id_date_key_session_day_normalized_exercise_name_key: {
+            userId,
+            dateKey,
+            sessionDay: normalizedDay,
+            normalizedExerciseName: normalizedExercise,
           },
-        });
-        return;
-      }
-
-      const created = await prisma.aIChatLog.create({
-        data: {
+        },
+        create: {
           userId,
-          type: "CHAT",
-          userMessage: marker,
-          aiResponse: `Exercise completed: ${exerciseName}`,
-          createdAt: completedDate,
+          weekStart,
+          dateKey,
+          sessionDay: normalizedDay,
+          exerciseName: exerciseName.trim(),
+          normalizedExerciseName: normalizedExercise,
+          loadKg: null,
+          loadUnit: null,
+          reps: null,
+          sets: null,
+          performedAt: completedDate,
+        },
+        update: {
+          exerciseName: exerciseName.trim(),
+          performedAt: completedDate,
+          weekStart,
         },
       });
 
@@ -730,22 +795,17 @@ export class AIController {
       );
 
       if (session) {
-        const existingExerciseLogs = await prisma.aIChatLog.findMany({
+        const existingExerciseLogs = await prisma.routineExerciseLog.findMany({
           where: {
             userId,
-            type: "CHAT",
-            userMessage: {
-              startsWith: `${EXERCISE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}::`,
-            },
+            weekStart,
+            sessionDay: normalizedDay,
           },
         });
 
         const completedSet = new Set<string>();
         existingExerciseLogs.forEach((entry) => {
-          const parts = entry.userMessage.split("::");
-          if (parts.length >= 4) {
-            completedSet.add(parts[3]);
-          }
+          completedSet.add(entry.normalizedExerciseName);
         });
 
         const allDone = session.exercises.every((exercise) =>
@@ -753,37 +813,37 @@ export class AIController {
         );
 
         if (allDone) {
-          const dayMarker = `${ROUTINE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}`;
-          const existingDay = await prisma.aIChatLog.findFirst({
+          await prisma.routineSessionLog.upsert({
             where: {
+              routine_session_logs_user_id_date_key_session_day_key: {
+                userId,
+                dateKey,
+                sessionDay: normalizedDay,
+              },
+            },
+            create: {
               userId,
-              type: "CHAT",
-              userMessage: dayMarker,
+              weekStart,
+              dateKey,
+              sessionDay: normalizedDay,
+              completedAt: completedDate,
+            },
+            update: {
+              completedAt: completedDate,
+              weekStart,
             },
           });
-
-          if (!existingDay) {
-            await prisma.aIChatLog.create({
-              data: {
-                userId,
-                type: "CHAT",
-                userMessage: dayMarker,
-                aiResponse: `Session completed: ${sessionDay}`,
-                createdAt: completedDate,
-              },
-            });
-          }
         }
       }
 
       res.status(201).json({
         message: "Exercise check-in saved",
         checkin: {
-          id: created.id,
+          id: upserted.id,
           weekStart,
           sessionDay,
           exerciseName,
-          completedAt: created.createdAt,
+          completedAt: upserted.performedAt,
         },
       });
     } catch (error) {
@@ -807,39 +867,29 @@ export class AIController {
       const days = req.query.days ? parseInt(req.query.days as string, 10) : 90;
       const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-      const logs = await prisma.aIChatLog.findMany({
+      const logs = await prisma.routineExerciseLog.findMany({
         where: {
           userId,
-          type: "CHAT",
-          userMessage: {
-            startsWith: STRENGTH_LOG_PREFIX,
+          loadKg: {
+            not: null,
           },
-          createdAt: {
+          performedAt: {
             gte: fromDate,
           },
         },
         orderBy: {
-          createdAt: "asc",
+          performedAt: "asc",
         },
       });
 
-      const entries = logs
-        .map((item) => {
-          const payload = parseStrengthPayload(item.aiResponse);
-          if (!payload) {
-            return null;
-          }
-
-          return {
-            id: item.id,
-            exerciseName: payload.exerciseName,
-            loadKg: payload.loadKg,
-            reps: payload.reps,
-            sets: payload.sets,
-            performedAt: payload.performedAt,
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null);
+      const entries = logs.map((item) => ({
+        id: item.id,
+        exerciseName: item.exerciseName,
+        loadKg: item.loadKg ?? 0,
+        reps: item.reps,
+        sets: item.sets,
+        performedAt: item.performedAt.toISOString(),
+      }));
 
       const grouped = new Map<string, typeof entries>();
       for (const entry of entries) {
@@ -891,6 +941,42 @@ export class AIController {
               };
             });
 
+          const monthlyBuckets = new Map<string, typeof bucket>();
+          for (const entry of bucket) {
+            const monthKey = entry.performedAt.slice(0, 7);
+            const monthItems = monthlyBuckets.get(monthKey) || [];
+            monthItems.push(entry);
+            monthlyBuckets.set(monthKey, monthItems);
+          }
+
+          const monthlyHistory = Array.from(monthlyBuckets.entries())
+            .sort(([monthA], [monthB]) => monthA.localeCompare(monthB))
+            .map(([monthKey, entriesForMonth]) => {
+              const latestMonthEntry = entriesForMonth[entriesForMonth.length - 1];
+              const bestMonthEntry = entriesForMonth.reduce((max, current) =>
+                current.loadKg > max.loadKg ? current : max
+              );
+
+              return {
+                month: monthKey,
+                latestLoadKg: latestMonthEntry.loadKg,
+                bestLoadKg: bestMonthEntry.loadKg,
+                logsCount: entriesForMonth.length,
+                lastPerformedAt: latestMonthEntry.performedAt,
+              };
+            });
+
+          const latestDate = new Date(latest.performedAt).getTime();
+          const oneWeekAgo = latestDate - 7 * 24 * 60 * 60 * 1000;
+          const oneMonthAgo = latestDate - 30 * 24 * 60 * 60 * 1000;
+
+          const lastWeekEntry = bucket
+            .filter((entry) => new Date(entry.performedAt).getTime() <= oneWeekAgo)
+            .slice(-1)[0];
+          const lastMonthEntry = bucket
+            .filter((entry) => new Date(entry.performedAt).getTime() <= oneMonthAgo)
+            .slice(-1)[0];
+
           return {
             exerciseName: latest.exerciseName,
             logsCount: bucket.length,
@@ -902,6 +988,13 @@ export class AIController {
             estimatedOneRM: estimatedOneRM(latest.loadKg, latest.reps),
             lastPerformedAt: latest.performedAt,
             weeklyHistory,
+            monthlyHistory,
+            weeklyChangeKg: lastWeekEntry
+              ? Number((latest.loadKg - lastWeekEntry.loadKg).toFixed(2))
+              : null,
+            monthlyChangeKg: lastMonthEntry
+              ? Number((latest.loadKg - lastMonthEntry.loadKg).toFixed(2))
+              : null,
           };
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
@@ -911,12 +1004,22 @@ export class AIController {
         (item) => item.absoluteChangeKg > 0
       ).length;
 
+      const weeklyImprovingExercises = exerciseProgress.filter(
+        (item) => typeof item.weeklyChangeKg === "number" && item.weeklyChangeKg > 0
+      ).length;
+
+      const monthlyImprovingExercises = exerciseProgress.filter(
+        (item) => typeof item.monthlyChangeKg === "number" && item.monthlyChangeKg > 0
+      ).length;
+
       res.json({
         message: "Strength progress retrieved",
         summary: {
           totalLogs: entries.length,
           activeExercises: exerciseProgress.length,
           improvingExercises,
+          weeklyImprovingExercises,
+          monthlyImprovingExercises,
         },
         exercises: exerciseProgress,
         recentLogs: entries.slice(-20).reverse(),
@@ -949,38 +1052,27 @@ export class AIController {
 
       const completedDate = new Date(toIsoString(completedAt));
       const weekStart = getWeekStartIso(completedDate);
+      const dateKey = getDateKeyIso(completedDate);
       const normalizedDay = normalizeSessionDay(sessionDay);
-      const marker = `${ROUTINE_CHECKIN_PREFIX}${weekStart}::${normalizedDay}`;
-      const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
 
-      const existing = await prisma.aIChatLog.findFirst({
+      const created = await prisma.routineSessionLog.upsert({
         where: {
-          userId,
-          type: "CHAT",
-          userMessage: marker,
-        },
-      });
-
-      if (existing) {
-        res.json({
-          message: "Routine check-in already registered for this week",
-          checkin: {
-            id: existing.id,
-            sessionDay,
-            completedAt: existing.createdAt,
-            weekStart,
+          routine_session_logs_user_id_date_key_session_day_key: {
+            userId,
+            dateKey,
+            sessionDay: normalizedDay,
           },
-        });
-        return;
-      }
-
-      const created = await prisma.aIChatLog.create({
-        data: {
+        },
+        create: {
           userId,
-          type: "CHAT",
-          userMessage: marker,
-          aiResponse: `Session completed: ${sessionDay}`,
-          createdAt: completedDate,
+          weekStart,
+          dateKey,
+          sessionDay: normalizedDay,
+          completedAt: completedDate,
+        },
+        update: {
+          completedAt: completedDate,
+          weekStart,
         },
       });
 
@@ -989,7 +1081,7 @@ export class AIController {
         checkin: {
           id: created.id,
           sessionDay,
-          completedAt: created.createdAt,
+          completedAt: created.completedAt,
           weekStart,
         },
       });
@@ -1013,61 +1105,45 @@ export class AIController {
 
       const days = req.query.days ? parseInt(req.query.days as string, 10) : 28;
       const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-      const logs = await prisma.aIChatLog.findMany({
-        where: {
-          userId,
-          type: "CHAT",
-          OR: [
-            {
-              userMessage: {
-                startsWith: ROUTINE_CHECKIN_PREFIX,
-              },
+      const [sessionLogs, exerciseLogs] = await Promise.all([
+        prisma.routineSessionLog.findMany({
+          where: {
+            userId,
+            completedAt: {
+              gte: fromDate,
             },
-            {
-              userMessage: {
-                startsWith: EXERCISE_CHECKIN_PREFIX,
-              },
-            },
-          ],
-          createdAt: {
-            gte: fromDate,
           },
-        },
-        orderBy: { createdAt: "desc" },
-      });
+          orderBy: {
+            completedAt: "desc",
+          },
+        }),
+        prisma.routineExerciseLog.findMany({
+          where: {
+            userId,
+            performedAt: {
+              gte: fromDate,
+            },
+          },
+          orderBy: {
+            performedAt: "desc",
+          },
+        }),
+      ]);
 
-      const checkins = logs
-        .filter((item) => item.userMessage.startsWith(ROUTINE_CHECKIN_PREFIX))
-        .map((item) => {
-          const parts = item.userMessage.split("::");
-          if (parts.length < 3) {
-            return null;
-          }
-          return {
-            id: item.id,
-            weekStart: parts[1],
-            sessionDay: parts[2],
-            completedAt: item.createdAt,
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null);
+      const checkins = sessionLogs.map((item) => ({
+        id: item.id,
+        weekStart: item.weekStart,
+        sessionDay: item.sessionDay,
+        completedAt: item.completedAt,
+      }));
 
-      const exerciseCheckins = logs
-        .filter((item) => item.userMessage.startsWith(EXERCISE_CHECKIN_PREFIX))
-        .map((item) => {
-          const parts = item.userMessage.split("::");
-          if (parts.length < 4) {
-            return null;
-          }
-          return {
-            id: item.id,
-            weekStart: parts[1],
-            sessionDay: parts[2],
-            exerciseName: parts[3],
-            completedAt: item.createdAt,
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null);
+      const exerciseCheckins = exerciseLogs.map((item) => ({
+        id: item.id,
+        weekStart: item.weekStart,
+        sessionDay: item.sessionDay,
+        exerciseName: item.normalizedExerciseName,
+        completedAt: item.performedAt,
+      }));
 
       res.json({
         message: "Routine check-ins retrieved",
@@ -1533,6 +1609,28 @@ export class AIController {
       res.json({
         message: "Exercise added to routine",
         routine: updatedRoutine,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getRoutineHistory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.params.userId as string;
+      const auth = (req as any).auth;
+
+      if (auth.role !== "admin" && auth.userId !== userId) {
+        throw new HttpError(403, "Forbidden");
+      }
+
+      const days = req.query.days ? parseInt(req.query.days as string, 10) : 180;
+      const snapshots = await AIController.getRoutineHistorySnapshots(userId, days);
+
+      res.json({
+        message: "Routine history retrieved",
+        count: snapshots.length,
+        snapshots,
       });
     } catch (error) {
       next(error);

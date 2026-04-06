@@ -25,6 +25,7 @@ aiRouter.use(authorizeAction("ai.use"));
 // Generate personalized workout routine
 aiRouter.post("/:userId/routine", AIController.generateRoutine);
 aiRouter.get("/:userId/routine/latest", AIController.getLatestRoutine);
+aiRouter.get("/:userId/routine/history", AIController.getRoutineHistory);
 aiRouter.post(
   "/:userId/routine/regenerate-day",
   validate(regenerateRoutineDaySchema),

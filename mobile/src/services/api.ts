@@ -23,6 +23,7 @@ import {
   ProgressSummary,
   RoutineCheckin,
   RoutineExerciseCheckin,
+  RoutineHistorySnapshot,
   StrengthLog,
   StrengthProgressSummary,
   ExerciseInput,
@@ -283,6 +284,14 @@ export const api = {
   getLatestRoutine: (id: string, token: string) =>
     request<{ message: string; routine: GeneratedRoutine; generatedAt: string }>(
       `/ai/${id}/routine/latest`,
+      {
+        token,
+      }
+    ),
+
+  getRoutineHistory: (id: string, token: string, days = 180) =>
+    request<{ message: string; count: number; snapshots: RoutineHistorySnapshot[] }>(
+      `/ai/${id}/routine/history?days=${days}`,
       {
         token,
       }
