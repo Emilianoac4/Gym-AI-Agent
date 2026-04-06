@@ -1034,6 +1034,7 @@ export function AvailabilityManagementScreen() {
               mode="time"
               is24Hour
               display="spinner"
+              themeVariant="light"
               onChange={onTimePickerChange}
               style={{ width: "100%" }}
             />
