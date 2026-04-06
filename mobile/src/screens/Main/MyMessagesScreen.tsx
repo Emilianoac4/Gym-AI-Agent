@@ -82,6 +82,7 @@ export function MyMessagesScreen({ navigation }: { navigation: any }) {
       navigation.navigate("MessageConversation", {
         threadId: res.thread.id,
         otherUserName: admin.fullName,
+        otherUserAvatarUrl: admin.avatarUrl,
         initialMessages: res.messages,
       });
     } catch {

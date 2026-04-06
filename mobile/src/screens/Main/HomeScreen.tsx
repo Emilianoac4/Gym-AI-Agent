@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { AppButton } from "../../components/AppButton";
@@ -140,12 +140,13 @@ export function HomeScreen() {
         const ticketsPromise = api.listEmergencyTickets(token).catch(() => ({ tickets: [] as EmergencyTicket[] }));
 
         if (isAdmin) {
-          const [availabilityData, threadsData, presenceData, ticketsData, pendingRequestsData] = await Promise.all([
+          const [availabilityData, threadsData, presenceData, ticketsData, pendingRequestsData, activeTrainersData] = await Promise.all([
             availabilityPromise,
             threadsPromise,
             api.getTrainerPresenceSummary(token, 1).catch(() => ({ days: [] as any[] })),
             ticketsPromise,
             api.listAssistanceRequests(token).catch(() => ({ requests: [] as any[], total: 0 })),
+            api.getActiveTrainers(token).catch(() => ({ trainers: [] as { id: string; fullName: string; avatarUrl: string | null }[] })),
           ]);
 
           const todayPresence = presenceData.days[0];
@@ -163,6 +164,7 @@ export function HomeScreen() {
             setTodayAvailability(availabilityData?.availability ?? null);
             setUnreadThreads(threadsData.threads.filter((thread) => thread.unreadCount > 0));
             setActiveTrainers(activeTrainerNames);
+            setActiveTrainerObjects(activeTrainersData.trainers);
             setEmergencyTickets(ticketsData.tickets);
             setUnassignedAssistanceCount(
               (pendingRequestsData.requests as any[]).filter((r) => r.status === "CREATED").length,
@@ -515,15 +517,26 @@ export function HomeScreen() {
             <View style={styles.sectionCard}>
               <Text style={styles.sectionEyebrow}>Entrenadores activos</Text>
               <Text style={styles.sectionTitle}>En este momento</Text>
-              {activeTrainers.length === 0 ? (
+              {activeTrainerObjects.length === 0 ? (
                 <Text style={styles.featureDetail}>No hay entrenadores activos ahora.</Text>
               ) : (
-                activeTrainers.map((name) => (
-                  <View key={name} style={styles.featureItem}>
-                    <View style={styles.featureDot} />
-                    <Text style={styles.featureTitle}>{name}</Text>
-                  </View>
-                ))
+                <View style={styles.trainersRow}>
+                  {activeTrainerObjects.map((trainer) => {
+                    const initials = trainer.fullName.split(" ").slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+                    return (
+                      <View key={trainer.id} style={styles.trainerChip}>
+                        {trainer.avatarUrl ? (
+                          <Image source={{ uri: trainer.avatarUrl }} style={styles.trainerAvatarImg} />
+                        ) : (
+                          <View style={styles.trainerAvatarFallback}>
+                            <Text style={styles.trainerAvatarInitials}>{initials}</Text>
+                          </View>
+                        )}
+                        <Text style={styles.trainerChipName} numberOfLines={1}>{trainer.fullName.split(" ")[0]}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
               )}
               <View style={styles.inlineActionsRow}>
                 <Pressable style={styles.inlineActionPrimary} onPress={() => navigation.navigate("Perfil")}>
@@ -826,6 +839,45 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: palette.gold,
     marginTop: 4,
+  },
+  trainersRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 8,
+  },
+  trainerChip: {
+    alignItems: "center",
+    gap: 4,
+    minWidth: 60,
+  },
+  trainerAvatarImg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: palette.gold,
+  },
+  trainerAvatarFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: palette.gold,
+    backgroundColor: palette.sand,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trainerAvatarInitials: {
+    color: palette.cocoa,
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  trainerChipName: {
+    color: palette.cocoa,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
   },
   featureCopy: {
     flex: 1,

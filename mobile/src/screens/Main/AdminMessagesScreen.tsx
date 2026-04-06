@@ -126,7 +126,7 @@ export function AdminMessagesScreen({ navigation }: { navigation: any }) {
       setUsers(
         (res.users as any[])
           .filter((u: any) => u.id !== user?.id)
-          .map((u: any) => ({ id: u.id, fullName: u.fullName, role: u.role })),
+          .map((u: any) => ({ id: u.id, fullName: u.fullName, role: u.role, avatarUrl: (u.avatarUrl ?? null) as string | null })),
       );
     } catch {
       setUsers([]);
@@ -135,7 +135,7 @@ export function AdminMessagesScreen({ navigation }: { navigation: any }) {
     }
   };
 
-  const onStartConversation = async (targetUserId: string, targetName: string) => {
+  const onStartConversation = async (targetUserId: string, targetName: string, targetAvatarUrl: string | null) => {
     if (!token) return;
     setStartingThread(targetUserId);
     try {
@@ -144,6 +144,7 @@ export function AdminMessagesScreen({ navigation }: { navigation: any }) {
       navigation.navigate("MessageConversation", {
         threadId: res.thread.id,
         otherUserName: targetName,
+        otherUserAvatarUrl: targetAvatarUrl,
         initialMessages: res.messages,
       });
     } catch (e: any) {
@@ -361,7 +362,7 @@ export function AdminMessagesScreen({ navigation }: { navigation: any }) {
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={styles.userRow}
-                    onPress={() => onStartConversation(item.id, item.fullName)}
+                    onPress={() => onStartConversation(item.id, item.fullName, item.avatarUrl)}
                     disabled={startingThread === item.id}
                   >
                     <View style={styles.userAvatar}>

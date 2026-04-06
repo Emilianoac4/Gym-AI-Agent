@@ -489,6 +489,14 @@ export function AvailabilityManagementScreen() {
       return;
     }
 
+    if (draft.isOpen && draft.opensAt && draft.closesAt && draft.opensAt >= draft.closesAt) {
+      Alert.alert(
+        "Horario inválido",
+        "La hora de cierre debe ser posterior a la hora de apertura.",
+      );
+      return;
+    }
+
     if (draft.hasSplitSchedule && isTimeConflict(draft.closesAt, draft.opensAtSecondary)) {
       Alert.alert(
         "Horario inválido",
@@ -521,6 +529,19 @@ export function AvailabilityManagementScreen() {
 
   const onSaveException = async () => {
     if (!token || !permissions.canWrite) {
+      return;
+    }
+
+    if (
+      !exceptionForm.isClosed &&
+      exceptionForm.opensAt &&
+      exceptionForm.closesAt &&
+      exceptionForm.opensAt >= exceptionForm.closesAt
+    ) {
+      Alert.alert(
+        "Horario inválido",
+        "La hora de cierre debe ser posterior a la hora de apertura.",
+      );
       return;
     }
 

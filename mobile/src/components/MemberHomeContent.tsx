@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppButton } from "./AppButton";
 import { AppCard } from "./AppCard";
 import { AppProgressBar } from "./AppProgressBar";
@@ -125,9 +125,13 @@ export function MemberHomeContent({
                 .join("");
               return (
                 <View key={trainer.id} style={styles.trainerChip}>
-                  <View style={styles.trainerAvatar}>
-                    <Text style={styles.trainerAvatarText}>{initials}</Text>
-                  </View>
+                  {trainer.avatarUrl ? (
+                    <Image source={{ uri: trainer.avatarUrl }} style={styles.trainerAvatar} />
+                  ) : (
+                    <View style={[styles.trainerAvatar, styles.trainerAvatarFallback]}>
+                      <Text style={styles.trainerAvatarText}>{initials}</Text>
+                    </View>
+                  )}
                   <Text style={styles.trainerName} numberOfLines={1}>{trainer.fullName.split(" ")[0]}</Text>
                 </View>
               );
@@ -341,9 +345,11 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: designSystem.colors.surfaceElevated,
     borderWidth: 2,
     borderColor: designSystem.colors.primary,
+  },
+  trainerAvatarFallback: {
+    backgroundColor: designSystem.colors.surfaceElevated,
     alignItems: "center",
     justifyContent: "center",
   },

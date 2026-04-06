@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -20,6 +21,7 @@ import { palette } from "../../theme/palette";
 type RouteParams = {
   threadId: string;
   otherUserName: string;
+  otherUserAvatarUrl?: string | null;
   initialMessages?: DirectMessage[];
 };
 
@@ -46,7 +48,7 @@ function groupByDay(messages: DirectMessage[]): { date: string; messages: Direct
 }
 
 export function MessagesConversationScreen({ route, navigation }: { route: any; navigation: any }) {
-  const { threadId, otherUserName, initialMessages } = route.params as RouteParams;
+  const { threadId, otherUserName, otherUserAvatarUrl, initialMessages } = route.params as RouteParams;
   const { token, user } = useAuth();
 
   const [messages, setMessages] = useState<DirectMessage[]>(initialMessages ?? []);
@@ -130,14 +132,25 @@ export function MessagesConversationScreen({ route, navigation }: { route: any; 
   const renderItem = ({ item }: { item: DirectMessage }) => {
     const isMe = item.senderUserId === user?.id;
     return (
-      <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-        <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
-          {item.body}
-        </Text>
-        <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
-          {formatTime(item.createdAt)}
-          {isMe && item.readAt ? "  ✓✓" : ""}
-        </Text>
+      <View style={[styles.bubbleRow, isMe ? styles.bubbleRowMe : styles.bubbleRowThem]}>
+        {!isMe ? (
+          otherUserAvatarUrl ? (
+            <Image source={{ uri: otherUserAvatarUrl }} style={styles.bubbleAvatar} />
+          ) : (
+            <View style={[styles.bubbleAvatar, styles.bubbleAvatarFallback]}>
+              <Text style={styles.bubbleAvatarText}>{otherUserName.charAt(0).toUpperCase()}</Text>
+            </View>
+          )
+        ) : null}
+        <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+          <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
+            {item.body}
+          </Text>
+          <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
+            {formatTime(item.createdAt)}
+            {isMe && item.readAt ? "  ✓✓" : ""}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -151,21 +164,28 @@ export function MessagesConversationScreen({ route, navigation }: { route: any; 
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.shell}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-    >
-      {/* Header */}
+    <View style={styles.shell}>
+      {/* Header — outside KAV so it never shifts when keyboard opens */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Text style={styles.backIcon}>‹</Text>
         </TouchableOpacity>
-        <View style={styles.headerAvatar}>
-          <Text style={styles.headerAvatarText}>{otherUserName.charAt(0).toUpperCase()}</Text>
-        </View>
+        {otherUserAvatarUrl ? (
+          <Image source={{ uri: otherUserAvatarUrl }} style={styles.headerAvatar} />
+        ) : (
+          <View style={[styles.headerAvatar, styles.headerAvatarFallback]}>
+            <Text style={styles.headerAvatarText}>{otherUserName.charAt(0).toUpperCase()}</Text>
+          </View>
+        )}
         <Text style={styles.headerName}>{otherUserName}</Text>
       </View>
+
+      {/* KAV wraps only messages + input bar */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
 
       {/* Messages */}
       <FlatList
@@ -224,7 +244,8 @@ export function MessagesConversationScreen({ route, navigation }: { route: any; 
           )}
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -248,12 +269,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: palette.sand,
-    justifyContent: "center",
-    alignItems: "center",
     marginRight: 10,
     borderWidth: 1,
     borderColor: palette.line,
+  },
+  headerAvatarFallback: {
+    backgroundColor: palette.sand,
+    justifyContent: "center",
+    alignItems: "center",
   },
   headerAvatarText: { fontSize: 15, fontWeight: "700", color: palette.cocoa },
   headerName: { fontSize: 15, fontWeight: "700", color: palette.cocoa, flex: 1 },
@@ -273,11 +296,41 @@ const styles = StyleSheet.create({
   },
 
   bubble: {
-    maxWidth: "80%",
+    maxWidth: "75%",
     borderRadius: 18,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginBottom: 6,
+  },
+  bubbleRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    marginBottom: 4,
+  },
+  bubbleRowMe: {
+    justifyContent: "flex-end",
+  },
+  bubbleRowThem: {
+    justifyContent: "flex-start",
+    gap: 6,
+  },
+  bubbleAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.line,
+    flexShrink: 0,
+  },
+  bubbleAvatarFallback: {
+    backgroundColor: palette.sand,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  bubbleAvatarText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: palette.cocoa,
   },
   bubbleMe: {
     backgroundColor: palette.cocoa,
