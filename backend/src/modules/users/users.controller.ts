@@ -512,12 +512,12 @@ export const createUser = async (
     throw new HttpError(409, "El correo ya está en uso en este gimnasio");
   }
 
-  // Validate username uniqueness within this gym
+  // Validate username uniqueness globally across the platform
   const existingWithUsername = await prisma.user.findFirst({
-    where: { gymId: requester.gymId, username: req.body.username },
+    where: { username: req.body.username },
   });
   if (existingWithUsername) {
-    throw new HttpError(409, "El nombre de usuario ya está en uso en este gimnasio");
+    throw new HttpError(409, "El nombre de usuario ya está en uso en la plataforma");
   }
 
   const isMemberRole = req.body.role === "member";

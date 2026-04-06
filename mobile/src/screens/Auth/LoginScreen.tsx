@@ -29,8 +29,8 @@ export function LoginScreen() {
   const navigation = useNavigation<any>();
   const { login, loginWithGoogle, loginWithApple, loading } = useAuth();
 
-  const [identifier, setIdentifier] = useState("admin@gymiai.com");
-  const [password, setPassword] = useState("Admin123456");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [sendingRecovery, setSendingRecovery] = useState(false);
