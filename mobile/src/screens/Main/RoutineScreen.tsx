@@ -13,11 +13,15 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { AppCard } from "../../components/AppCard";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
+import { ProgressBar } from "../../components/ProgressBar";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { palette } from "../../theme/palette";
 import { ExerciseCard } from "../../components/ExerciseCard";
 import type { ExerciseReplacement } from "../../components/ExerciseCard";
+import { designSystem as ds } from "../../theme/designSystem";
 import {
   ExerciseStrengthProgress,
   GeneratedRoutine,
@@ -138,6 +142,10 @@ function buildCalMonthMatrix(monthStart: Date): Array<Date | null> {
   return result;
 }
 
+function estimateRoutineDuration(exerciseCount: number): number {
+  return Math.max(exerciseCount * 8, 30);
+}
+
 export function RoutineScreen() {
   const { user, token } = useAuth();
   const [routine, setRoutine] = useState<GeneratedRoutine | null>(null);
@@ -216,6 +224,11 @@ export function RoutineScreen() {
   }, []);
 
   const [selectedCalendarMonthIdx, setSelectedCalendarMonthIdx] = useState(2); // 0=2mo ago, 1=last, 2=current
+
+  const todayDayKey = useMemo(
+    () => ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][new Date().getDay()],
+    []
+  );
 
   const availableWeeks = useMemo(() => {
     const weeks = new Set<string>();
@@ -311,6 +324,101 @@ export function RoutineScreen() {
     });
     return map;
   }, [checkins, selectedWeekStart]);
+
+  const selectedTrainerRoutine = useMemo(
+    () => trainerRoutines.find((item) => item.id === activeTab) ?? null,
+    [activeTab, trainerRoutines]
+  );
+
+  const selectedAiSession = useMemo(() => {
+    if (!routine) {
+      return null;
+    }
+
+    const orderedSessions = [...routine.sessions].sort((a, b) => {
+      const todayOffset = DAY_OFFSETS[todayDayKey] ?? 0;
+      const aOffset = DAY_OFFSETS[normalize(a.day)] ?? 0;
+      const bOffset = DAY_OFFSETS[normalize(b.day)] ?? 0;
+      return ((aOffset - todayOffset + 7) % 7) - ((bOffset - todayOffset + 7) % 7);
+    });
+
+    const todaySession = orderedSessions.find((session) => normalize(session.day) === todayDayKey);
+    if (todaySession) {
+      return todaySession;
+    }
+
+    const pendingSession = orderedSessions.find(
+      (session) => !completedBySelectedWeek.has(normalize(session.day))
+    );
+
+    return pendingSession ?? orderedSessions[0] ?? null;
+  }, [completedBySelectedWeek, routine, todayDayKey]);
+
+  const executionPlan = useMemo(() => {
+    if (activeTab === "ai") {
+      if (!routine || !selectedAiSession) {
+        return null;
+      }
+
+      return {
+        key: "ai",
+        sourceLabel: "Plan TUCO",
+        title: "Rutina de hoy",
+        subtitle: `${selectedAiSession.focus} · ${selectedAiSession.duration_minutes} min`,
+        auxiliary: routine.routine_name,
+        sessionDay: selectedAiSession.day,
+        exercises: selectedAiSession.exercises.map((exercise) => ({
+          name: exercise.name,
+          sets: exercise.sets,
+          reps: exercise.reps,
+          restSeconds: exercise.rest_seconds,
+          tip: exercise.notes,
+        })),
+        allowEditing: true,
+      };
+    }
+
+    if (!selectedTrainerRoutine) {
+      return null;
+    }
+
+    return {
+      key: selectedTrainerRoutine.id,
+      sourceLabel: selectedTrainerRoutine.trainerName
+        ? `Asignada por ${selectedTrainerRoutine.trainerName}`
+        : "Rutina asignada",
+      title: "Rutina de hoy",
+      subtitle: `${selectedTrainerRoutine.name} · ${estimateRoutineDuration(selectedTrainerRoutine.exercises.length)} min`,
+      auxiliary: selectedTrainerRoutine.purpose,
+      sessionDay: `trainer:${selectedTrainerRoutine.id}`,
+      exercises: selectedTrainerRoutine.exercises.map((exercise) => ({
+        name: exercise.name,
+        sets: exercise.sets,
+        reps: String(exercise.reps),
+        restSeconds: exercise.restSeconds,
+        tip: exercise.tips ?? undefined,
+      })),
+      allowEditing: false,
+    };
+  }, [activeTab, routine, selectedAiSession, selectedTrainerRoutine]);
+
+  const executionCompletedCount = useMemo(() => {
+    if (!executionPlan) {
+      return 0;
+    }
+
+    return executionPlan.exercises.filter((exercise) =>
+      completedExercisesBySelectedWeek.has(`${normalize(executionPlan.sessionDay)}::${normalize(exercise.name)}`)
+    ).length;
+  }, [completedExercisesBySelectedWeek, executionPlan]);
+
+  const executionProgressValue = executionPlan
+    ? executionCompletedCount / Math.max(executionPlan.exercises.length, 1)
+    : 0;
+
+  const executionSessionCompleted = executionPlan && activeTab === "ai"
+    ? completedBySelectedWeek.has(normalize(executionPlan.sessionDay))
+    : false;
 
   const loadLatestRoutine = async () => {
     if (!user || !token) {
@@ -696,6 +804,7 @@ export function RoutineScreen() {
         sessionDay,
         exerciseName,
       });
+      setActiveLog(null);
       await loadCheckins();
     } catch (error) {
       setLocalCompletedExercises((prev) => {
@@ -708,6 +817,13 @@ export function RoutineScreen() {
         error instanceof Error ? error.message : "Intenta de nuevo"
       );
     }
+  };
+
+  const onReorderExercise = (exerciseName: string) => {
+    Alert.alert(
+      "Reordenar ejercicio",
+      `La opcion para mover ${exerciseName} se habilitara en una siguiente iteracion.`
+    );
   };
 
   const onRemoveExercise = async (sessionDay: string, exerciseName: string) => {
@@ -785,26 +901,43 @@ export function RoutineScreen() {
     };
   }, [activeLog, logKg, logUnit, logReps, logSets]);
 
+  useEffect(() => {
+    if (!executionPlan || activeTab !== "ai") {
+      return;
+    }
+
+    if (executionSessionCompleted || savingSessionDay === executionPlan.sessionDay) {
+      return;
+    }
+
+    if (executionPlan.exercises.length === 0 || executionCompletedCount !== executionPlan.exercises.length) {
+      return;
+    }
+
+    void onMarkCompleted(executionPlan.sessionDay);
+  }, [
+    activeTab,
+    executionCompletedCount,
+    executionPlan,
+    executionSessionCompleted,
+    savingSessionDay,
+  ]);
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-
-      {/* Routine selector dropdown */}
-      {trainerRoutines.length > 0 && (
+      {trainerRoutines.length > 0 ? (
         <TouchableOpacity
-          style={styles.routineSelector}
+          style={styles.planSelector}
           onPress={() => setShowRoutineDropdown(true)}
-          activeOpacity={0.75}
+          activeOpacity={0.8}
         >
-          <Text style={styles.routineSelectorLabel}>
-            {activeTab === "ai"
-              ? "Plan Tuco"
-              : trainerRoutines.find((r) => r.id === activeTab)?.name ?? "Seleccionar plan"}
+          <Text style={styles.planSelectorLabel}>
+            {activeTab === "ai" ? "Plan TUCO" : selectedTrainerRoutine?.name ?? "Seleccionar plan"}
           </Text>
-          <Text style={styles.routineSelectorChevron}>{showRoutineDropdown ? "▲" : "▾"}</Text>
+          <Text style={styles.planSelectorChevron}>{showRoutineDropdown ? "▲" : "▾"}</Text>
         </TouchableOpacity>
-      )}
+      ) : null}
 
-      {/* Dropdown modal */}
       <Modal
         visible={showRoutineDropdown}
         transparent
@@ -847,779 +980,228 @@ export function RoutineScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+      <View style={styles.executionStack}>
+        <ScreenHeader
+          title="Rutina de hoy"
+          subtitle={executionPlan?.subtitle ?? "Plan pendiente · 0 min"}
+          auxiliary={executionPlan?.sourceLabel ?? "Genera tu rutina para comenzar"}
+        />
 
-      {/* Add Day Modal */}
-      <Modal
-        visible={showAddDayModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => !addDayLoading && setShowAddDayModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.addDayBackdrop}
-          activeOpacity={1}
-          onPress={() => { if (!addDayLoading) setShowAddDayModal(false); }}
-        >
-          <TouchableOpacity activeOpacity={1} style={styles.addDayPanel}>
-            <Text style={styles.addDayTitle}>Agregar nuevo día</Text>
-            <Text style={styles.addDayLabel}>Día de la semana</Text>
-            <View style={styles.addDayDaysRow}>
-              {(["monday","tuesday","wednesday","thursday","friday","saturday","sunday"] as const).map((d) => (
-                <TouchableOpacity
-                  key={d}
-                  style={[styles.addDayDayChip, addDayDay === d && styles.addDayDayChipSelected]}
-                  onPress={() => setAddDayDay(d)}
-                >
-                  <Text style={[styles.addDayDayChipText, addDayDay === d && styles.addDayDayChipTextSelected]}>
-                    {DAY_LABELS[d]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={[styles.addDayLabel, { marginTop: 16 }]}>Enfoque</Text>
-            <TextInput
-              style={styles.addDayInput}
-              placeholder="Ej: Piernas, Cardio, Espalda..."
-              placeholderTextColor="#9CA3AF"
-              value={addDayFocus}
-              onChangeText={setAddDayFocus}
-              editable={!addDayLoading}
-              returnKeyType="done"
-            />
-            <TouchableOpacity
-              style={[styles.addDaySubmitBtn, addDayLoading && { opacity: 0.6 }]}
-              onPress={onAddDay}
-              disabled={addDayLoading}
-            >
-              {addDayLoading
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={styles.addDaySubmitText}>Generar con Tuco</Text>
-              }
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.addDayCancelBtn}
-              onPress={() => setShowAddDayModal(false)}
-              disabled={addDayLoading}
-            >
-              <Text style={styles.addDayCancelText}>Cancelar</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Add Exercise Modal */}
-      <Modal
-        visible={showAddExerciseModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => !addingExercise && setShowAddExerciseModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={{ flex: 1 }}
-        >
+        {activeTab === "ai" ? (
           <TouchableOpacity
-            style={styles.addDayBackdrop}
-            activeOpacity={1}
-            onPress={() => { if (!addingExercise) setShowAddExerciseModal(false); }}
+            style={[styles.refreshButton, loadingRoutine && styles.refreshButtonDisabled]}
+            onPress={onGenerate}
+            disabled={loadingRoutine}
           >
-            <TouchableOpacity activeOpacity={1} style={styles.addDayPanel}>
-            <Text style={styles.addDayTitle}>Agregar ejercicio</Text>
-            {addExerciseMode === "choose" && (
-              <>
-                <TouchableOpacity
-                  style={styles.addDaySubmitBtn}
-                  onPress={() => onAddExercise("ai")}
-                >
-                  <Text style={styles.addDaySubmitText}>Generar con Tuco</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.addDaySubmitBtn, { marginTop: 10, backgroundColor: "transparent", borderWidth: 1.5, borderColor: palette.moss }]}
-                  onPress={() => setAddExerciseMode("manual")}
-                >
-                  <Text style={[styles.addDaySubmitText, { color: palette.moss }]}>Agregar manualmente</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.addDayCancelBtn}
-                  onPress={() => setShowAddExerciseModal(false)}
-                >
-                  <Text style={styles.addDayCancelText}>Cancelar</Text>
-                </TouchableOpacity>
-              </>
-            )}
-            {addExerciseMode === "ai" && (
-              <View style={{ alignItems: "center", paddingVertical: 20 }}>
-                <ActivityIndicator color={palette.moss} size="large" />
-                <Text style={[styles.addDayLabel, { marginTop: 16, textAlign: "center" }]}>
-                  Tuco está eligiendo el mejor ejercicio para esta sesión...
-                </Text>
-              </View>
-            )}
-            {addExerciseMode === "manual" && (
-              <>
-                <Text style={styles.addDayLabel}>Nombre del ejercicio</Text>
-                <TextInput
-                  style={styles.addDayInput}
-                  placeholder="Ej: Press de banca, Sentadillas..."
-                  placeholderTextColor="#9CA3AF"
-                  value={manualExName}
-                  onChangeText={setManualExName}
-                  editable={!addingExercise}
-                  returnKeyType="next"
-                />
-                <Text style={[styles.addDayLabel, { marginTop: 14 }]}>Series</Text>
-                <TextInput
-                  style={styles.addDayInput}
-                  placeholder="Ej: 3"
-                  placeholderTextColor="#9CA3AF"
-                  value={manualExSets}
-                  onChangeText={setManualExSets}
-                  editable={!addingExercise}
-                  keyboardType="number-pad"
-                  returnKeyType="next"
-                />
-                <Text style={[styles.addDayLabel, { marginTop: 14 }]}>Repeticiones</Text>
-                <TextInput
-                  style={styles.addDayInput}
-                  placeholder="Ej: 10-12 o 8"
-                  placeholderTextColor="#9CA3AF"
-                  value={manualExReps}
-                  onChangeText={setManualExReps}
-                  editable={!addingExercise}
-                  returnKeyType="done"
-                />
-                <TouchableOpacity
-                  style={[styles.addDaySubmitBtn, addingExercise && { opacity: 0.6 }]}
-                  onPress={() => onAddExercise("manual")}
-                  disabled={addingExercise}
-                >
-                  {addingExercise
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text style={styles.addDaySubmitText}>Agregar</Text>
-                  }
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.addDayCancelBtn}
-                  onPress={() => setAddExerciseMode("choose")}
-                  disabled={addingExercise}
-                >
-                  <Text style={styles.addDayCancelText}>Volver</Text>
-                </TouchableOpacity>
-              </>
+            {loadingRoutine ? (
+              <ActivityIndicator color={ds.colors.textPrimary} size="small" />
+            ) : (
+              <Text style={styles.refreshButtonText}>{routine ? "Actualizar plan" : "Generar rutina"}</Text>
             )}
           </TouchableOpacity>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </Modal>
-      {activeTab !== "ai" && (() => {
-        const r = trainerRoutines.find((tr) => tr.id === activeTab);
-        if (!r) return null;
-        const expanded = trainerRoutineExpanded[r.id] ?? true;
-        return (
-          <View style={styles.trainerRoutineCard}>
-            <View style={styles.trainerRoutineHeader}>
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                onPress={() =>
-                  setTrainerRoutineExpanded((prev) => ({ ...prev, [r.id]: !expanded }))
-                }
-                activeOpacity={0.8}
-              >
-                <Text style={styles.trainerRoutineLabel}>
-                  Rutina de {r.trainerName ?? "tu entrenador"}
-                </Text>
-                <Text style={styles.trainerRoutineName}>{r.name}</Text>
-                <Text style={styles.trainerRoutineDays}>
-                  📅 {formatScheduledDays(r.scheduledDays)}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.trainerDeleteBtn}
-                onPress={() => onDeleteTrainerRoutine(r.id, r.name)}
-                disabled={deletingRoutineId === r.id}
-              >
-                <Text style={styles.trainerDeleteBtnText}>
-                  {deletingRoutineId === r.id ? "..." : "🗑"}
-                </Text>
-              </TouchableOpacity>
-              <Text style={styles.trainerRoutineChevron}>
-                {expanded ? "▲" : "▼"}
-              </Text>
-            </View>
-
-            {expanded && (
-              <View style={styles.trainerRoutineBody}>
-                <Text style={styles.trainerRoutinePurpose}>{r.purpose}</Text>
-                {r.aiWarnings && r.aiWarnings.length > 0 && (
-                  <View style={styles.trainerWarningBox}>
-                    <Text style={styles.trainerWarningTitle}>⚠️ Notas (revisión IA)</Text>
-                    {r.aiWarnings.map((w, i) => (
-                      <Text key={i} style={styles.trainerWarningItem}>• {w}</Text>
-                    ))}
-                  </View>
-                )}
-                {r.exercises.map((ex) => {
-                  const trainerSessionDay = `trainer:${r.id}`;
-                  const exerciseKey = normalize(ex.name);
-                  const sessionExerciseKey = `${trainerSessionDay}::${exerciseKey}`;
-                  const progressPanelKey = `${trainerSessionDay}::${ex.name}::progress`;
-                  const progress = strengthMap[exerciseKey];
-                  const selectedWeekEntry = getWeeklyEntry(progress, selectedWeekStart);
-                  const previousWeekEntry = getWeeklyEntry(progress, previousWeekStart);
-                  const isProgressOpen = openProgressKey === progressPanelKey;
-                  const isLogOpen =
-                    activeLog?.sessionDay === trainerSessionDay &&
-                    activeLog.exerciseName === exerciseKey;
-                  const isExerciseDone = completedExercisesBySelectedWeek.has(sessionExerciseKey);
-                  const canMarkCurrentWeek = selectedWeekStart === currentWeekStart;
-                  const weeklyDelta =
-                    selectedWeekEntry && previousWeekEntry
-                      ? selectedWeekEntry.latestLoadKg - previousWeekEntry.latestLoadKg
-                      : null;
-                  const recentHistory = progress?.weeklyHistory.slice(-4).reverse() || [];
-
-                  const progressNode = (
-                    <>
-                      <Text style={styles.exerciseProgressTitle}>Progreso</Text>
-                      <Text style={styles.exerciseProgressLine}>
-                        Esta semana:{" "}
-                        {selectedWeekEntry
-                          ? `${selectedWeekEntry.latestLoadKg.toFixed(1)} kg`
-                          : "Sin registros"}
-                      </Text>
-                      <Text style={styles.exerciseProgressLine}>
-                        Mejor histórico:{" "}
-                        {progress ? `${progress.bestLoadKg.toFixed(1)} kg` : "Sin datos"}
-                      </Text>
-                      <Text style={styles.exerciseProgressLine}>
-                        Último día:{" "}
-                        {progress ? formatDateTime(progress.lastPerformedAt) : "Sin datos"}
-                      </Text>
-                      {weeklyDelta !== null ? (
-                        <Text
-                          style={[
-                            styles.exerciseProgressLine,
-                            weeklyDelta >= 0 ? styles.progressUp : styles.progressDown,
-                          ]}
-                        >
-                          {weeklyDelta >= 0 ? "▲" : "▼"}{" "}
-                          {Math.abs(weeklyDelta).toFixed(1)} kg vs semana anterior
-                        </Text>
-                      ) : (
-                        <Text style={styles.exerciseProgressMuted}>
-                          Registra al menos dos semanas para comparar.
-                        </Text>
-                      )}
-                      {recentHistory.length > 0 && (
-                        <View style={styles.historyChips}>
-                          {recentHistory.map((item) => (
-                            <View
-                              key={`${ex.name}-${item.weekStart}`}
-                              style={styles.historyChip}
-                            >
-                              <Text style={styles.historyChipWeek}>
-                                {formatWeekLabel(item.weekStart)}
-                              </Text>
-                              <Text style={styles.historyChipValue}>
-                                {item.latestLoadKg.toFixed(1)} kg
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </>
-                  );
-
-                  return (
-                    <ExerciseCard
-                      key={`${r.id}-${ex.name}`}
-                      name={ex.name}
-                      sets={ex.sets}
-                      reps={String(ex.reps)}
-                      restSeconds={ex.restSeconds}
-                      tip={ex.tips ?? undefined}
-                      status={isExerciseDone ? "completed" : isLogOpen ? "active" : "default"}
-                      exerciseKey={exerciseKey}
-                      logOpen={isLogOpen}
-                      logValues={{
-                        loadValue: logKg,
-                        loadUnit: logUnit,
-                        reps: logReps,
-                        sets: logSets,
-                      }}
-                      savingLog={savingLog}
-                      lastSavedKey={lastSavedExerciseKey}
-                      onToggleLog={() => {
-                        if (isLogOpen) {
-                          setActiveLog(null);
-                        } else {
-                          setActiveLog({ sessionDay: trainerSessionDay, exerciseName: exerciseKey });
-                          setLogKg("");
-                          setLogUnit("kg");
-                          setLogReps(parseSuggestedReps(String(ex.reps)));
-                          setLogSets(String(ex.sets || ""));
-                          setLastSavedExerciseKey(null);
-                        }
-                      }}
-                      onLogChange={(vals) => {
-                        if (vals.loadValue !== undefined) setLogKg(vals.loadValue);
-                        if (vals.loadUnit !== undefined) setLogUnit(vals.loadUnit);
-                        if (vals.reps !== undefined) setLogReps(vals.reps);
-                        if (vals.sets !== undefined) setLogSets(vals.sets);
-                      }}
-                      onMarkDone={() => onMarkExerciseCompleted(trainerSessionDay, ex.name)}
-                      canMarkDone={canMarkCurrentWeek}
-                      hasProgress={!!progress}
-                      progressOpen={isProgressOpen}
-                      onToggleProgress={() =>
-                        setOpenProgressKey((prev) =>
-                          prev === progressPanelKey ? null : progressPanelKey
-                        )
-                      }
-                      progressContent={progressNode}
-                    />
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        );
-      })()}
-
-      {/* AI plan panel — only shown when AI tab is active */}
-      {activeTab === "ai" && (<>
-      <View style={styles.heroCard}>
-        <Text style={styles.eyebrow}>Plan semanal</Text>
-        <Text style={styles.title}>Rutina</Text>
-        <Text style={styles.subtitle}>
-          Visualiza tu semana, marca sesiones completadas y registra la carga dentro de cada ejercicio.
-        </Text>
-        {generatedAt ? (
-          <Text style={styles.generatedAt}>Ultima generacion: {formatDateTime(generatedAt)}</Text>
         ) : null}
-        {strengthSummary ? (
-          <Text style={styles.summaryBadge}>
-            {strengthSummary.activeExercises} ejercicios con historial • {strengthSummary.improvingExercises} mejorando
-          </Text>
-        ) : null}
-      </View>
 
-      <TouchableOpacity
-        style={[styles.genBtn, loadingRoutine && styles.genBtnDisabled]}
-        onPress={onGenerate}
-        disabled={loadingRoutine}
-      >
-        {loadingRoutine ? (
-          <ActivityIndicator color={palette.cocoa} />
+        {executionPlan ? (
+          <AppCard variant="default" style={styles.progressCard}>
+            <Text style={styles.progressText}>
+              {executionCompletedCount} de {executionPlan.exercises.length} ejercicios completados
+            </Text>
+            <ProgressBar progress={executionProgressValue} style={styles.progressBar} />
+            {syncingCheckins ? <Text style={styles.progressHint}>Sincronizando progreso…</Text> : null}
+            {activeTab === "ai" && executionSessionCompleted ? (
+              <Text style={styles.progressSuccess}>Rutina marcada como completada para esta semana.</Text>
+            ) : null}
+          </AppCard>
+        ) : null}
+
+        {!executionPlan ? (
+          <AppCard variant="default" style={styles.emptyStateCard}>
+            <Text style={styles.emptyTitle}>Todavia no tienes una rutina activa</Text>
+            <Text style={styles.emptyCopy}>
+              Genera tu rutina para empezar un flujo guiado de entrenamiento con registro claro por ejercicio.
+            </Text>
+          </AppCard>
         ) : (
-          <Text style={styles.genBtnText}>
-            {routine ? "Regenerar con Tuco" : "Crear plan con Tuco"}
-          </Text>
-        )}
-      </TouchableOpacity>
+          executionPlan.exercises.map((exercise) => {
+            const exerciseKey = normalize(exercise.name);
+            const sessionExerciseKey = `${normalize(executionPlan.sessionDay)}::${exerciseKey}`;
+            const actionKey = `${executionPlan.sessionDay}::${exercise.name}`;
+            const progressPanelKey = `${executionPlan.sessionDay}::${exercise.name}::progress`;
+            const progress = strengthMap[exerciseKey];
+            const selectedWeekEntry = getWeeklyEntry(progress, selectedWeekStart);
+            const previousWeekEntry = getWeeklyEntry(progress, previousWeekStart);
+            const weeklyDelta =
+              selectedWeekEntry && previousWeekEntry
+                ? selectedWeekEntry.latestLoadKg - previousWeekEntry.latestLoadKg
+                : null;
+            const recentHistory = progress?.weeklyHistory.slice(-4).reverse() || [];
+            const isProgressOpen = openProgressKey === progressPanelKey;
+            const isLogOpen =
+              activeLog?.sessionDay === executionPlan.sessionDay && activeLog.exerciseName === exerciseKey;
+            const isExerciseDone = completedExercisesBySelectedWeek.has(sessionExerciseKey);
+            const status = isExerciseDone ? "completed" : isLogOpen ? "in_progress" : "pending";
 
-      {loadingRoutine && (
-        <Text style={styles.loadingHint}>Tuco está creando tu plan... Esto puede tardar unos segundos.</Text>
-      )}
-
-      {!routine ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Todavia no tienes una rutina guardada</Text>
-          <Text style={styles.emptyCopy}>
-            Genera tu primera rutina para empezar a registrar avance semanal y progreso de cargas.
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.routineContainer}>
-          <View style={styles.routineHeader}>
-            <Text style={styles.routineName}>{routine.routine_name}</Text>
-            <View style={styles.metaRow}>
-              <View style={styles.metaBadge}>
-                <Text style={styles.metaText}>{routine.duration_weeks} semanas</Text>
-              </View>
-              <View style={styles.metaBadge}>
-                <Text style={styles.metaText}>{routine.weekly_sessions} sesiones por semana</Text>
-              </View>
-            </View>
-
-            <Text style={styles.sectionCaption}>Selecciona una semana</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.weekSelector}
-            >
-              {availableWeeks.map((week) => {
-                const selected = week === selectedWeekStart;
-                const label = week === currentWeekStart ? "Actual" : formatWeekLabel(week);
-
-                return (
-                  <TouchableOpacity
-                    key={week}
-                    style={[styles.weekChip, selected && styles.weekChipSelected]}
-                    onPress={() => setSelectedWeekStart(week)}
-                  >
-                    <Text style={[styles.weekChipText, selected && styles.weekChipTextSelected]}>
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.weekSummaryGrid}>
-              <View style={styles.weekSummaryCard}>
-                <Text style={styles.weekSummaryLabel}>Sesiones completadas</Text>
-                <Text style={styles.weekSummaryValue}>
-                  {sessionsCompleted}/{routine.weekly_sessions}
+            const progressNode = (
+              <>
+                <Text style={styles.exerciseProgressTitle}>Progreso del ejercicio</Text>
+                <Text style={styles.exerciseProgressLine}>
+                  Esta semana: {selectedWeekEntry ? `${selectedWeekEntry.latestLoadKg.toFixed(1)} kg` : "Sin registros"}
                 </Text>
-              </View>
-              <View style={styles.weekSummaryCard}>
-                <Text style={styles.weekSummaryLabel}>Vs semana anterior</Text>
-                <Text style={styles.weekSummaryValue}>
-                  {sessionsCompleted - previousWeekCompleted >= 0 ? "+" : ""}
-                  {sessionsCompleted - previousWeekCompleted}
+                <Text style={styles.exerciseProgressLine}>
+                  Mejor historico: {progress ? `${progress.bestLoadKg.toFixed(1)} kg` : "Sin datos"}
                 </Text>
-              </View>
-              <View style={styles.weekSummaryCard}>
-                <Text style={styles.weekSummaryLabel}>Ejercicios al alza</Text>
-                <Text style={styles.weekSummaryValue}>{improvingThisWeek}</Text>
-              </View>
-            </View>
-
-            {syncingCheckins ? <Text style={styles.syncText}>Sincronizando progreso...</Text> : null}
-          </View>
-
-          {/* ─ 3-month progress calendar ─ */}
-          <View style={styles.calendarSection}>
-            <Text style={styles.calendarSectionTitle}>Progreso mensual</Text>
-            <View style={styles.calendarNavRow}>
-              <TouchableOpacity
-                onPress={() => setSelectedCalendarMonthIdx((i) => Math.max(0, i - 1))}
-                disabled={selectedCalendarMonthIdx === 0}
-                style={[styles.calendarNavBtn, selectedCalendarMonthIdx === 0 && styles.calendarNavBtnDisabled]}
-              >
-                <Text style={styles.calendarNavBtnText}>{'<'}</Text>
-              </TouchableOpacity>
-              <Text style={styles.calendarMonthLabel}>
-                {`${MONTH_LABELS[calendarMonths[selectedCalendarMonthIdx].getUTCMonth()]} ${calendarMonths[selectedCalendarMonthIdx].getUTCFullYear()}`}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setSelectedCalendarMonthIdx((i) => Math.min(2, i + 1))}
-                disabled={selectedCalendarMonthIdx === 2}
-                style={[styles.calendarNavBtn, selectedCalendarMonthIdx === 2 && styles.calendarNavBtnDisabled]}
-              >
-                <Text style={styles.calendarNavBtnText}>{'>'}</Text>
-              </TouchableOpacity>
-            </View>
-            {(() => {
-              const monthStart = calendarMonths[selectedCalendarMonthIdx];
-              const cells = buildCalMonthMatrix(monthStart);
-              return (
-                <View>
-                  <View style={styles.calendarWeekRow}>
-                    {WEEK_HEADERS.map((h) => (
-                      <Text key={h} style={styles.calendarWeekHeader}>{h}</Text>
+                <Text style={styles.exerciseProgressLine}>
+                  Ultimo registro: {progress ? formatDateTime(progress.lastPerformedAt) : "Sin datos"}
+                </Text>
+                {weeklyDelta !== null ? (
+                  <Text style={[styles.exerciseProgressLine, weeklyDelta >= 0 ? styles.progressUp : styles.progressDown]}>
+                    {weeklyDelta >= 0 ? "▲" : "▼"} {Math.abs(weeklyDelta).toFixed(1)} kg vs semana anterior
+                  </Text>
+                ) : (
+                  <Text style={styles.exerciseProgressMuted}>
+                    Aun no hay suficiente historial para comparar semanas.
+                  </Text>
+                )}
+                {recentHistory.length > 0 ? (
+                  <View style={styles.historyChips}>
+                    {recentHistory.map((item) => (
+                      <View key={`${exercise.name}-${item.weekStart}`} style={styles.historyChip}>
+                        <Text style={styles.historyChipWeek}>{formatWeekLabel(item.weekStart)}</Text>
+                        <Text style={styles.historyChipValue}>{item.latestLoadKg.toFixed(1)} kg</Text>
+                      </View>
                     ))}
-                  </View>
-                  {Array.from({ length: cells.length / 7 }, (_, row) => (
-                    <View key={row} style={styles.calendarWeekRow}>
-                      {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
-                        if (!day) return <View key={col} style={styles.calendarCell} />;
-                        const key = day.toISOString().slice(0, 10);
-                        const done = checkinDateSet.has(key);
-                        return (
-                          <View key={col} style={[styles.calendarCell, done && styles.calendarCellDone]}>
-                            <Text style={[styles.calendarDayText, done && styles.calendarDayTextDone]}>
-                              {day.getUTCDate()}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  ))}
-                </View>
-              );
-            })()}
-          </View>
-
-          {[...routine.sessions].sort((a, b) => {
-            const JS_TO_DAY_NAME: Record<number, string> = { 0: "sunday", 1: "monday", 2: "tuesday", 3: "wednesday", 4: "thursday", 5: "friday", 6: "saturday" };
-            const todayOffset = DAY_OFFSETS[JS_TO_DAY_NAME[new Date().getDay()]] ?? 0;
-            const aOffset = DAY_OFFSETS[normalize(a.day)] ?? 0;
-            const bOffset = DAY_OFFSETS[normalize(b.day)] ?? 0;
-            return ((aOffset - todayOffset + 7) % 7) - ((bOffset - todayOffset + 7) % 7);
-          }).map((session) => {
-            const normalizedDay = normalize(session.day);
-            const isDone = completedBySelectedWeek.has(normalizedDay);
-            const isSaving = savingSessionDay === session.day;
-            const completedAt = selectedWeekCompletedAt[normalizedDay];
-            const canMarkCurrentWeek = selectedWeekStart === currentWeekStart;
-            const completedExercisesCount = session.exercises.filter((exercise) =>
-              completedExercisesBySelectedWeek.has(`${normalizedDay}::${normalize(exercise.name)}`)
-            ).length;
-            const allExercisesCompleted =
-              session.exercises.length > 0 && completedExercisesCount === session.exercises.length;
-            const canRegenerateDay = canMarkCurrentWeek && !isDone && !allExercisesCompleted;
-
-            return (
-              <View key={session.day} style={[styles.sessionCard, isDone && styles.sessionCardDone]}>
-                <TouchableOpacity
-                  style={styles.sessionHeader}
-                  onPress={() => setOpenSession(openSession === session.day ? null : session.day)}
-                >
-                  <View style={styles.sessionHeaderLeft}>
-                    {isDone ? <Text style={styles.doneCheck}>✓ </Text> : null}
-                    <View>
-                      <Text style={[styles.sessionDay, isDone && styles.sessionDayDone]}>
-                        {translateDay(session.day)}
-                        {getDateForDay(session.day, selectedWeekStart) ? (
-                          <Text style={{ fontSize: 13, fontWeight: "400", opacity: 0.65 }}>
-                            {"  "}{getDateForDay(session.day, selectedWeekStart)}
-                          </Text>
-                        ) : null}
-                      </Text>
-                      <Text style={styles.sessionFocus}>{session.focus}</Text>
-                      <Text style={styles.sessionStatus}>
-                        {completedAt
-                          ? `Completada el ${formatDateTime(completedAt)}`
-                          : canMarkCurrentWeek
-                          ? "Pendiente esta semana"
-                          : "Sin registro en esta semana"}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.sessionMeta}>
-                    <Text style={styles.sessionDuration}>{session.duration_minutes} min</Text>
-                    <Text style={styles.sessionArrow}>{openSession === session.day ? "▲" : "▼"}</Text>
-                  </View>
-                </TouchableOpacity>
-
-                {openSession === session.day ? (
-                  <View style={styles.exerciseList}>
-                    <TouchableOpacity
-                      style={[
-                        styles.completeBtn,
-                        (isDone || !canMarkCurrentWeek) && styles.completeBtnDone,
-                      ]}
-                      disabled={isDone || isSaving || !canMarkCurrentWeek}
-                      onPress={() => onMarkCompleted(session.day)}
-                    >
-                      <Text
-                        style={[
-                          styles.completeBtnText,
-                          (isDone || !canMarkCurrentWeek) && styles.completeBtnTextDone,
-                        ]}
-                      >
-                        {isDone
-                          ? "Sesion completada"
-                          : !canMarkCurrentWeek
-                          ? "Solo puedes registrar la semana actual"
-                          : isSaving
-                          ? "Guardando..."
-                          : !allExercisesCompleted && completedExercisesCount > 0
-                          ? `Cerrar sesion (${session.exercises.length - completedExercisesCount} ejercicio(s) pendiente(s))`
-                          : !allExercisesCompleted
-                          ? "Cerrar sesion sin registrar ejercicios"
-                          : "Marcar sesion como completada"}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.secondaryActionBtn,
-                        (!canRegenerateDay || regeneratingSessionDay === session.day) && styles.genBtnDisabled,
-                      ]}
-                      onPress={() => onRegenerateDay(session.day)}
-                      disabled={!canRegenerateDay || regeneratingSessionDay === session.day}
-                    >
-                      <Text style={styles.secondaryActionBtnText}>
-                        {regeneratingSessionDay === session.day
-                          ? "Regenerando dia..."
-                          : !canRegenerateDay
-                          ? "No disponible: dia con progreso"
-                          : `Regenerar ${translateDay(session.day)}`}
-                      </Text>
-                    </TouchableOpacity>
-
-                    {session.exercises.map((exercise) => {
-                      const exerciseKey = normalize(exercise.name);
-                      const sessionExerciseKey = `${normalize(session.day)}::${exerciseKey}`;
-                      const progressPanelKey = `${session.day}::${exercise.name}::progress`;
-                      const progress = strengthMap[exerciseKey];
-                      const selectedWeekEntry = getWeeklyEntry(progress, selectedWeekStart);
-                      const previousWeekEntry = getWeeklyEntry(progress, previousWeekStart);
-                      const isProgressOpen = openProgressKey === progressPanelKey;
-                      const isLogOpen =
-                        activeLog?.sessionDay === session.day && activeLog.exerciseName === exerciseKey;
-                      const isExerciseDone = completedExercisesBySelectedWeek.has(sessionExerciseKey);
-                      const actionKey = `${session.day}::${exercise.name}`;
-                      const weeklyDelta =
-                        selectedWeekEntry && previousWeekEntry
-                          ? selectedWeekEntry.latestLoadKg - previousWeekEntry.latestLoadKg
-                          : null;
-                      const recentHistory = progress?.weeklyHistory.slice(-4).reverse() || [];
-
-                      const progressNode = (
-                        <>
-                          <Text style={styles.exerciseProgressTitle}>Progreso</Text>
-                          <Text style={styles.exerciseProgressLine}>
-                            Esta semana: {selectedWeekEntry ? `${selectedWeekEntry.latestLoadKg.toFixed(1)} kg` : "Sin registros"}
-                          </Text>
-                          <Text style={styles.exerciseProgressLine}>
-                            Mejor histórico: {progress ? `${progress.bestLoadKg.toFixed(1)} kg` : "Sin datos"}
-                          </Text>
-                          <Text style={styles.exerciseProgressLine}>
-                            Último día: {progress ? formatDateTime(progress.lastPerformedAt) : "Sin datos"}
-                          </Text>
-                          {weeklyDelta !== null ? (
-                            <Text style={[styles.exerciseProgressLine, weeklyDelta >= 0 ? styles.progressUp : styles.progressDown]}>
-                              {weeklyDelta >= 0 ? "▲" : "▼"} {Math.abs(weeklyDelta).toFixed(1)} kg vs semana anterior
-                            </Text>
-                          ) : (
-                            <Text style={styles.exerciseProgressMuted}>
-                              Registra al menos dos semanas para comparar.
-                            </Text>
-                          )}
-                          {recentHistory.length > 0 && (
-                            <View style={styles.historyChips}>
-                              {recentHistory.map((item) => (
-                                <View key={`${exercise.name}-${item.weekStart}`} style={styles.historyChip}>
-                                  <Text style={styles.historyChipWeek}>{formatWeekLabel(item.weekStart)}</Text>
-                                  <Text style={styles.historyChipValue}>{item.latestLoadKg.toFixed(1)} kg</Text>
-                                </View>
-                              ))}
-                            </View>
-                          )}
-                        </>
-                      );
-
-                      return (
-                        <ExerciseCard
-                          key={`${session.day}-${exercise.name}`}
-                          name={exercise.name}
-                          sets={exercise.sets}
-                          reps={exercise.reps}
-                          restSeconds={exercise.rest_seconds}
-                          tip={exercise.notes}
-                          status={isExerciseDone ? "completed" : isLogOpen ? "active" : "default"}
-                          exerciseKey={exerciseKey}
-                          logOpen={isLogOpen}
-                          logValues={{
-                            loadValue: logKg,
-                            loadUnit: logUnit,
-                            reps: logReps,
-                            sets: logSets,
-                          }}
-                          savingLog={savingLog}
-                          lastSavedKey={lastSavedExerciseKey}
-                          onToggleLog={() => {
-                            if (isLogOpen) {
-                              setActiveLog(null);
-                            } else {
-                              openExerciseLog(session.day, exercise);
-                            }
-                          }}
-                          onLogChange={(vals) => {
-                            if (vals.loadValue !== undefined) setLogKg(vals.loadValue);
-                            if (vals.loadUnit  !== undefined) setLogUnit(vals.loadUnit);
-                            if (vals.reps      !== undefined) setLogReps(vals.reps);
-                            if (vals.sets      !== undefined) setLogSets(vals.sets);
-                          }}
-                          onMarkDone={() => onMarkExerciseCompleted(session.day, exercise.name)}
-                          canMarkDone={canMarkCurrentWeek}
-                          hasProgress={!!progress}
-                          progressOpen={isProgressOpen}
-                          onToggleProgress={() =>
-                            setOpenProgressKey((prev) =>
-                              prev === progressPanelKey ? null : progressPanelKey
-                            )
-                          }
-                          progressContent={progressNode}
-                          replacements={
-                            openOptionsKey === actionKey
-                              ? (replacementOptionsByKey[actionKey] || []).map(
-                                  (o): ExerciseReplacement => ({
-                                    name: o.name,
-                                    sets: o.sets,
-                                    reps: o.reps,
-                                    rest_seconds: o.rest_seconds,
-                                  })
-                                )
-                              : undefined
-                          }
-                          replacementsLoading={optionsLoadingKey === actionKey}
-                          onSelectReplacement={(opt) =>
-                            onSelectManualReplacement(session.day, exercise.name, {
-                              name: opt.name,
-                              sets: opt.sets,
-                              reps: opt.reps,
-                              rest_seconds: opt.rest_seconds,
-                            })
-                          }
-                          menuOptions={[
-                            {
-                              label: replacingExerciseKey === actionKey ? "Reemplazando..." : "Reemplazar con Tuco",
-                              loading: replacingExerciseKey === actionKey,
-                              onPress: () => onReplaceExercise(session.day, exercise.name),
-                            },
-                            {
-                              label: optionsLoadingKey === actionKey ? "Buscando opciones..." : "Elegir alternativa",
-                              loading: optionsLoadingKey === actionKey,
-                              onPress: () => onLoadReplacementOptions(session.day, exercise),
-                            },
-                            {
-                              label: removingExerciseKey === actionKey ? "Eliminando..." : "Eliminar ejercicio",
-                              loading: removingExerciseKey === actionKey,
-                              destructive: true,
-                              onPress: () => onRemoveExercise(session.day, exercise.name),
-                            },
-                          ]}
-                        />
-                      );
-                    })}
-                    <TouchableOpacity
-                      style={styles.addExerciseBtn}
-                      onPress={() => handleOpenAddExercise(session.day)}
-                    >
-                      <Text style={styles.addExerciseBtnText}>＋ Agregar ejercicio</Text>
-                    </TouchableOpacity>
                   </View>
                 ) : null}
-              </View>
+              </>
             );
-          })}
 
-          <TouchableOpacity
-            style={styles.addDayBtn}
-            onPress={() => {
-              setAddDayDay("monday");
-              setAddDayFocus("");
-              setShowAddDayModal(true);
-            }}
-          >
-            <Text style={styles.addDayBtnText}>+ Agregar nuevo día</Text>
-          </TouchableOpacity>
+            return (
+              <ExerciseCard
+                key={`${executionPlan.sessionDay}-${exercise.name}`}
+                name={exercise.name}
+                sets={exercise.sets}
+                reps={exercise.reps}
+                restSeconds={exercise.restSeconds}
+                tip={exercise.tip}
+                lastPerformance={progress ? `Ultimo: ${progress.latestLoadKg.toFixed(1)} kg` : undefined}
+                status={status}
+                exerciseKey={exerciseKey}
+                logOpen={isLogOpen}
+                logValues={{
+                  loadValue: logKg,
+                  loadUnit: logUnit,
+                  reps: logReps,
+                  sets: logSets,
+                }}
+                savingLog={savingLog}
+                lastSavedKey={lastSavedExerciseKey}
+                onToggleLog={() => {
+                  openExerciseLog(executionPlan.sessionDay, {
+                    name: exercise.name,
+                    sets: exercise.sets,
+                    reps: exercise.reps,
+                    rest_seconds: exercise.restSeconds,
+                    notes: exercise.tip,
+                  });
+                }}
+                onLogChange={(vals) => {
+                  if (vals.loadValue !== undefined) setLogKg(vals.loadValue);
+                  if (vals.loadUnit !== undefined) setLogUnit(vals.loadUnit);
+                  if (vals.reps !== undefined) setLogReps(vals.reps);
+                  if (vals.sets !== undefined) setLogSets(vals.sets);
+                }}
+                onMarkDone={() => onMarkExerciseCompleted(executionPlan.sessionDay, exercise.name)}
+                canMarkDone={selectedWeekStart === currentWeekStart}
+                hasProgress={!!progress}
+                progressOpen={isProgressOpen}
+                onToggleProgress={() =>
+                  setOpenProgressKey((prev) => (prev === progressPanelKey ? null : progressPanelKey))
+                }
+                progressContent={progressNode}
+                replacements={
+                  openOptionsKey === actionKey
+                    ? (replacementOptionsByKey[actionKey] || []).map(
+                        (option): ExerciseReplacement => ({
+                          name: option.name,
+                          sets: option.sets,
+                          reps: option.reps,
+                          rest_seconds: option.rest_seconds,
+                        })
+                      )
+                    : undefined
+                }
+                replacementsLoading={optionsLoadingKey === actionKey}
+                onSelectReplacement={(option) =>
+                  executionPlan.allowEditing
+                    ? onSelectManualReplacement(executionPlan.sessionDay, exercise.name, {
+                        name: option.name,
+                        sets: option.sets,
+                        reps: option.reps,
+                        rest_seconds: option.rest_seconds,
+                      })
+                    : Alert.alert("No disponible", "Esta rutina fue asignada y no puede editarse desde la app.")
+                }
+                menuOptions={[
+                  {
+                    label: executionPlan.allowEditing
+                      ? replacingExerciseKey === actionKey
+                        ? "Reemplazando..."
+                        : "Reemplazar ejercicio"
+                      : "Reemplazo no disponible",
+                    loading: executionPlan.allowEditing && replacingExerciseKey === actionKey,
+                    onPress: () =>
+                      executionPlan.allowEditing
+                        ? onReplaceExercise(executionPlan.sessionDay, exercise.name)
+                        : Alert.alert("No disponible", "Esta rutina fue asignada y no puede editarse desde la app."),
+                  },
+                  {
+                    label: executionPlan.allowEditing
+                      ? optionsLoadingKey === actionKey
+                        ? "Buscando alternativas..."
+                        : "Elegir alternativa"
+                      : "Alternativas no disponibles",
+                    loading: executionPlan.allowEditing && optionsLoadingKey === actionKey,
+                    onPress: () =>
+                      executionPlan.allowEditing
+                        ? onLoadReplacementOptions(executionPlan.sessionDay, {
+                            name: exercise.name,
+                            sets: exercise.sets,
+                            reps: exercise.reps,
+                            rest_seconds: exercise.restSeconds,
+                            notes: exercise.tip,
+                          })
+                        : Alert.alert("No disponible", "Esta rutina fue asignada y no puede editarse desde la app."),
+                  },
+                  {
+                    label: executionPlan.allowEditing
+                      ? removingExerciseKey === actionKey
+                        ? "Eliminando..."
+                        : "Eliminar"
+                      : "Eliminacion no disponible",
+                    loading: executionPlan.allowEditing && removingExerciseKey === actionKey,
+                    destructive: executionPlan.allowEditing,
+                    onPress: () =>
+                      executionPlan.allowEditing
+                        ? onRemoveExercise(executionPlan.sessionDay, exercise.name)
+                        : Alert.alert("No disponible", "Esta rutina fue asignada y no puede editarse desde la app."),
+                  },
+                  {
+                    label: "Reordenar",
+                    onPress: () => onReorderExercise(exercise.name),
+                  },
+                ]}
+              />
+            );
+          })
+        )}
 
-          {routine.progression_tips?.length > 0 ? (
-            <View style={styles.tipsCard}>
-              <Text style={styles.tipsTitle}>Consejos de progresion</Text>
-              {routine.progression_tips.map((tip, index) => (
-                <Text key={`${tip}-${index}`} style={styles.tip}>
-                  • {tip}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-
-          {routine.nutrition_notes ? (
-            <View style={styles.nutritionCard}>
-              <Text style={styles.tipsTitle}>Notas nutricionales</Text>
-              <Text style={styles.nutritionText}>{routine.nutrition_notes}</Text>
-            </View>
-          ) : null}
-        </View>
-      )}
-      </>)}
+        {executionPlan?.allowEditing && activeTab === "ai" && routine?.nutrition_notes ? (
+          <AppCard variant="flat" style={styles.noteCard}>
+            <Text style={styles.noteTitle}>Nota operativa</Text>
+            <Text style={styles.noteCopy}>{routine.nutrition_notes}</Text>
+          </AppCard>
+        ) : null}
+      </View>
     </ScrollView>
   );
 }
@@ -1627,8 +1209,91 @@ export function RoutineScreen() {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: palette.background,
-    padding: 20,
+    backgroundColor: ds.colors.backgroundDeep,
+    paddingHorizontal: ds.spacing.x3,
+    paddingTop: 56,
+    paddingBottom: ds.spacing.x4,
+  },
+  executionStack: {
+    gap: ds.spacing.x3,
+  },
+  planSelector: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: ds.spacing.x1,
+    backgroundColor: ds.colors.surface,
+    borderRadius: ds.radius.pill,
+    paddingHorizontal: ds.spacing.x2,
+    paddingVertical: ds.spacing.x1,
+  },
+  planSelectorLabel: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  planSelectorChevron: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodySM,
+    fontWeight: "700",
+  },
+  refreshButton: {
+    alignSelf: "flex-start",
+    backgroundColor: ds.colors.actionPrimary,
+    borderRadius: ds.radius.md,
+    paddingHorizontal: ds.spacing.x2,
+    paddingVertical: 12,
+  },
+  refreshButtonDisabled: {
+    opacity: 0.6,
+  },
+  refreshButtonText: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  progressCard: {
+    gap: ds.spacing.x2,
+  },
+  progressText: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyLG,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  progressBar: {
+    marginTop: ds.spacing.x0_5,
+  },
+  progressHint: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodySM,
+    fontFamily: ds.typography.fontFamily,
+  },
+  progressSuccess: {
+    color: ds.colors.success,
+    fontSize: ds.typography.bodySM,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  noteCard: {
+    gap: ds.spacing.x1,
+  },
+  noteTitle: {
+    color: ds.colors.textPrimary,
+    fontSize: ds.typography.bodyMD,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  noteCopy: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodyMD,
+    lineHeight: 20,
+    fontFamily: ds.typography.fontFamily,
+  },
+  emptyStateCard: {
+    gap: ds.spacing.x1,
   },
   heroCard: {
     backgroundColor: palette.card,

@@ -64,7 +64,7 @@ export function AdminMessagesScreen({ navigation }: { navigation: any }) {
 
   /* ── new conversation modal ── */
   const [newConvModalVisible, setNewConvModalVisible] = useState(false);
-  const [users, setUsers] = useState<{ id: string; fullName: string; role: string }[]>([]);
+  const [users, setUsers] = useState<{ id: string; fullName: string; role: string; avatarUrl: string | null }[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [startingThread, setStartingThread] = useState<string | null>(null);

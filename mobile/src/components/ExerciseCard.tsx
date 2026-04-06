@@ -13,7 +13,7 @@ import { designSystem as ds } from "../theme/designSystem";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ExerciseCardStatus = "default" | "active" | "completed";
+export type ExerciseCardStatus = "pending" | "in_progress" | "completed";
 
 export interface ExerciseCardMenuOption {
   label: string;
@@ -49,6 +49,8 @@ export interface ExerciseCardProps {
   restSeconds: number;
   /** Short AI tip / coach note */
   tip?: string;
+  /** Last registered performance shown as calm operational context */
+  lastPerformance?: string;
   /** Card state */
   status?: ExerciseCardStatus;
   /** Whether the weight log form is open */
@@ -61,11 +63,11 @@ export interface ExerciseCardProps {
   lastSavedKey?: string | null;
   /** This exercise's unique key (to match lastSavedKey) */
   exerciseKey?: string;
-  /** Called when user taps "Registrar carga" / "Actualizar carga" / "Cancelar" */
+  /** Called when user starts a set and opens the register form */
   onToggleLog?: () => void;
   /** Called when any log field changes */
   onLogChange?: (values: Partial<ExerciseLogValues>) => void;
-  /** Called when user taps "Marcar realizado" — primary action when log is closed */
+  /** Called when user confirms the set and completes the exercise */
   onMarkDone?: () => void;
   /** Whether marking done is allowed (e.g. only current week) */
   canMarkDone?: boolean;
@@ -87,16 +89,6 @@ export interface ExerciseCardProps {
   menuOptions?: ExerciseCardMenuOption[];
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function MetaChip({ label }: { label: string }) {
-  return (
-    <View style={styles.chip}>
-      <Text style={styles.chipText}>{label}</Text>
-    </View>
-  );
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ExerciseCard({
@@ -105,7 +97,8 @@ export function ExerciseCard({
   reps,
   restSeconds,
   tip,
-  status = "default",
+  lastPerformance,
+  status = "pending",
   logOpen = false,
   logValues,
   savingLog = false,
@@ -127,17 +120,21 @@ export function ExerciseCard({
   const [menuVisible, setMenuVisible] = useState(false);
 
   const isDone = status === "completed";
-  const isActive = status === "active";
+  const isActive = status === "in_progress";
+  const statusLabel = isDone ? "Completado" : isActive ? "En curso" : "Pendiente";
+  const statusTone = isDone ? styles.statusBadgeCompleted : isActive ? styles.statusBadgeActive : styles.statusBadgePending;
+  const statusTextTone = isDone ? styles.statusBadgeTextCompleted : isActive ? styles.statusBadgeTextActive : styles.statusBadgeTextPending;
 
-  // Primary action label
   const primaryLabel = isDone
-    ? "Ejercicio realizado ✓"
-    : logValues?.loadValue
-    ? "Actualizar carga"
-    : "Registrar carga";
+    ? "Completado"
+    : logOpen
+    ? "Registrar serie"
+    : "Iniciar serie";
 
   const justSaved =
     lastSavedKey != null && exerciseKey != null && lastSavedKey.startsWith(`${exerciseKey}::`);
+
+  const primaryDisabled = isDone || (logOpen ? !canMarkDone : !onToggleLog);
 
   return (
     <View
@@ -149,9 +146,14 @@ export function ExerciseCard({
     >
       {/* ── Header ─────────────────────────────────────── */}
       <View style={styles.headerRow}>
-        <Text style={[styles.name, isDone && styles.nameDone]} numberOfLines={2}>
-          {name}
-        </Text>
+        <View style={styles.headerCopy}>
+          <Text style={[styles.name, isDone && styles.nameDone]} numberOfLines={2}>
+            {name}
+          </Text>
+          <View style={[styles.statusBadge, statusTone]}>
+            <Text style={[styles.statusBadgeText, statusTextTone]}>{statusLabel}</Text>
+          </View>
+        </View>
         {menuOptions.length > 0 && (
           <TouchableOpacity
             style={styles.menuBtn}
@@ -164,15 +166,13 @@ export function ExerciseCard({
       </View>
 
       {/* ── Metadata chips ─────────────────────────────── */}
-      <View style={styles.metaRow}>
-        <MetaChip label={`${sets} series`} />
-        <MetaChip label={`${reps} reps`} />
-        <MetaChip label={`${restSeconds}s descanso`} />
-      </View>
+      <Text style={styles.metaLine}>{`${sets} series · ${reps} reps · ${restSeconds}s`}</Text>
+
+      {lastPerformance ? <Text style={styles.lastPerformance}>{lastPerformance}</Text> : null}
 
       {/* ── AI tip ─────────────────────────────────────── */}
       {!!tip && !isDone && (
-        <Text style={styles.tip}>💡 {tip}</Text>
+        <Text style={styles.tip}>{tip}</Text>
       )}
 
       {/* ── Primary action ─────────────────────────────── */}
@@ -180,41 +180,35 @@ export function ExerciseCard({
         style={[
           styles.primaryBtn,
           isDone && styles.primaryBtnDone,
-          (!canMarkDone && !logOpen && !isDone) && styles.primaryBtnDisabled,
+          primaryDisabled && !isDone && styles.primaryBtnDisabled,
         ]}
-        onPress={logOpen ? onToggleLog : isDone ? undefined : onToggleLog}
-        disabled={isDone}
+        onPress={logOpen ? onMarkDone : onToggleLog}
+        disabled={primaryDisabled}
         activeOpacity={0.8}
       >
         <Text style={[styles.primaryBtnText, isDone && styles.primaryBtnTextDone]}>
-          {logOpen ? "Cancelar" : primaryLabel}
+          {primaryLabel}
         </Text>
       </TouchableOpacity>
 
-      {/* ── Mark-done button (separate, secondary prominence) */}
-      {!isDone && !logOpen && (
-        <TouchableOpacity
-          style={[styles.markDoneBtn, !canMarkDone && styles.markDoneBtnDisabled]}
-          onPress={canMarkDone ? onMarkDone : undefined}
-          disabled={!canMarkDone}
-          activeOpacity={0.75}
-        >
-          <Text style={[styles.markDoneText, !canMarkDone && styles.markDoneTextDisabled]}>
-            {canMarkDone ? "Marcar como realizado" : "Solo semana actual"}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* ── Progress toggle ────────────────────────────── */}
-      {hasProgress && (
+      {/* ── Secondary action ───────────────────────────── */}
+      {!isDone && !logOpen && hasProgress && (
         <TouchableOpacity
           style={styles.progressToggle}
           onPress={onToggleProgress}
-          activeOpacity={0.7}
+          activeOpacity={0.75}
         >
-          <Text style={styles.progressToggleText}>
-            {progressOpen ? "Ocultar progreso ▲" : "Ver progreso ▼"}
-          </Text>
+          <Text style={styles.progressToggleText}>{progressOpen ? "Ocultar progreso" : "Ver progreso"}</Text>
+        </TouchableOpacity>
+      )}
+
+      {!isDone && logOpen && canMarkDone && (
+        <TouchableOpacity
+          style={styles.secondaryInlineAction}
+          onPress={onMarkDone}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.secondaryInlineActionText}>Completar ejercicio</Text>
         </TouchableOpacity>
       )}
 
@@ -226,7 +220,7 @@ export function ExerciseCard({
       {/* ── Replacement options panel ──────────────────── */}
       {replacementsLoading && (
         <View style={styles.replacementsPanel}>
-          <ActivityIndicator color={ds.colors.primary} size="small" />
+          <ActivityIndicator color={ds.colors.actionPrimary} size="small" />
           <Text style={styles.replacementsLoading}>Buscando alternativas…</Text>
         </View>
       )}
@@ -379,15 +373,12 @@ const styles = StyleSheet.create({
     borderRadius: ds.radius.md,
     padding: ds.spacing.x2,
     gap: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: "transparent",
     ...ds.shadows.soft,
   },
   cardActive: {
-    borderLeftColor: ds.colors.primary,
+    backgroundColor: ds.colors.surfaceElevated,
   },
   cardDone: {
-    borderLeftColor: "#374151",
     opacity: 0.7,
   },
 
@@ -397,15 +388,49 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 8,
   },
+  headerCopy: {
+    flex: 1,
+    gap: ds.spacing.x1,
+  },
   name: {
     flex: 1,
     fontSize: ds.typography.bodyLG,
     fontWeight: "700",
     color: ds.colors.textPrimary,
     letterSpacing: 0.1,
+    fontFamily: ds.typography.fontFamily,
   },
   nameDone: {
     color: ds.colors.textSecondary,
+  },
+  statusBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: ds.radius.pill,
+  },
+  statusBadgePending: {
+    backgroundColor: ds.colors.surface,
+  },
+  statusBadgeActive: {
+    backgroundColor: ds.colors.actionPrimary + "22",
+  },
+  statusBadgeCompleted: {
+    backgroundColor: ds.colors.success + "1E",
+  },
+  statusBadgeText: {
+    fontSize: ds.typography.bodySM,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+  },
+  statusBadgeTextPending: {
+    color: ds.colors.textSecondary,
+  },
+  statusBadgeTextActive: {
+    color: ds.colors.actionPrimary,
+  },
+  statusBadgeTextCompleted: {
+    color: ds.colors.success,
   },
 
   // Menu button
@@ -425,24 +450,17 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // Chips
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: ds.colors.borderSubtle,
-    backgroundColor: ds.colors.surface,
-  },
-  chipText: {
+  metaLine: {
     fontSize: ds.typography.bodySM,
     fontWeight: "600",
     color: ds.colors.textSecondary,
+    fontFamily: ds.typography.fontFamily,
+  },
+  lastPerformance: {
+    fontSize: ds.typography.bodyMD,
+    color: ds.colors.textPrimary,
+    fontWeight: "500",
+    fontFamily: ds.typography.fontFamily,
   },
 
   // Tip
@@ -450,12 +468,12 @@ const styles = StyleSheet.create({
     fontSize: ds.typography.bodyMD,
     color: ds.colors.textSecondary,
     lineHeight: 20,
-    fontStyle: "italic",
+    fontFamily: ds.typography.fontFamily,
   },
 
   // Primary action
   primaryBtn: {
-    backgroundColor: ds.colors.primary,
+    backgroundColor: ds.colors.actionPrimary,
     borderRadius: ds.radius.sm,
     paddingVertical: 13,
     alignItems: "center",
@@ -469,33 +487,12 @@ const styles = StyleSheet.create({
   primaryBtnText: {
     fontSize: ds.typography.bodyMD,
     fontWeight: "700",
-    color: ds.colors.background,
+    color: ds.colors.textPrimary,
     letterSpacing: 0.2,
+    fontFamily: ds.typography.fontFamily,
   },
   primaryBtnTextDone: {
     color: ds.colors.textSecondary,
-  },
-
-  // Mark done
-  markDoneBtn: {
-    borderWidth: 1,
-    borderColor: ds.colors.borderSubtle,
-    borderRadius: ds.radius.sm,
-    paddingVertical: 11,
-    alignItems: "center",
-  },
-  markDoneBtnDisabled: {
-    borderColor: "transparent",
-  },
-  markDoneText: {
-    fontSize: ds.typography.bodyMD,
-    fontWeight: "600",
-    color: ds.colors.textSecondary,
-  },
-  markDoneTextDisabled: {
-    fontSize: ds.typography.bodySM,
-    color: ds.colors.textSecondary,
-    opacity: 0.5,
   },
 
   // Progress toggle
@@ -505,7 +502,17 @@ const styles = StyleSheet.create({
   progressToggleText: {
     fontSize: ds.typography.bodySM,
     fontWeight: "600",
-    color: ds.colors.primary,
+    color: ds.colors.textSecondary,
+    fontFamily: ds.typography.fontFamily,
+  },
+  secondaryInlineAction: {
+    alignSelf: "flex-start",
+  },
+  secondaryInlineActionText: {
+    fontSize: ds.typography.bodySM,
+    fontWeight: "600",
+    color: ds.colors.textSecondary,
+    fontFamily: ds.typography.fontFamily,
   },
 
   // Progress panel
@@ -547,11 +554,13 @@ const styles = StyleSheet.create({
     fontSize: ds.typography.bodyMD,
     fontWeight: "600",
     color: ds.colors.textPrimary,
+    fontFamily: ds.typography.fontFamily,
   },
   replacementMeta: {
     fontSize: ds.typography.bodySM,
     color: ds.colors.textSecondary,
     marginTop: 2,
+    fontFamily: ds.typography.fontFamily,
   },
   replacementArrow: {
     fontSize: 20,
@@ -576,8 +585,8 @@ const styles = StyleSheet.create({
     backgroundColor: ds.colors.surface,
   },
   unitChipActive: {
-    borderColor: ds.colors.primary,
-    backgroundColor: ds.colors.primary + "18",
+    borderColor: ds.colors.actionPrimary,
+    backgroundColor: ds.colors.actionPrimary + "18",
   },
   unitChipText: {
     fontSize: ds.typography.bodyMD,
@@ -585,7 +594,7 @@ const styles = StyleSheet.create({
     color: ds.colors.textSecondary,
   },
   unitChipTextActive: {
-    color: ds.colors.primary,
+    color: ds.colors.actionPrimary,
   },
   inputRow: {
     flexDirection: "row",
@@ -618,7 +627,7 @@ const styles = StyleSheet.create({
   logStatusSuccess: {
     fontSize: ds.typography.bodySM,
     fontWeight: "600",
-    color: ds.colors.primary,
+    color: ds.colors.success,
   },
 
   // Context menu

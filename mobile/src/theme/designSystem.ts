@@ -3,6 +3,10 @@ import { Platform } from "react-native";
 export const designSystem = {
   colors: {
     primary: "#22C55E",
+    actionPrimary: "#3B82F6",
+    success: "#22C55E",
+    accent: "#F97316",
+    backgroundDeep: "#0B1220",
     background: "#0F172A",
     surface: "#111827",
     surfaceElevated: "#1F2937",

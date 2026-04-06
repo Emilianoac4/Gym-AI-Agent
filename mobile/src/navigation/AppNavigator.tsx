@@ -209,7 +209,7 @@ export function AppNavigator() {
               />
               <Stack.Screen
                 name="TrainerRoutineBuilder"
-                component={TrainerRoutineBuilderScreen}
+                children={(props) => <TrainerRoutineBuilderScreen {...(props as any)} />}
                 options={{ headerShown: false }}
               />
               <Stack.Screen

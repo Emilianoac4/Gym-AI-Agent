@@ -7,8 +7,6 @@ import { AppScreen } from "./AppScreen";
 import { designSystem } from "../theme/designSystem";
 import { palette } from "../theme/palette";
 import type { GymAvailabilityDay, GeneralNotification } from "../types/api";
-import { palette } from "../theme/palette";
-import type { GymAvailabilityDay, GeneralNotification } from "../types/api";
 
 type SecondaryAction = {
   key: string;
