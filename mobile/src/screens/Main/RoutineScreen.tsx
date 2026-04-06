@@ -321,9 +321,6 @@ export function RoutineScreen() {
       const data = await api.getLatestRoutine(user.id, token);
       setRoutine(data.routine);
       setGeneratedAt(data.generatedAt);
-      if (!openSession && data.routine.sessions.length > 0) {
-        setOpenSession(data.routine.sessions[0].day);
-      }
     } catch {
       setRoutine(null);
       setGeneratedAt(null);
@@ -430,7 +427,6 @@ export function RoutineScreen() {
       const parsed: GeneratedRoutine = typeof raw === "string" ? JSON.parse(raw) : raw;
       setRoutine(parsed);
       setGeneratedAt(new Date().toISOString());
-      setOpenSession(parsed.sessions[0]?.day ?? null);
       await loadCheckins();
     } catch (error) {
       Alert.alert(
@@ -1346,7 +1342,13 @@ export function RoutineScreen() {
             })()}
           </View>
 
-          {routine.sessions.map((session) => {
+          {[...routine.sessions].sort((a, b) => {
+            const JS_TO_DAY_NAME: Record<number, string> = { 0: "sunday", 1: "monday", 2: "tuesday", 3: "wednesday", 4: "thursday", 5: "friday", 6: "saturday" };
+            const todayOffset = DAY_OFFSETS[JS_TO_DAY_NAME[new Date().getDay()]] ?? 0;
+            const aOffset = DAY_OFFSETS[normalize(a.day)] ?? 0;
+            const bOffset = DAY_OFFSETS[normalize(b.day)] ?? 0;
+            return ((aOffset - todayOffset + 7) % 7) - ((bOffset - todayOffset + 7) % 7);
+          }).map((session) => {
             const normalizedDay = normalize(session.day);
             const isDone = completedBySelectedWeek.has(normalizedDay);
             const isSaving = savingSessionDay === session.day;
