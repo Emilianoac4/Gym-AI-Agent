@@ -1,4 +1,4 @@
-﻿const API_BASE = "/api";
+﻿const API_BASE = "https://gym-ai-agent-backend-staging.onrender.com";
 
 const state = {
   apiBase: API_BASE,
