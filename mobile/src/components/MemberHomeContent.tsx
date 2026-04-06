@@ -67,6 +67,7 @@ type Props = {
   todayAvailability?: GymAvailabilityDay | null;
   upcomingDays?: GymAvailabilityDay[];
   notifications?: GeneralNotification[];
+  onReportar?: () => void;
 };
 
 export function MemberHomeContent({
@@ -82,6 +83,7 @@ export function MemberHomeContent({
   todayAvailability,
   upcomingDays = [],
   notifications = [],
+  onReportar,
 }: Props) {
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const futureDays = upcomingDays.slice(1); // skip today (shown above)
@@ -236,6 +238,12 @@ export function MemberHomeContent({
             ))}
           </View>
         </AppCard>
+      ) : null}
+
+      {onReportar ? (
+        <Pressable style={styles.reportBtn} onPress={onReportar}>
+          <Text style={styles.reportBtnText}>⚠ Reportar emergencia</Text>
+        </Pressable>
       ) : null}
     </AppScreen>
   );
@@ -521,5 +529,21 @@ const styles = StyleSheet.create({
     fontSize: designSystem.typography.bodyMD,
     lineHeight: 20,
     fontFamily: designSystem.typography.fontFamily,
+  },
+  // ── Boton Reportar ──────────────────────
+  reportBtn: {
+    marginTop: designSystem.spacing.x2,
+    marginBottom: designSystem.spacing.x1,
+    backgroundColor: "#EF4444",
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  reportBtnText: {
+    color: "#fff",
+    fontSize: designSystem.typography.bodyLG,
+    fontWeight: "800",
+    fontFamily: designSystem.typography.fontFamily,
+    letterSpacing: 0.3,
   },
 });

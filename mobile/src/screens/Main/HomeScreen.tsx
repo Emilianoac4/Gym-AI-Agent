@@ -319,39 +319,85 @@ export function HomeScreen() {
 
   if (isMember) {
     return (
-      <MemberHomeContent
-        userName={user?.fullName ?? "Atleta"}
-        heroTitle={memberHeroTitle}
-        heroMeta={memberHeroMeta}
-        progressLabel={memberProgressLabel}
-        progressValue={memberProgressValue}
-        insight={memberInsight}
-        onStartWorkout={() => navigation.navigate("Rutina")}
-        activeTrainers={activeTrainerObjects}
-        todayAvailability={todayAvailability}
-        upcomingDays={next30Days}
-        notifications={gymNotifications}
-        secondaryActions={[
-          {
-            key: "routine",
-            label: "Ver rutina completa",
-            description: "Revisa ejercicios, series y progreso antes de entrenar.",
-            onPress: () => navigation.navigate("Rutina"),
-          },
-          {
-            key: "measurements",
-            label: "Registrar medidas",
-            description: "Actualiza tus metricas para seguir tu avance real.",
-            onPress: () => navigation.navigate("Medidas"),
-          },
-          {
-            key: "coach",
-            label: "Hablar con Tuco",
-            description: "Pide una recomendacion rapida sobre entrenamiento o recuperacion.",
-            onPress: () => navigation.navigate("Coach"),
-          },
-        ]}
-      />
+      <>
+        <MemberHomeContent
+          userName={user?.fullName ?? "Atleta"}
+          heroTitle={memberHeroTitle}
+          heroMeta={memberHeroMeta}
+          progressLabel={memberProgressLabel}
+          progressValue={memberProgressValue}
+          insight={memberInsight}
+          onStartWorkout={() => navigation.navigate("Rutina")}
+          activeTrainers={activeTrainerObjects}
+          todayAvailability={todayAvailability}
+          upcomingDays={next30Days}
+          notifications={gymNotifications}
+          onReportar={() => setTicketModalVisible(true)}
+          secondaryActions={[
+            {
+              key: "routine",
+              label: "Ver rutina completa",
+              description: "Revisa ejercicios, series y progreso antes de entrenar.",
+              onPress: () => navigation.navigate("Rutina"),
+            },
+            {
+              key: "measurements",
+              label: "Registrar medidas",
+              description: "Actualiza tus metricas para seguir tu avance real.",
+              onPress: () => navigation.navigate("Medidas"),
+            },
+            {
+              key: "coach",
+              label: "Hablar con Tuco",
+              description: "Pide una recomendacion rapida sobre entrenamiento o recuperacion.",
+              onPress: () => navigation.navigate("Coach"),
+            },
+          ]}
+        />
+
+        <Modal visible={ticketModalVisible} transparent animationType="slide" onRequestClose={() => setTicketModalVisible(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.sectionTitle}>Reportar emergencia</Text>
+              <Text style={styles.featureDetail}>Categoría</Text>
+              <View style={styles.quickGrid}>
+                {([
+                  { value: "harassment", label: "Acoso" },
+                  { value: "injury",     label: "Lesión" },
+                  { value: "accident",   label: "Accidente" },
+                  { value: "incident",   label: "Incidente" },
+                ] as const).map(({ value, label }) => (
+                  <Pressable
+                    key={value}
+                    style={[
+                      styles.quickButton,
+                      ticketCategory === value ? styles.quickButtonActive : null,
+                    ]}
+                    onPress={() => setTicketCategory(value)}
+                  >
+                    <Text style={styles.quickButtonText}>{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                value={ticketDescription}
+                onChangeText={setTicketDescription}
+                placeholder="Describe qué sucede y dónde"
+                style={styles.ticketInput}
+                multiline
+              />
+              <View style={styles.inlineActionsRow}>
+                <Pressable style={styles.inlineActionSecondary} onPress={() => setTicketModalVisible(false)}>
+                  <Text style={styles.inlineActionSecondaryText}>Cancelar</Text>
+                </Pressable>
+                <Pressable style={styles.inlineActionPrimary} onPress={submitEmergencyTicket}>
+                  <Text style={styles.inlineActionPrimaryText}>Enviar alerta</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </>
     );
   }
 
@@ -556,25 +602,30 @@ export function HomeScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.sectionTitle}>Reportar emergencia</Text>
-            <Text style={styles.featureDetail}>Categoria</Text>
+            <Text style={styles.featureDetail}>Categoría</Text>
             <View style={styles.quickGrid}>
-              {(["harassment", "injury", "accident", "incident"] as const).map((category) => (
+              {([
+                { value: "harassment", label: "Acoso" },
+                { value: "injury",     label: "Lesión" },
+                { value: "accident",   label: "Accidente" },
+                { value: "incident",   label: "Incidente" },
+              ] as const).map(({ value, label }) => (
                 <Pressable
-                  key={category}
+                  key={value}
                   style={[
                     styles.quickButton,
-                    ticketCategory === category ? styles.quickButtonActive : null,
+                    ticketCategory === value ? styles.quickButtonActive : null,
                   ]}
-                  onPress={() => setTicketCategory(category)}
+                  onPress={() => setTicketCategory(value)}
                 >
-                  <Text style={styles.quickButtonText}>{category}</Text>
+                  <Text style={styles.quickButtonText}>{label}</Text>
                 </Pressable>
               ))}
             </View>
             <TextInput
               value={ticketDescription}
               onChangeText={setTicketDescription}
-              placeholder="Describe que sucede y donde"
+              placeholder="Describe qué sucede y dónde"
               style={styles.ticketInput}
               multiline
             />
