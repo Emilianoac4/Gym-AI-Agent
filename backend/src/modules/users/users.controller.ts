@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+﻿import { randomUUID } from "crypto";
 import { Request, Response } from "express";
 import { AuditAction, HealthProvider, MembershipTransactionType, PaymentMethod, Prisma, UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
@@ -8,15 +8,12 @@ import {
   CreateUserInput,
   RenewMembershipInput,
   SetHealthConnectionStateInput,
-  // Soft-delete: preserve user row so membership_transactions remain joinable.
-  // membership_transactions has no FK constraint — hard delete would orphan financial records.
-  await prisma.$transaction([
-    prisma.aIChatLog.deleteMany({ where: { userId: targetUser.id } }),
-    prisma.user.update({
-      where: { id: targetUser.id },
-      data: { isActive: false, deletedAt: new Date() },
-    }),
-  });
+  UpdateProfileInput,
+  UpsertHealthConnectionInput,
+} from "./users.validation";
+import { PermissionAction, hasPermission } from "../../config/permissions";
+import {
+  createTokenPair,
   getFutureDateMinutes,
   sendEmailVerification,
 } from "../../utils/email-auth";
@@ -37,8 +34,8 @@ export const listGymAdmins = async (req: Request, res: Response): Promise<void> 
     where: { gymId: actor.gymId, role: UserRole.admin, isActive: true },
     select: {
       id: true,
-  res.json({
-    message: "User deactivated",
+      fullName: true,
+      profile: { select: { avatarUrl: true } },
     },
     orderBy: { fullName: "asc" },
   });
@@ -210,7 +207,7 @@ export const updateUserProfileById = async (
   res.json({ message: "Profile updated", profile });
 };
 
-// PATCH /users/:id/avatar — update profile picture (self or admin)
+// PATCH /users/:id/avatar ΓÇö update profile picture (self or admin)
 export const updateAvatarById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   if (!req.auth) throw new HttpError(401, "Unauthorized");
 
@@ -225,7 +222,7 @@ export const updateAvatarById = async (req: Request<{ id: string }>, res: Respon
   const dataUriMatch = imageBase64.match(/^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/);
   const rawBase64 = dataUriMatch ? dataUriMatch[2] : imageBase64;
 
-  // Size guard: 250 KB base64 ≈ ~186 KB image. Anything bigger wasn't properly compressed client-side.
+  // Size guard: 250 KB base64 Γëê ~186 KB image. Anything bigger wasn't properly compressed client-side.
   if (rawBase64.length > 260_000) {
     throw new HttpError(400, "Image too large. Please compress before uploading (max ~190 KB).");
   }
@@ -284,11 +281,7 @@ export const deactivateUserById = async (req: Request<{ id: string }>, res: Resp
   await assertCanAccessTargetUser(req.auth, targetUser, "users.deactivate");
 
   await prisma.user.update({
-  if (targetUser.deletedAt !== null) {
-    throw new HttpError(404, "User not found");
-  }
-
-  if (targetUser.role === "admin") {
+    where: { id: targetUser.id },
     data: { isActive: false },
   });
 
@@ -527,7 +520,7 @@ export const createUser = async (
     where: { email: emailLower, gymId: requester.gymId },
   });
   if (existingMembership) {
-    throw new HttpError(409, "El correo ya está en uso en este gimnasio");
+    throw new HttpError(409, "El correo ya est├í en uso en este gimnasio");
   }
 
   // Validate username uniqueness globally across the platform
@@ -535,7 +528,7 @@ export const createUser = async (
     where: { username: req.body.username },
   });
   if (existingWithUsername) {
-    throw new HttpError(409, "El nombre de usuario ya está en uso en la plataforma");
+    throw new HttpError(409, "El nombre de usuario ya est├í en uso en la plataforma");
   }
 
   const isMemberRole = req.body.role === "member";
@@ -756,10 +749,10 @@ export const renewMembershipByUserId = async (
       gymId: true,
       role: true,
       isActive: true,
-      deletedAt: true,
       membershipEndAt: true,
       fullName: true,
       email: true,
+      deletedAt: true,
     },
   });
 
@@ -767,12 +760,12 @@ export const renewMembershipByUserId = async (
     throw new HttpError(404, "User not found");
   }
 
-  if (targetUser.deletedAt !== null) {
-    throw new HttpError(404, "User not found");
-  }
-
   if (targetUser.gymId !== requester.gymId) {
     throw new HttpError(403, "Forbidden");
+  }
+
+  if (targetUser.deletedAt !== null) {
+    throw new HttpError(404, "User not found");
   }
 
   if (targetUser.role !== "member") {
@@ -865,7 +858,11 @@ export const listHealthConnectionsByUserId = async (
     },
   });
 
-  if (!targetUser || !targetUser.isActive || targetUser.deletedAt !== null) {
+  if (!targetUser || !targetUser.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  if (targetUser.deletedAt !== null) {
     throw new HttpError(404, "User not found");
   }
 
@@ -898,7 +895,11 @@ export const upsertHealthConnectionByUserId = async (
     },
   });
 
-  if (!targetUser || !targetUser.isActive || targetUser.deletedAt !== null) {
+  if (!targetUser || !targetUser.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  if (targetUser.deletedAt !== null) {
     throw new HttpError(404, "User not found");
   }
 
@@ -952,7 +953,11 @@ export const setHealthConnectionStateByUserId = async (
     },
   });
 
-  if (!targetUser || !targetUser.isActive || targetUser.deletedAt !== null) {
+  if (!targetUser || !targetUser.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  if (targetUser.deletedAt !== null) {
     throw new HttpError(404, "User not found");
   }
 
