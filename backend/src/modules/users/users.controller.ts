@@ -515,17 +515,17 @@ export const createUser = async (
   }
 
   const emailLower = req.body.email.toLowerCase().trim();
-  // Check not already a member of this gym
+  // Check not already an active member of this gym (ignore soft-deleted rows so they can be re-registered)
   const existingMembership = await prisma.user.findFirst({
-    where: { email: emailLower, gymId: requester.gymId },
+    where: { email: emailLower, gymId: requester.gymId, deletedAt: null },
   });
   if (existingMembership) {
     throw new HttpError(409, "El correo ya est├í en uso en este gimnasio");
   }
 
-  // Validate username uniqueness globally across the platform
+  // Validate username uniqueness globally (ignore soft-deleted rows)
   const existingWithUsername = await prisma.user.findFirst({
-    where: { username: req.body.username },
+    where: { username: req.body.username, deletedAt: null },
   });
   if (existingWithUsername) {
     throw new HttpError(409, "El nombre de usuario ya est├í en uso en la plataforma");

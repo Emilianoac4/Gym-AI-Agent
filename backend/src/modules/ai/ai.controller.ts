@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { aiService } from "./ai.service";
-import { PrismaClient } from "@prisma/client";
 import { HttpError } from "../../utils/http-error";
+import { prisma } from "../../config/prisma";
 
-const prisma = new PrismaClient();
 const ROUTINE_CHECKIN_PREFIX = "ROUTINE_CHECKIN::";
 const EXERCISE_CHECKIN_PREFIX = "EXERCISE_CHECKIN::";
 const STRENGTH_LOG_PREFIX = "STRENGTH_LOG::";
