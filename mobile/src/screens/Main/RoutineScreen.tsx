@@ -167,6 +167,7 @@ function getWeeklyEntry(
 const WEEK_HEADERS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const MONTH_LABELS = ["Jan","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 const WEEK_DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+const AUTO_SAVE_DELAY_MS = 10000;
 
 function buildCalMonthMatrix(monthStart: Date): Array<Date | null> {
   const start = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1));
@@ -188,6 +189,13 @@ function estimateRoutineDuration(exerciseCount: number): number {
 function getDayKeyFromISODate(value: string): string {
   return getCostaRicaDateKey(value);
 }
+
+type LogDraft = {
+  normalizedLoadText: string;
+  repsValue: string;
+  setsValue: string;
+  submitKey: string;
+};
 
 export function RoutineScreen() {
   const { user, token } = useAuth();
@@ -263,7 +271,11 @@ export function RoutineScreen() {
     ];
   }, []);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSubmittedRef = useRef<string>("");
+  const autoCompleteAttemptRef = useRef<string | null>(null);
+  const checkinsSyncInFlightRef = useRef<Promise<void> | null>(null);
+  const [autoSaveRemainingSeconds, setAutoSaveRemainingSeconds] = useState<number | null>(null);
 
   const strengthMap = useMemo(() => {
     const map: Record<string, ExerciseStrengthProgress> = {};
@@ -290,65 +302,6 @@ export function RoutineScreen() {
     return set;
   }, [exerciseCheckins, recentStrengthLogs]);
 
-  const selectedCalendarDayKey = useMemo(() => {
-    if (!selectedCalendarDate) {
-      return null;
-    }
-
-    return normalizeDayValue(getCostaRicaWeekdayKey(selectedCalendarDate));
-  }, [selectedCalendarDate]);
-
-  const assignedExercisesForSelectedDate = useMemo(() => {
-    if (!selectedCalendarDayKey) {
-      return [] as Array<{ name: string; sets: number; reps: string; restSeconds: number }>;
-    }
-
-    if (activeTab === "ai") {
-      const routineForSelectedDate = (() => {
-        if (!selectedCalendarDate || routineHistorySnapshots.length === 0) {
-          return routine;
-        }
-
-        const snapshot = routineHistorySnapshots.find(
-          (item) => getCostaRicaDateKey(item.createdAt) <= selectedCalendarDate
-        );
-
-        return snapshot?.routine ?? routine;
-      })();
-
-      const session = routineForSelectedDate?.sessions.find(
-        (item) => normalizeDayValue(item.day) === selectedCalendarDayKey
-      );
-      if (!session) {
-        return [] as Array<{ name: string; sets: number; reps: string; restSeconds: number }>;
-      }
-
-      return session.exercises.map((exercise) => ({
-        name: exercise.name,
-        sets: exercise.sets,
-        reps: String(exercise.reps),
-        restSeconds: exercise.rest_seconds,
-      }));
-    }
-
-    const activeTrainerRoutine = trainerRoutines.find((item) => item.id === activeTab) ?? null;
-    if (!activeTrainerRoutine) {
-      return [] as Array<{ name: string; sets: number; reps: string; restSeconds: number }>;
-    }
-
-    const scheduledDays = activeTrainerRoutine.scheduledDays?.map((item) => normalizeDayValue(item)) ?? [];
-    if (scheduledDays.length > 0 && !scheduledDays.includes(selectedCalendarDayKey)) {
-      return [] as Array<{ name: string; sets: number; reps: string; restSeconds: number }>;
-    }
-
-    return activeTrainerRoutine.exercises.map((exercise) => ({
-      name: exercise.name,
-      sets: exercise.sets,
-      reps: String(exercise.reps),
-      restSeconds: exercise.restSeconds,
-    }));
-  }, [activeTab, routine, routineHistorySnapshots, selectedCalendarDate, selectedCalendarDayKey, trainerRoutines]);
-
   const dayExerciseCheckins = useMemo(() => {
     if (!selectedCalendarDate) {
       return [] as RoutineExerciseCheckin[];
@@ -367,61 +320,33 @@ export function RoutineScreen() {
     return recentStrengthLogs.filter((log) => getDayKeyFromISODate(log.performedAt) === selectedCalendarDate);
   }, [recentStrengthLogs, selectedCalendarDate]);
 
-  const assignedExerciseNameSet = useMemo(() => {
-    const assigned = new Set<string>();
-    assignedExercisesForSelectedDate.forEach((exercise) => {
-      assigned.add(normalizeExerciseValue(exercise.name));
-    });
-    return assigned;
-  }, [assignedExercisesForSelectedDate]);
-
-  const assignedDayExerciseCheckins = useMemo(() => {
-    if (assignedExerciseNameSet.size === 0) {
-      return [] as RoutineExerciseCheckin[];
-    }
-
-    return dayExerciseCheckins.filter((entry) => assignedExerciseNameSet.has(normalizeExerciseValue(entry.exerciseName)));
-  }, [assignedExerciseNameSet, dayExerciseCheckins]);
-
-  const assignedDayStrengthLogs = useMemo(() => {
-    if (assignedExerciseNameSet.size === 0) {
-      return [] as StrengthLog[];
-    }
-
-    return dayStrengthLogs.filter((entry) => assignedExerciseNameSet.has(normalizeExerciseValue(entry.exerciseName)));
-  }, [assignedExerciseNameSet, dayStrengthLogs]);
-
-  const completedExerciseNameSet = useMemo(() => {
+  const completedExerciseNamesForSelectedDate = useMemo(() => {
     const completed = new Set<string>();
 
-    assignedDayExerciseCheckins.forEach((entry) => {
+    dayExerciseCheckins.forEach((entry) => {
       completed.add(normalizeExerciseValue(entry.exerciseName));
     });
 
-    assignedDayStrengthLogs.forEach((entry) => {
+    dayStrengthLogs.forEach((entry) => {
       completed.add(normalizeExerciseValue(entry.exerciseName));
     });
 
     return completed;
-  }, [assignedDayExerciseCheckins, assignedDayStrengthLogs]);
+  }, [dayExerciseCheckins, dayStrengthLogs]);
 
-  const assignedExercisesWithStatus = useMemo(
-    () =>
-      assignedExercisesForSelectedDate.map((exercise) => ({
-        ...exercise,
-        completed: completedExerciseNameSet.has(normalizeExerciseValue(exercise.name)),
-      })),
-    [assignedExercisesForSelectedDate, completedExerciseNameSet]
+  const hasRecordedTrainingForSelectedDate = useMemo(
+    () => dayExerciseCheckins.length > 0 || dayStrengthLogs.length > 0,
+    [dayExerciseCheckins.length, dayStrengthLogs.length]
   );
 
   const completedAssignedCount = useMemo(
-    () => assignedExercisesWithStatus.filter((exercise) => exercise.completed).length,
-    [assignedExercisesWithStatus]
+    () => completedExerciseNamesForSelectedDate.size,
+    [completedExerciseNamesForSelectedDate]
   );
 
   const registeredMarksCount = useMemo(
-    () => assignedDayExerciseCheckins.length + assignedDayStrengthLogs.length,
-    [assignedDayExerciseCheckins.length, assignedDayStrengthLogs.length]
+    () => dayExerciseCheckins.length,
+    [dayExerciseCheckins.length]
   );
 
   const todayDateKey = useMemo(() => getCostaRicaDateKey(), []);
@@ -448,7 +373,57 @@ export function RoutineScreen() {
   }, [recentStrengthLogs, todayDateKey]);
 
   const todayDayKey = useMemo(
-    () => getCostaRicaWeekdayKey(),
+    () => normalizeDayValue(getCostaRicaWeekdayKey()),
+    []
+  );
+
+  const todayHeaderDateLabel = useMemo(
+    () => formatCostaRicaDate(new Date(), { day: "2-digit", month: "short" }, true),
+    []
+  );
+
+  const buildValidLogDraft = useCallback(
+    (
+      exerciseName: string,
+      unit: "kg" | "lb",
+      loadValueRaw: string,
+      repsValueRaw: string,
+      setsValueRaw: string
+    ): LogDraft | null => {
+      const normalizedLoadText = loadValueRaw.trim();
+      if (!normalizedLoadText) {
+        return null;
+      }
+
+      const numeric = Number.parseFloat(normalizedLoadText);
+      if (!Number.isFinite(numeric) || numeric <= 0) {
+        return null;
+      }
+
+      const repsValue = repsValueRaw.trim();
+      const setsValue = setsValueRaw.trim();
+      if (!repsValue || !setsValue) {
+        return null;
+      }
+
+      const repsNumeric = Number.parseInt(repsValue, 10);
+      const setsNumeric = Number.parseInt(setsValue, 10);
+      if (
+        !Number.isFinite(repsNumeric) ||
+        repsNumeric <= 0 ||
+        !Number.isFinite(setsNumeric) ||
+        setsNumeric <= 0
+      ) {
+        return null;
+      }
+
+      return {
+        normalizedLoadText,
+        repsValue,
+        setsValue,
+        submitKey: `${exerciseName}::${unit}::${numeric}::${repsNumeric}::${setsNumeric}`,
+      };
+    },
     []
   );
 
@@ -478,7 +453,7 @@ export function RoutineScreen() {
     const value = new Set<string>();
     checkins.forEach((item) => {
       if (item.weekStart === selectedWeekStart) {
-        value.add(normalize(item.sessionDay));
+        value.add(normalizeDayValue(item.sessionDay));
       }
     });
 
@@ -494,7 +469,7 @@ export function RoutineScreen() {
 
     exerciseCheckins.forEach((item) => {
       if (item.weekStart === selectedWeekStart) {
-        value.add(`${normalize(item.sessionDay)}::${normalizeExerciseValue(item.exerciseName)}`);
+        value.add(`${normalizeDayValue(item.sessionDay)}::${normalizeExerciseValue(item.exerciseName)}`);
       }
     });
 
@@ -539,7 +514,7 @@ export function RoutineScreen() {
     const value = new Set<string>();
     checkins.forEach((item) => {
       if (item.weekStart === previousWeekStart) {
-        value.add(normalize(item.sessionDay));
+        value.add(normalizeDayValue(item.sessionDay));
       }
     });
 
@@ -558,7 +533,7 @@ export function RoutineScreen() {
     const map: Record<string, string> = {};
     checkins.forEach((item) => {
       if (item.weekStart === selectedWeekStart) {
-        map[normalize(item.sessionDay)] = item.completedAt;
+        map[normalizeDayValue(item.sessionDay)] = item.completedAt;
       }
     });
     return map;
@@ -584,18 +559,20 @@ export function RoutineScreen() {
 
     const orderedSessions = [...routine.sessions].sort((a, b) => {
       const todayOffset = DAY_OFFSETS[todayDayKey] ?? 0;
-      const aOffset = DAY_OFFSETS[normalize(a.day)] ?? 0;
-      const bOffset = DAY_OFFSETS[normalize(b.day)] ?? 0;
+      const aOffset = DAY_OFFSETS[normalizeDayValue(a.day)] ?? 0;
+      const bOffset = DAY_OFFSETS[normalizeDayValue(b.day)] ?? 0;
       return ((aOffset - todayOffset + 7) % 7) - ((bOffset - todayOffset + 7) % 7);
     });
 
-    const todaySession = orderedSessions.find((session) => normalize(session.day) === todayDayKey);
+    const todaySession = orderedSessions.find(
+      (session) => normalizeDayValue(session.day) === todayDayKey
+    );
     if (todaySession) {
       return todaySession;
     }
 
     const pendingSession = orderedSessions.find(
-      (session) => !completedBySelectedWeek.has(normalize(session.day))
+      (session) => !completedBySelectedWeek.has(normalizeDayValue(session.day))
     );
 
     return pendingSession ?? orderedSessions[0] ?? null;
@@ -655,7 +632,9 @@ export function RoutineScreen() {
     }
 
     return executionPlan.exercises.filter((exercise) =>
-      completedExercisesBySelectedWeek.has(`${normalize(executionPlan.sessionDay)}::${normalizeExerciseValue(exercise.name)}`)
+      completedExercisesBySelectedWeek.has(
+        `${normalizeDayValue(executionPlan.sessionDay)}::${normalizeExerciseValue(exercise.name)}`
+      )
     ).length;
   }, [completedExercisesBySelectedWeek, executionPlan]);
 
@@ -664,7 +643,7 @@ export function RoutineScreen() {
     : 0;
 
   const executionSessionCompleted = executionPlan && activeTab === "ai"
-    ? completedBySelectedWeek.has(normalize(executionPlan.sessionDay))
+    ? completedBySelectedWeek.has(normalizeDayValue(executionPlan.sessionDay))
     : false;
 
   const loadLatestRoutine = async () => {
@@ -682,25 +661,36 @@ export function RoutineScreen() {
     }
   };
 
-  const loadCheckins = async () => {
+  const loadCheckins = useCallback(async () => {
     if (!user || !token) return;
-    setSyncingCheckins(true);
-    try {
-      const data = await api.getRoutineCheckins(user.id, token, 84);
-      setCheckins(data.checkins);
-      setExerciseCheckins(data.exerciseCheckins || []);
-      setLocalCompleted(new Set());
-      setLocalCompletedExercises(new Set());
-    } catch (error) {
-      setCheckins([]);
-      setExerciseCheckins([]);
-      setLocalCompleted(new Set());
-      setLocalCompletedExercises(new Set());
-      throw error;
-    } finally {
-      setSyncingCheckins(false);
+
+    if (checkinsSyncInFlightRef.current) {
+      return checkinsSyncInFlightRef.current;
     }
-  };
+
+    const syncPromise = (async () => {
+      setSyncingCheckins(true);
+      try {
+        const data = await api.getRoutineCheckins(user.id, token, 84);
+        setCheckins(data.checkins);
+        setExerciseCheckins(data.exerciseCheckins || []);
+        setLocalCompleted(new Set());
+        setLocalCompletedExercises(new Set());
+      } catch (error) {
+        setCheckins([]);
+        setExerciseCheckins([]);
+        setLocalCompleted(new Set());
+        setLocalCompletedExercises(new Set());
+        throw error;
+      } finally {
+        setSyncingCheckins(false);
+        checkinsSyncInFlightRef.current = null;
+      }
+    })();
+
+    checkinsSyncInFlightRef.current = syncPromise;
+    return syncPromise;
+  }, [token, user]);
 
   const loadStrengthProgress = async () => {
     if (!user || !token) return;
@@ -917,12 +907,13 @@ export function RoutineScreen() {
 
   const onMarkCompleted = async (sessionDay: string) => {
     if (!user || !token) return;
-    const normalizedDay = normalize(sessionDay);
+    const normalizedDay = normalizeDayValue(sessionDay);
     setLocalCompleted((prev) => new Set([...prev, normalizedDay]));
     setSavingSessionDay(sessionDay);
     try {
       await api.createRoutineCheckin(user.id, token, { sessionDay });
       await loadCheckins();
+      return true;
     } catch (error) {
       setLocalCompleted((prev) => {
         const next = new Set(prev);
@@ -933,6 +924,7 @@ export function RoutineScreen() {
         "No se pudo registrar",
         error instanceof Error ? error.message : "Intenta de nuevo"
       );
+      return false;
     } finally {
       setSavingSessionDay(null);
     }
@@ -961,10 +953,19 @@ export function RoutineScreen() {
     setLogReps(defaultReps);
     setLogSets(defaultSets);
 
-    if (defaultKg) {
+    if (defaultKg && defaultReps && defaultSets) {
       const numeric = Number.parseFloat(defaultKg);
-      if (Number.isFinite(numeric) && numeric > 0) {
-        lastSubmittedRef.current = `${exerciseName}::kg::${numeric}`;
+      const repsNumeric = Number.parseInt(defaultReps, 10);
+      const setsNumeric = Number.parseInt(defaultSets, 10);
+      if (
+        Number.isFinite(numeric) &&
+        numeric > 0 &&
+        Number.isFinite(repsNumeric) &&
+        repsNumeric > 0 &&
+        Number.isFinite(setsNumeric) &&
+        setsNumeric > 0
+      ) {
+        lastSubmittedRef.current = `${exerciseName}::kg::${numeric}::${repsNumeric}::${setsNumeric}`;
       }
     }
 
@@ -975,18 +976,22 @@ export function RoutineScreen() {
     sessionDay: string,
     exerciseName: string,
     loadText: string,
-    unit: "kg" | "lb"
+    unit: "kg" | "lb",
+    repsText: string,
+    setsText: string,
+    submitKey?: string
   ) => {
     if (!user || !token) return;
+    setAutoSaveRemainingSeconds(null);
     const loadValue = Number.parseFloat(loadText);
     if (!Number.isFinite(loadValue) || loadValue <= 0) {
       return;
     }
 
-    const reps = logReps.trim() ? Number.parseInt(logReps.trim(), 10) : undefined;
-    const sets = logSets.trim() ? Number.parseInt(logSets.trim(), 10) : undefined;
+    const reps = repsText.trim() ? Number.parseInt(repsText.trim(), 10) : undefined;
+    const sets = setsText.trim() ? Number.parseInt(setsText.trim(), 10) : undefined;
 
-    const optimisticExerciseKey = `${normalize(sessionDay)}::${normalizeExerciseValue(exerciseName)}`;
+    const optimisticExerciseKey = `${normalizeDayValue(sessionDay)}::${normalizeExerciseValue(exerciseName)}`;
     setLocalCompletedExercises((prev) => new Set([...prev, optimisticExerciseKey]));
 
     setSavingLog(true);
@@ -998,6 +1003,9 @@ export function RoutineScreen() {
         reps,
         sets,
       });
+      if (submitKey) {
+        lastSubmittedRef.current = submitKey;
+      }
       setLastSavedExerciseKey(`${normalizeExerciseValue(exerciseName)}::${unit}::${loadValue}`);
       await loadStrengthProgress();
     } catch (error) {
@@ -1013,6 +1021,49 @@ export function RoutineScreen() {
     } finally {
       setSavingLog(false);
     }
+  };
+
+  const onSaveExerciseLogNow = async () => {
+    if (!activeLog) {
+      return;
+    }
+
+    const draft = buildValidLogDraft(
+      activeLog.exerciseName,
+      logUnit,
+      logKg,
+      logReps,
+      logSets
+    );
+
+    if (!draft) {
+      Alert.alert(
+        "Faltan datos",
+        "Completa peso, repeticiones y series con valores validos antes de guardar."
+      );
+      return;
+    }
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+
+    if (autoSaveCountdownIntervalRef.current) {
+      clearInterval(autoSaveCountdownIntervalRef.current);
+      autoSaveCountdownIntervalRef.current = null;
+    }
+    setAutoSaveRemainingSeconds(null);
+
+    await onSaveExerciseLog(
+      activeLog.sessionDay,
+      activeLog.exerciseName,
+      draft.normalizedLoadText,
+      logUnit,
+      draft.repsValue,
+      draft.setsValue,
+      draft.submitKey
+    );
   };
 
   const onReplaceExercise = async (sessionDay: string, exerciseName: string) => {
@@ -1097,7 +1148,7 @@ export function RoutineScreen() {
   const onMarkExerciseCompleted = async (sessionDay: string, exerciseName: string) => {
     if (!user || !token) return;
 
-    const exerciseKey = `${normalize(sessionDay)}::${normalizeExerciseValue(exerciseName)}`;
+    const exerciseKey = `${normalizeDayValue(sessionDay)}::${normalizeExerciseValue(exerciseName)}`;
     if (completedExercisesBySelectedWeek.has(exerciseKey)) {
       return;
     }
@@ -1169,6 +1220,15 @@ export function RoutineScreen() {
 
   useEffect(() => {
     if (!activeLog) {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      if (autoSaveCountdownIntervalRef.current) {
+        clearInterval(autoSaveCountdownIntervalRef.current);
+        autoSaveCountdownIntervalRef.current = null;
+      }
+      setAutoSaveRemainingSeconds(null);
       return;
     }
 
@@ -1177,54 +1237,118 @@ export function RoutineScreen() {
       autoSaveTimerRef.current = null;
     }
 
-    const value = logKg.trim();
-    if (!value) {
+    if (autoSaveCountdownIntervalRef.current) {
+      clearInterval(autoSaveCountdownIntervalRef.current);
+      autoSaveCountdownIntervalRef.current = null;
+    }
+
+    const draft = buildValidLogDraft(
+      activeLog.exerciseName,
+      logUnit,
+      logKg,
+      logReps,
+      logSets
+    );
+    if (!draft) {
+      setAutoSaveRemainingSeconds(null);
       return;
     }
 
-    const numeric = Number.parseFloat(value);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      return;
-    }
-
-    const submitKey = `${activeLog.exerciseName}::${logUnit}::${numeric}`;
+    const submitKey = draft.submitKey;
     if (lastSubmittedRef.current === submitKey) {
+      setAutoSaveRemainingSeconds(null);
       return;
     }
+
+    const deadline = Date.now() + AUTO_SAVE_DELAY_MS;
+    setAutoSaveRemainingSeconds(Math.ceil(AUTO_SAVE_DELAY_MS / 1000));
+
+    autoSaveCountdownIntervalRef.current = setInterval(() => {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        if (autoSaveCountdownIntervalRef.current) {
+          clearInterval(autoSaveCountdownIntervalRef.current);
+          autoSaveCountdownIntervalRef.current = null;
+        }
+        setAutoSaveRemainingSeconds(0);
+        return;
+      }
+
+      setAutoSaveRemainingSeconds(Math.ceil(remainingMs / 1000));
+    }, 250);
 
     autoSaveTimerRef.current = setTimeout(() => {
-      lastSubmittedRef.current = submitKey;
-      void onSaveExerciseLog(activeLog.sessionDay, activeLog.exerciseName, value, logUnit);
-    }, 900);
+      if (autoSaveCountdownIntervalRef.current) {
+        clearInterval(autoSaveCountdownIntervalRef.current);
+        autoSaveCountdownIntervalRef.current = null;
+      }
+      setAutoSaveRemainingSeconds(null);
+      void onSaveExerciseLog(
+        activeLog.sessionDay,
+        activeLog.exerciseName,
+        draft.normalizedLoadText,
+        logUnit,
+        draft.repsValue,
+        draft.setsValue,
+        submitKey
+      );
+    }, AUTO_SAVE_DELAY_MS);
 
     return () => {
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
         autoSaveTimerRef.current = null;
       }
+      if (autoSaveCountdownIntervalRef.current) {
+        clearInterval(autoSaveCountdownIntervalRef.current);
+        autoSaveCountdownIntervalRef.current = null;
+      }
+      setAutoSaveRemainingSeconds(null);
     };
-  }, [activeLog, logKg, logUnit, logReps, logSets]);
+  }, [activeLog, buildValidLogDraft, logKg, logUnit, logReps, logSets]);
 
   useEffect(() => {
     if (!executionPlan || activeTab !== "ai") {
+      autoCompleteAttemptRef.current = null;
       return;
     }
 
-    if (executionSessionCompleted || savingSessionDay === executionPlan.sessionDay) {
+    const normalizedSessionDay = normalizeDayValue(executionPlan.sessionDay);
+    const attemptKey = `${selectedWeekStart}::${normalizedSessionDay}`;
+
+    if (executionSessionCompleted) {
       return;
     }
 
-    if (executionPlan.exercises.length === 0 || executionCompletedCount !== executionPlan.exercises.length) {
+    if (
+      syncingCheckins ||
+      savingSessionDay === executionPlan.sessionDay ||
+      executionPlan.exercises.length === 0 ||
+      executionCompletedCount !== executionPlan.exercises.length
+    ) {
       return;
     }
 
-    void onMarkCompleted(executionPlan.sessionDay);
+    if (autoCompleteAttemptRef.current === attemptKey) {
+      return;
+    }
+
+    autoCompleteAttemptRef.current = attemptKey;
+
+    void (async () => {
+      const success = await onMarkCompleted(executionPlan.sessionDay);
+      if (!success && autoCompleteAttemptRef.current === attemptKey) {
+        autoCompleteAttemptRef.current = null;
+      }
+    })();
   }, [
     activeTab,
     executionCompletedCount,
     executionPlan,
     executionSessionCompleted,
+    selectedWeekStart,
     savingSessionDay,
+    syncingCheckins,
   ]);
 
   const toggleModule = (
@@ -1463,13 +1587,11 @@ export function RoutineScreen() {
               </TouchableOpacity>
             </View>
 
-            {dayDetailTab === "summary" ? (
+            {!hasRecordedTrainingForSelectedDate ? (
+              <Text style={styles.dayMarksEmpty}>Sin registros de entrenamiento para esta fecha.</Text>
+            ) : dayDetailTab === "summary" ? (
               <>
                 <View style={styles.dayResumeGrid}>
-                  <View style={styles.dayResumeCard}>
-                    <Text style={styles.dayResumeLabel}>Ejercicios asignados</Text>
-                    <Text style={styles.dayResumeValue}>{assignedExercisesWithStatus.length}</Text>
-                  </View>
                   <View style={styles.dayResumeCard}>
                     <Text style={styles.dayResumeLabel}>Ejercicios completados</Text>
                     <Text style={styles.dayResumeValue}>{completedAssignedCount}</Text>
@@ -1479,38 +1601,17 @@ export function RoutineScreen() {
                     <Text style={styles.dayResumeValue}>{registeredMarksCount}</Text>
                   </View>
                 </View>
-
-                {assignedExercisesWithStatus.length === 0 ? (
-                  <Text style={styles.dayMarksEmpty}>No hay ejercicios asignados para este día en el plan activo.</Text>
-                ) : (
-                  <View style={styles.dayMarksSection}>
-                    <Text style={styles.dayMarksSectionTitle}>Ejercicios asignados</Text>
-                    {assignedExercisesWithStatus.map((exercise) => (
-                      <View key={`assigned-${exercise.name}`} style={styles.dayExerciseRow}>
-                        <View style={styles.dayExerciseCopy}>
-                          <Text style={styles.dayExerciseName}>{exercise.name}</Text>
-                          <Text style={styles.dayExerciseMeta}>
-                            {exercise.sets} series · {exercise.reps} reps · {exercise.restSeconds}s
-                          </Text>
-                        </View>
-                        <Text style={[styles.dayExerciseStatus, exercise.completed ? styles.dayExerciseDone : styles.dayExercisePending]}>
-                          {exercise.completed ? "Completado" : "Pendiente"}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
               </>
             ) : (
               <>
-                {assignedDayExerciseCheckins.length === 0 && assignedDayStrengthLogs.length === 0 ? (
+                {dayExerciseCheckins.length === 0 && dayStrengthLogs.length === 0 ? (
                   <Text style={styles.dayMarksEmpty}>No hay marcas completadas para esta fecha.</Text>
                 ) : (
                   <>
-                    {assignedDayExerciseCheckins.length > 0 ? (
+                    {dayExerciseCheckins.length > 0 ? (
                       <View style={styles.dayMarksSection}>
                         <Text style={styles.dayMarksSectionTitle}>Check-ins de ejercicios</Text>
-                        {assignedDayExerciseCheckins.map((entry) => (
+                        {dayExerciseCheckins.map((entry) => (
                           <Text key={entry.id} style={styles.dayMarksItem}>
                             • {entry.exerciseName} ({translateDay(entry.sessionDay)})
                           </Text>
@@ -1518,10 +1619,10 @@ export function RoutineScreen() {
                       </View>
                     ) : null}
 
-                    {assignedDayStrengthLogs.length > 0 ? (
+                    {dayStrengthLogs.length > 0 ? (
                       <View style={styles.dayMarksSection}>
                         <Text style={styles.dayMarksSectionTitle}>Marcas de carga</Text>
-                        {assignedDayStrengthLogs.map((log) => (
+                        {dayStrengthLogs.map((log) => (
                           <Text key={log.id} style={styles.dayMarksItem}>
                             • {log.exerciseName}: {log.loadKg.toFixed(1)} kg{log.reps ? ` · ${log.reps} reps` : ""}{log.sets ? ` · ${log.sets} series` : ""}
                           </Text>
@@ -1545,6 +1646,11 @@ export function RoutineScreen() {
           title="Rutina de hoy"
           subtitle={executionPlan?.subtitle ?? "Plan pendiente · 0 min"}
           auxiliary={executionPlan?.sourceLabel ?? "Genera tu rutina para comenzar"}
+          trailing={
+            <View style={styles.todayDateChip}>
+              <Text style={styles.todayDateChipText}>{todayHeaderDateLabel}</Text>
+            </View>
+          }
         />
 
         {visibleModules.weekSelector ? (
@@ -1690,7 +1796,7 @@ export function RoutineScreen() {
             {loadingRoutine ? (
               <ActivityIndicator color={ds.colors.textPrimary} size="small" />
             ) : (
-              <Text style={styles.refreshButtonText}>{routine ? "Actualizar plan" : "Generar rutina"}</Text>
+              <Text style={styles.refreshButtonText}>{routine ? "Generar nueva rutina" : "Generar rutina"}</Text>
             )}
           </TouchableOpacity>
         ) : null}
@@ -1718,7 +1824,7 @@ export function RoutineScreen() {
         ) : (
           executionPlan.exercises.map((exercise) => {
             const exerciseKey = normalizeExerciseValue(exercise.name);
-            const sessionExerciseKey = `${normalize(executionPlan.sessionDay)}::${exerciseKey}`;
+            const sessionExerciseKey = `${normalizeDayValue(executionPlan.sessionDay)}::${exerciseKey}`;
             const actionKey = `${executionPlan.sessionDay}::${exercise.name}`;
             const progressPanelKey = `${executionPlan.sessionDay}::${exercise.name}::progress`;
             const progress = strengthMap[exerciseKey];
@@ -1734,6 +1840,19 @@ export function RoutineScreen() {
               activeLog?.sessionDay === executionPlan.sessionDay && activeLog.exerciseName === exerciseKey;
             const isExerciseDone = completedExercisesBySelectedWeek.has(sessionExerciseKey);
             const hasTodayLogForExercise = Boolean(todayStrengthLogBySessionExercise[sessionExerciseKey]);
+            const currentDraft = isLogOpen
+              ? buildValidLogDraft(exerciseKey, logUnit, logKg, logReps, logSets)
+              : null;
+            const canSaveNow = Boolean(currentDraft) && !savingLog;
+            const logStateLabel = currentDraft
+              ? currentDraft.submitKey === lastSubmittedRef.current
+                ? "Registro al dia."
+                : `Pendiente de guardar${
+                    typeof autoSaveRemainingSeconds === "number"
+                      ? ` (${Math.max(autoSaveRemainingSeconds, 0)}s)`
+                      : ""
+                  }...`
+              : "Editando... completa peso, reps y series.";
             const status = isExerciseDone ? "completed" : isLogOpen ? "in_progress" : "pending";
 
             const progressNode = (
@@ -1814,6 +1933,9 @@ export function RoutineScreen() {
                   if (vals.reps !== undefined) setLogReps(vals.reps);
                   if (vals.sets !== undefined) setLogSets(vals.sets);
                 }}
+                onSaveNow={onSaveExerciseLogNow}
+                canSaveNow={canSaveNow}
+                logStateLabel={isLogOpen ? logStateLabel : undefined}
                 allowEditWhenCompleted={hasTodayLogForExercise}
                 hasProgress={!!progress}
                 progressOpen={isProgressOpen}
@@ -1944,6 +2066,22 @@ const styles = StyleSheet.create({
   },
   executionStack: {
     gap: ds.spacing.x3,
+  },
+  todayDateChip: {
+    alignSelf: "flex-start",
+    borderRadius: ds.radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: ds.colors.surface,
+    borderWidth: 1,
+    borderColor: ds.colors.borderSubtle,
+  },
+  todayDateChipText: {
+    color: ds.colors.textSecondary,
+    fontSize: ds.typography.bodySM,
+    fontWeight: "600",
+    fontFamily: ds.typography.fontFamily,
+    textTransform: "capitalize",
   },
   topHeaderRow: {
     flexDirection: "row",
@@ -2882,42 +3020,6 @@ const styles = StyleSheet.create({
     fontSize: ds.typography.bodySM,
     fontFamily: ds.typography.fontFamily,
     lineHeight: 19,
-  },
-  dayExerciseRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: ds.spacing.x2,
-    backgroundColor: ds.colors.surface,
-    borderRadius: ds.radius.sm,
-    paddingHorizontal: ds.spacing.x2,
-    paddingVertical: 10,
-  },
-  dayExerciseCopy: {
-    flex: 1,
-  },
-  dayExerciseName: {
-    color: ds.colors.textPrimary,
-    fontSize: ds.typography.bodyMD,
-    fontWeight: "600",
-    fontFamily: ds.typography.fontFamily,
-  },
-  dayExerciseMeta: {
-    marginTop: 2,
-    color: ds.colors.textSecondary,
-    fontSize: ds.typography.bodySM,
-    fontFamily: ds.typography.fontFamily,
-  },
-  dayExerciseStatus: {
-    fontSize: ds.typography.bodySM,
-    fontWeight: "600",
-    fontFamily: ds.typography.fontFamily,
-  },
-  dayExerciseDone: {
-    color: ds.colors.success,
-  },
-  dayExercisePending: {
-    color: ds.colors.textSecondary,
   },
   dayMarksCloseButton: {
     marginTop: ds.spacing.x1,

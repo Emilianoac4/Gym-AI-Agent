@@ -4,6 +4,7 @@ import { validate } from "../../middleware/validate.middleware";
 import {
   exportMembershipReport,
   getActiveTrainers,
+  getAdminDashboardSummary,
   getChurnRisk,
   getGymSettings,
   getKpi,
@@ -15,6 +16,7 @@ import {
   updateMyTrainerPresenceStatus,
 } from "./operations.controller";
 import {
+  adminDashboardSummaryQuerySchema,
   exportMembershipReportSchema,
   gymCurrencySchema,
   membershipReportQuerySchema,
@@ -101,6 +103,13 @@ operationsRouter.get(
   "/churn-risk",
   authenticate,
   getChurnRisk,
+);
+
+operationsRouter.get(
+  "/admin-dashboard-summary",
+  authenticate,
+  validate(adminDashboardSummaryQuerySchema),
+  getAdminDashboardSummary,
 );
 
 export { operationsRouter };

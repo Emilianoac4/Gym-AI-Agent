@@ -478,6 +478,40 @@ export interface ChurnRiskEntry {
   daysSince: number | null;
 }
 
+/* ─── Admin Dashboard Summary ────────────────────────────── */
+
+export type DashboardTrend = {
+  direction: "up" | "down" | "stable";
+  previousValue: number;
+};
+
+type KpiCard<T> = T & { status: "ok" | "error"; errorMessage?: string };
+
+export interface AdminDashboardSummary {
+  v: 1;
+  generatedAt: string;
+  timezone: "America/Costa_Rica";
+  cards: {
+    trainersActiveNow: KpiCard<{ value: number }>;
+    usersActiveToday: KpiCard<{ value: number; trend: DashboardTrend }>;
+    subscriptionsActive: KpiCard<{ value: number; trend: DashboardTrend }>;
+    subscriptionsExpired: KpiCard<{
+      count: number;
+      top10: Array<{ userId: string; fullName: string; membershipEndAt: string }>;
+    }>;
+    assistancePending: KpiCard<{
+      total: number;
+      byStatus: { CREATED: number; ASSIGNED: number; IN_PROGRESS: number };
+    }>;
+    unreadThreadsForAdmin: KpiCard<{ value: number }>;
+    renewalsToday: KpiCard<{ count: number; amount: number; trend: DashboardTrend; currency: string }>;
+    incomesToday: KpiCard<{ value: number; trend: DashboardTrend; currency: string }>;
+    churnRisk: KpiCard<{ count: number; trend: DashboardTrend }>;
+  };
+  alerts: Array<{ type: string; message: string; severity: "info" | "warning" | "critical" }>;
+  errors: Record<string, string>;
+}
+
 /* ─── Assistance Requests ────────────────────────────────── */
 
 export type AssistanceRequestStatus =

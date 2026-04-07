@@ -9,6 +9,7 @@ import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
 import { getCostaRicaWeekStart, getCostaRicaWeekdayKey } from "../../utils/costaRicaTime";
 import {
+  AdminDashboardSummary,
   EmergencyTicket,
   GymAvailabilityDay,
   GeneralNotification,
@@ -114,6 +115,8 @@ export function HomeScreen() {
   const [emergencyTickets, setEmergencyTickets] = useState<EmergencyTicket[]>([]);
   const [pendingAssistanceCount, setPendingAssistanceCount] = useState(0);
   const [unassignedAssistanceCount, setUnassignedAssistanceCount] = useState(0);
+  const [dashboardSummary, setDashboardSummary] = useState<AdminDashboardSummary | null>(null);
+  const [dashboardLastUpdated, setDashboardLastUpdated] = useState<Date | null>(null);
   const [ticketModalVisible, setTicketModalVisible] = useState(false);
   const [ticketCategory, setTicketCategory] = useState<"harassment" | "injury" | "accident" | "incident">("incident");
   const [ticketDescription, setTicketDescription] = useState("");
@@ -132,13 +135,37 @@ export function HomeScreen() {
         const ticketsPromise = api.listEmergencyTickets(token).catch(() => ({ tickets: [] as EmergencyTicket[] }));
 
         if (isAdmin) {
-          const [availabilityData, threadsData, presenceData, ticketsData, pendingRequestsData, activeTrainersData] = await Promise.all([
+          // ── Primary: unified dashboard summary ──────────────────────────
+          const [summaryResult, availabilityData, ticketsData, activeTrainersData] = await Promise.all([
+            api.getAdminDashboardSummary(token).catch(() => null),
             availabilityPromise,
-            threadsPromise,
-            api.getTrainerPresenceSummary(token, 1).catch(() => ({ days: [] as any[] })),
             ticketsPromise,
-            api.listAssistanceRequests(token).catch(() => ({ requests: [] as any[], total: 0 })),
             api.getActiveTrainers(token).catch(() => ({ trainers: [] as { id: string; fullName: string; avatarUrl: string | null }[] })),
+          ]);
+
+          if (summaryResult) {
+            const now = new Date();
+            if (!cancelled) {
+              setDashboardSummary(summaryResult.summary);
+              setDashboardLastUpdated(now);
+              setTodayAvailability(availabilityData?.availability ?? null);
+              setUnreadThreads([]);
+              setActiveTrainers([]);
+              setActiveTrainerObjects(activeTrainersData.trainers);
+              setEmergencyTickets(ticketsData.tickets);
+              setUnassignedAssistanceCount(
+                summaryResult.summary.cards.assistancePending.status === "ok"
+                  ? summaryResult.summary.cards.assistancePending.byStatus.CREATED
+                  : 0,
+              );
+            }
+            return;
+          }
+
+          // ── Fallback: original parallel calls ───────────────────────────
+          const [presenceData, pendingRequestsData] = await Promise.all([
+            api.getTrainerPresenceSummary(token, 1).catch(() => ({ days: [] as any[] })),
+            api.listAssistanceRequests(token).catch(() => ({ requests: [] as any[], total: 0 })),
           ]);
 
           const todayPresence = presenceData.days[0];
@@ -149,12 +176,14 @@ export function HomeScreen() {
             : [];
 
           if (!cancelled) {
+            setDashboardSummary(null);
+            setDashboardLastUpdated(null);
             setSummary(null);
             setStrengthSummary(null);
             setRoutine(null);
             setCheckins([]);
             setTodayAvailability(availabilityData?.availability ?? null);
-            setUnreadThreads(threadsData.threads.filter((thread) => thread.unreadCount > 0));
+            setUnreadThreads(ticketsData.tickets.length > 0 ? [] : []);
             setActiveTrainers(activeTrainerNames);
             setActiveTrainerObjects(activeTrainersData.trainers);
             setEmergencyTickets(ticketsData.tickets);
@@ -236,6 +265,11 @@ export function HomeScreen() {
       };
     }, [isAdmin, token, user, currentWeekStart])
   );
+
+  const effectiveUnreadCount =
+    isAdmin && dashboardSummary && dashboardSummary.cards.unreadThreadsForAdmin.status === "ok"
+      ? dashboardSummary.cards.unreadThreadsForAdmin.value
+      : unreadThreads.length;
 
   const completedThisWeek = useMemo(() => {
     const value = new Set<string>();
@@ -410,11 +444,11 @@ export function HomeScreen() {
           </Text>
         </View>
 
-        {(unreadThreads.length > 0 || urgentOpenTickets.length > 0 || (isAdmin && unassignedAssistanceCount > 0)) ? (
+        {(effectiveUnreadCount > 0 || urgentOpenTickets.length > 0 || (isAdmin && unassignedAssistanceCount > 0)) ? (
           <View style={styles.priorityCard}>
             <Text style={styles.priorityEyebrow}>Prioridad</Text>
-            {unreadThreads.length > 0 ? (
-              <Text style={styles.priorityTitle}>Tienes {unreadThreads.length} conversación(es) sin leer</Text>
+            {effectiveUnreadCount > 0 ? (
+              <Text style={styles.priorityTitle}>Tienes {effectiveUnreadCount} conversación(es) sin leer</Text>
             ) : null}
             {urgentOpenTickets.length > 0 ? (
               <Text style={styles.priorityTitle}>Hay {urgentOpenTickets.length} ticket(s) de emergencia abiertos</Text>
@@ -428,7 +462,7 @@ export function HomeScreen() {
               Atiende primero los mensajes y emergencias para mantener la operacion segura.
             </Text>
             <View style={styles.inlineActionsRow}>
-              {unreadThreads.length > 0 ? (
+              {effectiveUnreadCount > 0 ? (
                 <Pressable
                   style={styles.priorityButton}
                   onPress={() => navigation.navigate(user?.role === "member" ? "MyMessages" : "Mensajes")}
@@ -508,7 +542,12 @@ export function HomeScreen() {
           <>
             <View style={styles.sectionCard}>
               <Text style={styles.sectionEyebrow}>Entrenadores activos</Text>
-              <Text style={styles.sectionTitle}>En este momento</Text>
+              <Text style={styles.sectionTitle}>
+                En este momento
+                {dashboardSummary?.cards.trainersActiveNow.status === "ok"
+                  ? ` · ${dashboardSummary.cards.trainersActiveNow.value}`
+                  : ""}
+              </Text>
               {activeTrainerObjects.length === 0 ? (
                 <Text style={styles.featureDetail}>No hay entrenadores activos ahora.</Text>
               ) : (
@@ -530,22 +569,157 @@ export function HomeScreen() {
                   })}
                 </View>
               )}
+            </View>
+
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionEyebrow}>Indicadores del gimnasio</Text>
+              <Text style={styles.sectionTitle}>Resumen operativo</Text>
+              {dashboardLastUpdated ? (
+                <Text style={styles.featureDetail}>
+                  Actualizado a las{" "}
+                  {dashboardLastUpdated.toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" })}
+                </Text>
+              ) : null}
+
+              {dashboardSummary ? (
+                <>
+                  {/* Alerts banner */}
+                  {dashboardSummary.alerts.filter((a) => a.severity !== "info").map((alert) => (
+                    <View key={alert.type} style={styles.dashAlertBanner}>
+                      <Text style={styles.dashAlertText}>{alert.message}</Text>
+                    </View>
+                  ))}
+
+                  {/* KPI two-column grid */}
+                  <View style={styles.twoColumnRow}>
+                    <View style={styles.miniCardWarm}>
+                      <Text style={styles.miniLabel}>Miembros activos hoy</Text>
+                      <Text style={styles.miniValue}>
+                        {dashboardSummary.cards.usersActiveToday.status === "ok"
+                          ? dashboardSummary.cards.usersActiveToday.value
+                          : "—"}
+                      </Text>
+                      {dashboardSummary.cards.usersActiveToday.status === "ok" ? (
+                        <Text style={styles.miniLabel}>
+                          {dashboardSummary.cards.usersActiveToday.trend.direction === "up" ? "▲" :
+                           dashboardSummary.cards.usersActiveToday.trend.direction === "down" ? "▼" : "="}{" "}
+                          vs ayer ({dashboardSummary.cards.usersActiveToday.trend.previousValue})
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.miniCardDark}>
+                      <Text style={styles.miniLabelDark}>Suscripciones activas</Text>
+                      <Text style={styles.miniValueDark}>
+                        {dashboardSummary.cards.subscriptionsActive.status === "ok"
+                          ? dashboardSummary.cards.subscriptionsActive.value
+                          : "—"}
+                      </Text>
+                      {dashboardSummary.cards.subscriptionsActive.status === "ok" ? (
+                        <Text style={styles.miniLabelDark}>
+                          {dashboardSummary.cards.subscriptionsActive.trend.direction === "up" ? "▲" :
+                           dashboardSummary.cards.subscriptionsActive.trend.direction === "down" ? "▼" : "="}{" "}
+                          vs ayer ({dashboardSummary.cards.subscriptionsActive.trend.previousValue})
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <View style={styles.twoColumnRow}>
+                    <View style={styles.miniCardDark}>
+                      <Text style={styles.miniLabelDark}>Renovaciones hoy</Text>
+                      <Text style={styles.miniValueDark}>
+                        {dashboardSummary.cards.renewalsToday.status === "ok"
+                          ? dashboardSummary.cards.renewalsToday.count
+                          : "—"}
+                      </Text>
+                      {dashboardSummary.cards.renewalsToday.status === "ok" ? (
+                        <Text style={styles.miniLabelDark}>
+                          {dashboardSummary.cards.renewalsToday.currency}{" "}
+                          {dashboardSummary.cards.renewalsToday.amount.toFixed(2)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.miniCardWarm}>
+                      <Text style={styles.miniLabel}>Ingresos hoy</Text>
+                      <Text style={styles.miniValue}>
+                        {dashboardSummary.cards.incomesToday.status === "ok"
+                          ? `${dashboardSummary.cards.incomesToday.currency} ${dashboardSummary.cards.incomesToday.value.toFixed(2)}`
+                          : "—"}
+                      </Text>
+                      {dashboardSummary.cards.incomesToday.status === "ok" ? (
+                        <Text style={styles.miniLabel}>
+                          {dashboardSummary.cards.incomesToday.trend.direction === "up" ? "▲" :
+                           dashboardSummary.cards.incomesToday.trend.direction === "down" ? "▼" : "="}{" "}
+                          vs ayer
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <View style={styles.twoColumnRow}>
+                    <View style={styles.miniCardWarm}>
+                      <Text style={styles.miniLabel}>Membresías vencidas</Text>
+                      <Text style={styles.miniValue}>
+                        {dashboardSummary.cards.subscriptionsExpired.status === "ok"
+                          ? dashboardSummary.cards.subscriptionsExpired.count
+                          : "—"}
+                      </Text>
+                    </View>
+                    <View style={styles.miniCardDark}>
+                      <Text style={styles.miniLabelDark}>Riesgo abandono</Text>
+                      <Text style={styles.miniValueDark}>
+                        {dashboardSummary.cards.churnRisk.status === "ok"
+                          ? dashboardSummary.cards.churnRisk.count
+                          : "—"}
+                      </Text>
+                      {dashboardSummary.cards.churnRisk.status === "ok" ? (
+                        <Text style={styles.miniLabelDark}>
+                          {dashboardSummary.cards.churnRisk.trend.direction === "up" ? "▲" :
+                           dashboardSummary.cards.churnRisk.trend.direction === "down" ? "▼" : "="}{" "}
+                          vs 30 días previos
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <View style={styles.twoColumnRow}>
+                    <View style={styles.miniCardWarm}>
+                      <Text style={styles.miniLabel}>Asistencia pendiente</Text>
+                      <Text style={styles.miniValue}>
+                        {dashboardSummary.cards.assistancePending.status === "ok"
+                          ? dashboardSummary.cards.assistancePending.total
+                          : "—"}
+                      </Text>
+                      {dashboardSummary.cards.assistancePending.status === "ok" ? (
+                        <Text style={styles.miniLabel}>
+                          {dashboardSummary.cards.assistancePending.byStatus.CREATED} sin asignar
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.miniCardDark}>
+                      <Text style={styles.miniLabelDark}>Mensajes sin leer</Text>
+                      <Text style={styles.miniValueDark}>
+                        {dashboardSummary.cards.unreadThreadsForAdmin.status === "ok"
+                          ? dashboardSummary.cards.unreadThreadsForAdmin.value
+                          : "—"}
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                adminHighlights.map((item) => (
+                  <View key={item} style={styles.featureItem}>
+                    <View style={styles.featureDot} />
+                    <Text style={styles.featureTitle}>{item}</Text>
+                  </View>
+                ))
+              )}
+
               <View style={styles.inlineActionsRow}>
                 <Pressable style={styles.inlineActionPrimary} onPress={() => navigation.navigate("Perfil")}>
                   <Text style={styles.inlineActionPrimaryText}>Ver reporte operativo</Text>
                 </Pressable>
               </View>
-            </View>
-
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionEyebrow}>Vision del administrador</Text>
-              <Text style={styles.sectionTitle}>Indicadores a validar</Text>
-              {adminHighlights.map((item) => (
-                <View key={item} style={styles.featureItem}>
-                  <View style={styles.featureDot} />
-                  <Text style={styles.featureTitle}>{item}</Text>
-                </View>
-              ))}
             </View>
           </>
         ) : (
@@ -961,6 +1135,20 @@ const styles = StyleSheet.create({
   actions: {
     marginTop: 24,
     marginBottom: 12,
+  },
+  dashAlertBanner: {
+    marginTop: 10,
+    backgroundColor: "#FFF1EA",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#F7C4AA",
+  },
+  dashAlertText: {
+    color: "#7A3B1E",
+    fontSize: 13,
+    fontWeight: "700",
   },
   modalBackdrop: {
     flex: 1,

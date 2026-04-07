@@ -8,7 +8,8 @@ const ROUTINE_CHECKIN_PREFIX = "ROUTINE_CHECKIN::";
 const EXERCISE_CHECKIN_PREFIX = "EXERCISE_CHECKIN::";
 const STRENGTH_LOG_PREFIX = "STRENGTH_LOG::";
 
-const UTC_DAY_KEYS = [
+const COSTA_RICA_TIME_ZONE = "America/Costa_Rica";
+const DAY_KEYS = [
   "sunday",
   "monday",
   "tuesday",
@@ -45,22 +46,53 @@ type GeneratedRoutine = {
 const LB_TO_KG = 0.45359237;
 
 function getWeekStartIso(date: Date): string {
-  const clone = new Date(date);
-  clone.setUTCHours(0, 0, 0, 0);
-  const day = clone.getUTCDay();
-  const diff = (day + 6) % 7;
-  clone.setUTCDate(clone.getUTCDate() - diff);
-  return clone.toISOString().slice(0, 10);
+  const dateKey = getDateKeyIso(date);
+  const day = getSessionDayFromDate(date);
+  const diffMap: Record<string, number> = {
+    monday: 0,
+    tuesday: 1,
+    wednesday: 2,
+    thursday: 3,
+    friday: 4,
+    saturday: 5,
+    sunday: 6,
+  };
+
+  return shiftDateKey(dateKey, -(diffMap[day] ?? 0));
 }
 
 function getDateKeyIso(date: Date): string {
-  const clone = new Date(date);
-  clone.setUTCHours(0, 0, 0, 0);
-  return clone.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: COSTA_RICA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return `${year}-${month}-${day}`;
 }
 
 function getSessionDayFromDate(date: Date): string {
-  return UTC_DAY_KEYS[date.getUTCDay()];
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: COSTA_RICA_TIME_ZONE,
+    weekday: "long",
+  })
+    .format(date)
+    .toLowerCase();
+
+  const index = DAY_KEYS.indexOf(weekday as (typeof DAY_KEYS)[number]);
+  return index >= 0 ? DAY_KEYS[index] : "monday";
+}
+
+function shiftDateKey(dateKey: string, amount: number): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
 }
 
 function normalizeSessionDay(value: string): string {
@@ -1188,6 +1220,15 @@ export class AIController {
         );
       }
 
+      let previousLatestRoutine: { routine: GeneratedRoutine; createdAt: Date } | null = null;
+      try {
+        previousLatestRoutine = await AIController.getLatestRoutineSnapshot(userId);
+      } catch (error) {
+        if (!(error instanceof HttpError) || error.statusCode !== 404) {
+          throw error;
+        }
+      }
+
       // Generate routine via OpenAI
       const routine = await aiService.generateRoutine(userId, {
         goal: userWithProfile.profile.goal || "General fitness",
@@ -1213,8 +1254,7 @@ export class AIController {
       }
 
       let mergedRoutine = parsedRoutine;
-      try {
-        const latest = await AIController.getLatestRoutineSnapshot(userId);
+      if (previousLatestRoutine) {
         const completionState = await AIController.getCurrentWeekCompletionState(userId);
 
         const generatedByDay = new Map<string, RoutineSession>();
@@ -1223,7 +1263,7 @@ export class AIController {
         });
 
         const existingDayOrder = new Set<string>();
-        const mergedSessions = latest.routine.sessions.map((existingSession) => {
+        const mergedSessions = previousLatestRoutine.routine.sessions.map((existingSession) => {
           const dayKey = normalizeSessionDay(existingSession.day);
           existingDayOrder.add(dayKey);
           const generatedSession = generatedByDay.get(dayKey);
@@ -1285,13 +1325,6 @@ export class AIController {
           mergedRoutine,
           "REGENERATE_ROUTINE::PRESERVE_PROGRESS"
         );
-      } catch (error) {
-        if (error instanceof HttpError && error.statusCode === 404) {
-          // First generation path: aiService already stored snapshot.
-          mergedRoutine = parsedRoutine;
-        } else {
-          throw error;
-        }
       }
 
       res.json({

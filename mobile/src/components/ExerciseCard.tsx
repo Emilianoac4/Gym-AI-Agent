@@ -67,6 +67,12 @@ export interface ExerciseCardProps {
   onToggleLog?: () => void;
   /** Called when any log field changes */
   onLogChange?: (values: Partial<ExerciseLogValues>) => void;
+  /** Called when user explicitly saves current draft */
+  onSaveNow?: () => void;
+  /** Whether current draft is valid and can be manually saved */
+  canSaveNow?: boolean;
+  /** Custom status text while editing/awaiting autosave */
+  logStateLabel?: string;
   /** Allow editing today's log even when exercise is already completed */
   allowEditWhenCompleted?: boolean;
   /** Whether "View progress" is available */
@@ -104,6 +110,9 @@ export function ExerciseCard({
   exerciseKey,
   onToggleLog,
   onLogChange,
+  onSaveNow,
+  canSaveNow = false,
+  logStateLabel,
   allowEditWhenCompleted = false,
   hasProgress = false,
   progressOpen = false,
@@ -134,6 +143,7 @@ export function ExerciseCard({
     lastSavedKey != null && exerciseKey != null && lastSavedKey.startsWith(`${exerciseKey}::`);
 
   const primaryDisabled = logOpen || (isDone ? !allowEditWhenCompleted || !onToggleLog : !onToggleLog);
+  const manualSaveDisabled = savingLog || !canSaveNow || !onSaveNow;
 
   return (
     <View
@@ -286,13 +296,22 @@ export function ExerciseCard({
             />
           </View>
 
+          <TouchableOpacity
+            style={[styles.saveNowBtn, manualSaveDisabled && styles.saveNowBtnDisabled]}
+            onPress={onSaveNow}
+            disabled={manualSaveDisabled}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.saveNowBtnText}>Guardar ahora</Text>
+          </TouchableOpacity>
+
           {/* Status feedback */}
           {savingLog ? (
             <Text style={styles.logStatus}>Guardando…</Text>
           ) : justSaved ? (
             <Text style={styles.logStatusSuccess}>✓ Registro guardado</Text>
           ) : (
-            <Text style={styles.logHint}>Se guarda automáticamente al ingresar un valor válido.</Text>
+            <Text style={styles.logHint}>{logStateLabel ?? "Se guarda automaticamente al ingresar valores validos."}</Text>
           )}
         </View>
       )}
@@ -605,18 +624,37 @@ const styles = StyleSheet.create({
   inputNarrow: {
     flex: 1,
   },
+  saveNowBtn: {
+    alignSelf: "flex-start",
+    backgroundColor: ds.colors.actionPrimary,
+    borderRadius: ds.radius.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  saveNowBtnDisabled: {
+    backgroundColor: ds.colors.borderSubtle,
+  },
+  saveNowBtnText: {
+    fontSize: ds.typography.bodySM,
+    fontWeight: "700",
+    color: ds.colors.textPrimary,
+    fontFamily: ds.typography.fontFamily,
+  },
   logHint: {
     fontSize: ds.typography.bodySM,
     color: ds.colors.textSecondary,
+    fontFamily: ds.typography.fontFamily,
   },
   logStatus: {
     fontSize: ds.typography.bodySM,
     color: ds.colors.textSecondary,
+    fontFamily: ds.typography.fontFamily,
   },
   logStatusSuccess: {
     fontSize: ds.typography.bodySM,
     fontWeight: "600",
     color: ds.colors.success,
+    fontFamily: ds.typography.fontFamily,
   },
 
   // Context menu

@@ -1,5 +1,6 @@
 import {
   AIChatLog,
+  AdminDashboardSummary,
   AdminKpi,
   AssistanceRequest,
   AssistanceRatingEntry,
@@ -918,6 +919,14 @@ export const api = {
 
   getChurnRisk: (token: string) =>
     request<{ churnRisk: ChurnRiskEntry[] }>("/operations/churn-risk", { token }),
+
+  getAdminDashboardSummary: (token: string, gymId?: string) =>
+    request<{ summary: AdminDashboardSummary }>(
+      gymId
+        ? `/operations/admin-dashboard-summary?gymId=${encodeURIComponent(gymId)}`
+        : "/operations/admin-dashboard-summary",
+      { token },
+    ),
 
   /* ─── Trainer Routines ───────────────────────────────────── */
 

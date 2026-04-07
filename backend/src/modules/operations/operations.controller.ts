@@ -1,4 +1,4 @@
-import { AuditAction, MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/client";
+import { AssistanceRequestStatus, AuditAction, MembershipTransactionType, PaymentMethod, UserRole } from "@prisma/client";
 import { Request, Response } from "express";
 import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
@@ -718,4 +718,418 @@ export const getChurnRisk = async (req: Request, res: Response): Promise<void> =
     .sort((a, b) => (b.daysSince ?? 9999) - (a.daysSince ?? 9999));
 
   res.json({ churnRisk });
+};
+
+// ─── Admin Dashboard Summary ─────────────────────────────────────────────────
+
+/** Costa Rica is permanently UTC-6 (no DST). */
+const CR_OFFSET_MS = 6 * 60 * 60 * 1000;
+
+/** Returns the UTC Date representing 00:00:00 Costa Rica time for the given date. */
+function getCrDayStart(date: Date): Date {
+  const crMs = date.getTime() - CR_OFFSET_MS;
+  const crDay = new Date(crMs);
+  crDay.setUTCHours(0, 0, 0, 0);
+  return new Date(crDay.getTime() + CR_OFFSET_MS);
+}
+
+/** In-memory cache keyed by gymId (TTL = 30 s). */
+type DashboardCacheEntry = { data: AdminDashboardSummaryPayload; expiresAt: number };
+const dashboardCache = new Map<string, DashboardCacheEntry>();
+const DASHBOARD_CACHE_TTL_MS = 30_000;
+
+type DashKpiCard<T> = T & { status: "ok" | "error"; errorMessage?: string };
+type DashTrend = { direction: "up" | "down" | "stable"; previousValue: number };
+
+interface AdminDashboardSummaryPayload {
+  v: 1;
+  generatedAt: string;
+  timezone: "America/Costa_Rica";
+  cards: {
+    trainersActiveNow: DashKpiCard<{ value: number }>;
+    usersActiveToday: DashKpiCard<{ value: number; trend: DashTrend }>;
+    subscriptionsActive: DashKpiCard<{ value: number; trend: DashTrend }>;
+    subscriptionsExpired: DashKpiCard<{
+      count: number;
+      top10: Array<{ userId: string; fullName: string; membershipEndAt: string }>;
+    }>;
+    assistancePending: DashKpiCard<{
+      total: number;
+      byStatus: { CREATED: number; ASSIGNED: number; IN_PROGRESS: number };
+    }>;
+    unreadThreadsForAdmin: DashKpiCard<{ value: number }>;
+    renewalsToday: DashKpiCard<{ count: number; amount: number; trend: DashTrend; currency: string }>;
+    incomesToday: DashKpiCard<{ value: number; trend: DashTrend; currency: string }>;
+    churnRisk: DashKpiCard<{ count: number; trend: DashTrend }>;
+  };
+  alerts: Array<{ type: string; message: string; severity: "info" | "warning" | "critical" }>;
+  errors: Record<string, string>;
+}
+
+function buildDashTrend(current: number, previous: number): DashTrend {
+  if (current > previous) return { direction: "up", previousValue: previous };
+  if (current < previous) return { direction: "down", previousValue: previous };
+  return { direction: "stable", previousValue: previous };
+}
+
+function errDashCard<T extends object>(base: T): DashKpiCard<T> {
+  return { ...base, status: "error" };
+}
+
+async function buildAdminDashboardPayload(
+  gymId: string,
+  adminUserId: string,
+): Promise<AdminDashboardSummaryPayload> {
+  const now = new Date();
+  const todayStart = getCrDayStart(now);
+  const yesterdayStart = new Date(todayStart.getTime() - 86_400_000);
+  const CHURN_THRESHOLD_DAYS = 6;
+
+  const memberRows = await prisma.user.findMany({
+    where: { gymId, isActive: true, role: UserRole.member },
+    select: { id: true },
+  });
+  const memberIds = memberRows.map((m) => m.id);
+
+  const gym = await prisma.gym.findUnique({ where: { id: gymId }, select: { currency: true } });
+  const reportCurrency = normalizeCurrency(gym?.currency);
+  const errors: Record<string, string> = {};
+
+  const [
+    trainersActiveNowResult,
+    chatActiveToday,
+    routineActiveToday,
+    assistanceActiveToday,
+    chatActiveYesterday,
+    routineActiveYesterday,
+    assistanceActiveYesterday,
+    subsActiveNow,
+    subsActiveYesterday,
+    subsExpired,
+    assistanceCREATED,
+    assistanceASSIGNED,
+    assistanceIN_PROGRESS,
+    unreadThreadCount,
+    txToday,
+    txYesterday,
+    chatLastActivity,
+  ] = await Promise.all([
+    prisma.trainerPresenceSession
+      .count({ where: { gymId, endedAt: null } })
+      .catch(() => null as null),
+
+    memberIds.length === 0
+      ? Promise.resolve([] as string[])
+      : prisma.aIChatLog
+          .findMany({
+            where: { userId: { in: memberIds }, createdAt: { gte: todayStart } },
+            select: { userId: true },
+            distinct: ["userId"],
+          })
+          .then((rows) => rows.map((r) => r.userId))
+          .catch(() => [] as string[]),
+
+    memberIds.length === 0
+      ? Promise.resolve([] as string[])
+      : prisma.routineExerciseLog
+          .findMany({
+            where: { userId: { in: memberIds }, performedAt: { gte: todayStart } },
+            select: { userId: true },
+            distinct: ["userId"],
+          })
+          .then((rows) => rows.map((r) => r.userId))
+          .catch(() => [] as string[]),
+
+    prisma.assistanceRequest
+      .findMany({
+        where: { gymId, createdAt: { gte: todayStart } },
+        select: { memberId: true },
+        distinct: ["memberId"],
+      })
+      .then((rows) => rows.map((r) => r.memberId))
+      .catch(() => [] as string[]),
+
+    memberIds.length === 0
+      ? Promise.resolve([] as string[])
+      : prisma.aIChatLog
+          .findMany({
+            where: { userId: { in: memberIds }, createdAt: { gte: yesterdayStart, lt: todayStart } },
+            select: { userId: true },
+            distinct: ["userId"],
+          })
+          .then((rows) => rows.map((r) => r.userId))
+          .catch(() => [] as string[]),
+
+    memberIds.length === 0
+      ? Promise.resolve([] as string[])
+      : prisma.routineExerciseLog
+          .findMany({
+            where: { userId: { in: memberIds }, performedAt: { gte: yesterdayStart, lt: todayStart } },
+            select: { userId: true },
+            distinct: ["userId"],
+          })
+          .then((rows) => rows.map((r) => r.userId))
+          .catch(() => [] as string[]),
+
+    prisma.assistanceRequest
+      .findMany({
+        where: { gymId, createdAt: { gte: yesterdayStart, lt: todayStart } },
+        select: { memberId: true },
+        distinct: ["memberId"],
+      })
+      .then((rows) => rows.map((r) => r.memberId))
+      .catch(() => [] as string[]),
+
+    prisma.user
+      .count({ where: { gymId, isActive: true, role: UserRole.member, membershipEndAt: { gt: now } } })
+      .catch(() => null as null),
+
+    prisma.user
+      .count({ where: { gymId, isActive: true, role: UserRole.member, membershipEndAt: { gt: yesterdayStart } } })
+      .catch(() => null as null),
+
+    prisma.user
+      .findMany({
+        where: { gymId, isActive: true, role: UserRole.member, membershipEndAt: { not: null, lte: now } },
+        select: { id: true, fullName: true, membershipEndAt: true },
+        orderBy: { membershipEndAt: "asc" },
+        take: 10,
+      })
+      .catch(() => null as null),
+
+    prisma.assistanceRequest
+      .count({ where: { gymId, status: AssistanceRequestStatus.CREATED } })
+      .catch(() => null as null),
+
+    prisma.assistanceRequest
+      .count({ where: { gymId, status: AssistanceRequestStatus.ASSIGNED } })
+      .catch(() => null as null),
+
+    prisma.assistanceRequest
+      .count({ where: { gymId, status: AssistanceRequestStatus.IN_PROGRESS } })
+      .catch(() => null as null),
+
+    prisma.messageThread
+      .count({
+        where: {
+          gymId,
+          adminUserId,
+          expiresAt: { gt: now },
+          messages: { some: { senderUserId: { not: adminUserId }, readAt: null } },
+        },
+      })
+      .catch(() => null as null),
+
+    prisma.membershipTransaction
+      .findMany({
+        where: { gymId, createdAt: { gte: todayStart } },
+        select: { type: true, amount: true },
+      })
+      .catch(() => null as null),
+
+    prisma.membershipTransaction
+      .findMany({
+        where: { gymId, createdAt: { gte: yesterdayStart, lt: todayStart } },
+        select: { type: true, amount: true },
+      })
+      .catch(() => null as null),
+
+    memberIds.length === 0
+      ? Promise.resolve([] as Array<{ userId: string; _max: { createdAt: Date | null } }>)
+      : prisma.aIChatLog
+          .groupBy({
+            by: ["userId"],
+            where: { userId: { in: memberIds } },
+            _max: { createdAt: true },
+          })
+          .catch(() => [] as Array<{ userId: string; _max: { createdAt: Date | null } }>),
+  ]);
+
+  // trainersActiveNow
+  let trainersCard: AdminDashboardSummaryPayload["cards"]["trainersActiveNow"];
+  if (trainersActiveNowResult === null) {
+    errors["trainersActiveNow"] = "No se pudo obtener conteo de entrenadores activos";
+    trainersCard = errDashCard({ value: 0 });
+  } else {
+    trainersCard = { value: trainersActiveNowResult, status: "ok" };
+  }
+
+  // usersActiveToday
+  const activeTodaySet = new Set([...chatActiveToday, ...routineActiveToday, ...assistanceActiveToday]);
+  const activeYesterdaySet = new Set([...chatActiveYesterday, ...routineActiveYesterday, ...assistanceActiveYesterday]);
+  const usersActiveTodayCard: AdminDashboardSummaryPayload["cards"]["usersActiveToday"] = {
+    value: activeTodaySet.size,
+    trend: buildDashTrend(activeTodaySet.size, activeYesterdaySet.size),
+    status: "ok",
+  };
+
+  // subscriptionsActive
+  let subsActiveCard: AdminDashboardSummaryPayload["cards"]["subscriptionsActive"];
+  if (subsActiveNow === null) {
+    errors["subscriptionsActive"] = "No se pudo obtener suscripciones activas";
+    subsActiveCard = errDashCard({ value: 0, trend: buildDashTrend(0, 0) });
+  } else {
+    subsActiveCard = {
+      value: subsActiveNow,
+      trend: buildDashTrend(subsActiveNow, subsActiveYesterday ?? subsActiveNow),
+      status: "ok",
+    };
+  }
+
+  // subscriptionsExpired
+  let subsExpiredCard: AdminDashboardSummaryPayload["cards"]["subscriptionsExpired"];
+  if (subsExpired === null) {
+    errors["subscriptionsExpired"] = "No se pudo obtener membresías vencidas";
+    subsExpiredCard = errDashCard({ count: 0, top10: [] });
+  } else {
+    subsExpiredCard = {
+      count: subsExpired.length,
+      top10: subsExpired.map((u) => ({
+        userId: u.id,
+        fullName: u.fullName,
+        membershipEndAt: u.membershipEndAt!.toISOString(),
+      })),
+      status: "ok",
+    };
+  }
+
+  // assistancePending
+  let assistancePendingCard: AdminDashboardSummaryPayload["cards"]["assistancePending"];
+  if (assistanceCREATED === null || assistanceASSIGNED === null || assistanceIN_PROGRESS === null) {
+    errors["assistancePending"] = "No se pudo obtener solicitudes pendientes";
+    assistancePendingCard = errDashCard({ total: 0, byStatus: { CREATED: 0, ASSIGNED: 0, IN_PROGRESS: 0 } });
+  } else {
+    const total = assistanceCREATED + assistanceASSIGNED + assistanceIN_PROGRESS;
+    assistancePendingCard = {
+      total,
+      byStatus: { CREATED: assistanceCREATED, ASSIGNED: assistanceASSIGNED, IN_PROGRESS: assistanceIN_PROGRESS },
+      status: "ok",
+    };
+  }
+
+  // unreadThreadsForAdmin
+  let unreadThreadsCard: AdminDashboardSummaryPayload["cards"]["unreadThreadsForAdmin"];
+  if (unreadThreadCount === null) {
+    errors["unreadThreadsForAdmin"] = "No se pudo obtener mensajes no leídos";
+    unreadThreadsCard = errDashCard({ value: 0 });
+  } else {
+    unreadThreadsCard = { value: unreadThreadCount, status: "ok" };
+  }
+
+  // renewalsToday + incomesToday
+  let renewalsTodayCard: AdminDashboardSummaryPayload["cards"]["renewalsToday"];
+  let incomesTodayCard: AdminDashboardSummaryPayload["cards"]["incomesToday"];
+
+  if (txToday === null) {
+    errors["renewalsToday"] = "No se pudo obtener renovaciones del día";
+    errors["incomesToday"] = "No se pudo obtener ingresos del día";
+    renewalsTodayCard = errDashCard({ count: 0, amount: 0, trend: buildDashTrend(0, 0), currency: reportCurrency });
+    incomesTodayCard = errDashCard({ value: 0, trend: buildDashTrend(0, 0), currency: reportCurrency });
+  } else {
+    const txYesterdaySafe = txYesterday ?? [];
+    const renewalsCount = txToday.filter((t) => t.type === MembershipTransactionType.renewal).length;
+    const renewalsAmount = txToday
+      .filter((t) => t.type === MembershipTransactionType.renewal)
+      .reduce((acc, t) => acc + t.amount, 0);
+    const renewalsYesterdayCount = txYesterdaySafe.filter((t) => t.type === MembershipTransactionType.renewal).length;
+    const incomeToday = txToday.reduce((acc, t) => acc + t.amount, 0);
+    const incomeYesterday = txYesterdaySafe.reduce((acc, t) => acc + t.amount, 0);
+
+    renewalsTodayCard = {
+      count: renewalsCount,
+      amount: renewalsAmount,
+      trend: buildDashTrend(renewalsCount, renewalsYesterdayCount),
+      currency: reportCurrency,
+      status: "ok",
+    };
+    incomesTodayCard = {
+      value: incomeToday,
+      trend: buildDashTrend(incomeToday, incomeYesterday),
+      currency: reportCurrency,
+      status: "ok",
+    };
+  }
+
+  // churnRisk
+  const churnCutoffCurrent = new Date(now.getTime() - CHURN_THRESHOLD_DAYS * 86_400_000);
+  const churnCutoffPrev30 = new Date(churnCutoffCurrent.getTime() - 30 * 86_400_000);
+  const lastActivityMap2 = new Map(chatLastActivity.map((row) => [row.userId, row._max.createdAt]));
+  const churnCurrentCount = memberIds.filter((id) => {
+    const last = lastActivityMap2.get(id) ?? null;
+    return last === null || last < churnCutoffCurrent;
+  }).length;
+  const churnPrev30Count = memberIds.filter((id) => {
+    const last = lastActivityMap2.get(id) ?? null;
+    return last === null || last < churnCutoffPrev30;
+  }).length;
+  const churnRiskCard: AdminDashboardSummaryPayload["cards"]["churnRisk"] = {
+    count: churnCurrentCount,
+    trend: buildDashTrend(churnCurrentCount, churnPrev30Count),
+    status: "ok",
+  };
+
+  // alerts
+  const alerts: AdminDashboardSummaryPayload["alerts"] = [];
+  if (assistancePendingCard.status === "ok" && assistancePendingCard.byStatus.CREATED > 0) {
+    alerts.push({
+      type: "assistance_unassigned",
+      message: `${assistancePendingCard.byStatus.CREATED} solicitud(es) de asistencia sin asignar`,
+      severity: "warning",
+    });
+  }
+  if (churnRiskCard.count > 0) {
+    alerts.push({
+      type: "churn_risk",
+      message: `${churnRiskCard.count} usuario(s) en riesgo de abandono`,
+      severity: churnRiskCard.count >= 5 ? "critical" : "warning",
+    });
+  }
+  if (subsExpiredCard.status === "ok" && subsExpiredCard.count > 0) {
+    alerts.push({
+      type: "subscriptions_expired",
+      message: `${subsExpiredCard.count} miembro(s) con membresía vencida`,
+      severity: "info",
+    });
+  }
+
+  return {
+    v: 1,
+    generatedAt: now.toISOString(),
+    timezone: "America/Costa_Rica",
+    cards: {
+      trainersActiveNow: trainersCard,
+      usersActiveToday: usersActiveTodayCard,
+      subscriptionsActive: subsActiveCard,
+      subscriptionsExpired: subsExpiredCard,
+      assistancePending: assistancePendingCard,
+      unreadThreadsForAdmin: unreadThreadsCard,
+      renewalsToday: renewalsTodayCard,
+      incomesToday: incomesTodayCard,
+      churnRisk: churnRiskCard,
+    },
+    alerts,
+    errors,
+  };
+}
+
+export const getAdminDashboardSummary = async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req);
+  const actor = await requireGymUser(auth.userId);
+
+  if (actor.role !== UserRole.admin) {
+    throw new HttpError(403, "Forbidden: solo administradores pueden acceder al resumen del panel");
+  }
+
+  const targetGymId = actor.gymId;
+
+  const cached = dashboardCache.get(targetGymId);
+  if (cached && cached.expiresAt > Date.now()) {
+    res.json({ summary: cached.data });
+    return;
+  }
+
+  const data = await buildAdminDashboardPayload(targetGymId, actor.id);
+  dashboardCache.set(targetGymId, { data, expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS });
+
+  res.json({ summary: data });
 };

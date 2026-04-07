@@ -35,8 +35,13 @@ export const gymCurrencySchema = z.object({
   currency: z.enum(["USD", "CRC"]),
 });
 
+export const adminDashboardSummaryQuerySchema = z.object({
+  gymId: z.string().uuid().optional(),
+});
+
 export type UpdateTrainerPresenceInput = z.infer<typeof updateTrainerPresenceSchema>;
 export type MembershipReportQueryInput = z.infer<typeof membershipReportQuerySchema>;
 export type ExportMembershipReportInput = z.infer<typeof exportMembershipReportSchema>;
 export type SendMembershipReportInput = z.infer<typeof sendMembershipReportSchema>;
 export type GymCurrencyInput = z.infer<typeof gymCurrencySchema>;
+export type AdminDashboardSummaryQuery = z.infer<typeof adminDashboardSummaryQuerySchema>;
