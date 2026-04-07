@@ -8,12 +8,15 @@ import {
   CreateUserInput,
   RenewMembershipInput,
   SetHealthConnectionStateInput,
-  UpdateProfileInput,
-  UpsertHealthConnectionInput,
-} from "./users.validation";
-import { PermissionAction, hasPermission } from "../../config/permissions";
-import {
-  createTokenPair,
+  // Soft-delete: preserve user row so membership_transactions remain joinable.
+  // membership_transactions has no FK constraint — hard delete would orphan financial records.
+  await prisma.$transaction([
+    prisma.aIChatLog.deleteMany({ where: { userId: targetUser.id } }),
+    prisma.user.update({
+      where: { id: targetUser.id },
+      data: { isActive: false, deletedAt: new Date() },
+    }),
+  });
   getFutureDateMinutes,
   sendEmailVerification,
 } from "../../utils/email-auth";
@@ -34,8 +37,8 @@ export const listGymAdmins = async (req: Request, res: Response): Promise<void> 
     where: { gymId: actor.gymId, role: UserRole.admin, isActive: true },
     select: {
       id: true,
-      fullName: true,
-      profile: { select: { avatarUrl: true } },
+  res.json({
+    message: "User deactivated",
     },
     orderBy: { fullName: "asc" },
   });
@@ -281,7 +284,11 @@ export const deactivateUserById = async (req: Request<{ id: string }>, res: Resp
   await assertCanAccessTargetUser(req.auth, targetUser, "users.deactivate");
 
   await prisma.user.update({
-    where: { id: targetUser.id },
+  if (targetUser.deletedAt !== null) {
+    throw new HttpError(404, "User not found");
+  }
+
+  if (targetUser.role === "admin") {
     data: { isActive: false },
   });
 
@@ -319,6 +326,7 @@ export const reactivateUserById = async (req: Request<{ id: string }>, res: Resp
       isActive: true,
       fullName: true,
       email: true,
+      deletedAt: true,
     },
   });
 
@@ -327,6 +335,10 @@ export const reactivateUserById = async (req: Request<{ id: string }>, res: Resp
   }
 
   await assertCanAccessTargetUser(req.auth, targetUser, "users.reactivate");
+
+  if (targetUser.deletedAt !== null) {
+    throw new HttpError(404, "User not found");
+  }
 
   if (targetUser.role === "admin") {
     throw new HttpError(403, "Admin accounts cannot be reactivated from this endpoint");
@@ -384,9 +396,14 @@ export const deleteUserById = async (req: Request<{ id: string }>, res: Response
     throw new HttpError(403, "Admin accounts cannot be deleted from this endpoint");
   }
 
+  // Soft-delete: preserve user row so membership_transactions remain joinable.
+  // membership_transactions has no FK constraint — hard delete would orphan financial records.
   await prisma.$transaction([
     prisma.aIChatLog.deleteMany({ where: { userId: targetUser.id } }),
-    prisma.user.delete({ where: { id: targetUser.id } }),
+    prisma.user.update({
+      where: { id: targetUser.id },
+      data: { isActive: false, deletedAt: new Date() },
+    }),
   ]);
 
   await createAuditLog({
@@ -409,7 +426,7 @@ export const deleteUserById = async (req: Request<{ id: string }>, res: Response
   );
 
   res.json({
-    message: "User deleted permanently",
+    message: "User deleted",
     user: {
       id: targetUser.id,
       email: targetUser.email,
@@ -449,6 +466,7 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
   const users = await prisma.user.findMany({
     where: {
       gymId: requester.gymId,
+      deletedAt: null,
       ...effectiveRoleFilter,
     },
     select: {
@@ -748,19 +766,28 @@ export const renewMembershipByUserId = async (
     throw new HttpError(404, "User not found");
   }
 
+
+  if (targetUser.deletedAt !== null) {
+    throw new HttpError(404, "User not found");
+  }
   if (targetUser.gymId !== requester.gymId) {
     throw new HttpError(403, "Forbidden");
-  }
-
-  if (targetUser.role !== "member") {
-    throw new HttpError(400, "Solo se pueden renovar membresias de usuarios miembro");
-  }
-
-  const membershipStartAt =
-    targetUser.membershipEndAt && targetUser.membershipEndAt > new Date()
+  const targetUser = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      role: true,
+      gymId: true,
+      isActive: true,
+      deletedAt: true,
+      fullName: true,
+      email: true,
+    },
+  });
       ? targetUser.membershipEndAt
-      : new Date();
-  const membershipEndAt = new Date(membershipStartAt);
+
+  res.json({
+    message: "User deleted",
   membershipEndAt.setMonth(membershipEndAt.getMonth() + req.body.membershipMonths);
 
   const updated = await prisma.user.update({

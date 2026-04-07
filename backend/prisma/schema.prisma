@@ -115,6 +115,7 @@ model User {
   createdAt         DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")
   isActive          Boolean     @default(true) @map("is_active")
+  deletedAt         DateTime?   @map("deleted_at")
 
   gym           Gym                @relation(fields: [gymId], references: [id], onDelete: Cascade)
   globalAccount GlobalUserAccount  @relation(fields: [globalUserId], references: [id], onDelete: Cascade)

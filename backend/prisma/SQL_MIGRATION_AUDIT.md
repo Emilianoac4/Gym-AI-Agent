@@ -75,6 +75,10 @@ La conclusion principal es esta:
 - `add_soft_delete_gyms.sql`
   - Agrega flujo de soft-delete a `gyms`.
 
+- `add_soft_delete_users.sql`
+  - Agrega flujo de soft-delete a `users` (`deleted_at` + indice).
+  - Estado: ya aplicado en Supabase.
+
 - `sync_membership_transaction_currency_with_gym.sql`
   - Parche de datos historicos.
   - Solo aplica si ya existian transacciones antes de introducir `gyms.currency`.
@@ -152,6 +156,7 @@ Este es el orden mas coherente para entender la historia del esquema:
 14. `add_platform_governance.sql`
 15. `add_platform_admin_users.sql`
 16. `add_soft_delete_gyms.sql`
+17. `add_soft_delete_users.sql`
 
 Nota importante:
 
@@ -182,6 +187,7 @@ Lo correcto es crear un nuevo `baseline_current_schema.sql` o migraciones Prisma
 - `add_platform_governance.sql`
 - `add_platform_admin_users.sql`
 - `add_soft_delete_gyms.sql`
+- `add_soft_delete_users.sql`
 - `ensure_ai_chat_logs.sql`
 
 ### Sacar del flujo operativo y archivar
