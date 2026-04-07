@@ -54,6 +54,31 @@ npm run start
 - Backend health: `http://localhost:3000/health`
 - App mobile abre Login en Expo Go
 
+### Smoke test pre-deploy (API y permisos admin dashboard)
+Ejecutar antes de cada deploy para validar autenticacion, permisos y cache del endpoint de resumen admin:
+
+```powershell
+cd <ruta-del-proyecto>
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-predeploy-admin-dashboard.ps1 `
+	-BaseUrl http://localhost:3000 `
+	-AdminIdentifier "<admin_email_o_username>" `
+	-AdminPassword "<admin_password>" `
+	-TrainerIdentifier "<trainer_email_o_username>" `
+	-TrainerPassword "<trainer_password>"
+```
+
+Tambien puedes usar variables de entorno en lugar de parametros:
+
+```powershell
+$env:SMOKE_ADMIN_IDENTIFIER = "..."
+$env:SMOKE_ADMIN_PASSWORD = "..."
+$env:SMOKE_TRAINER_IDENTIFIER = "..."
+$env:SMOKE_TRAINER_PASSWORD = "..."
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-predeploy-admin-dashboard.ps1 -BaseUrl http://localhost:3000
+```
+
+El script termina con codigo 0 si todo pasa y codigo 1 si hay algun FAIL.
+
 ## 6) Problemas comunes
 - Si Expo no conecta por LAN, usa otra red Wi-Fi o hotspot.
 - Si backend no conecta a DB, revisar DATABASE_URL y firewall.

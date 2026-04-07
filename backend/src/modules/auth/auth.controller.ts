@@ -774,6 +774,13 @@ export const requestEmailVerification = async (
   req: Request<unknown, unknown, RequestEmailVerificationInput>,
   res: Response,
 ): Promise<void> => {
+  if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
+    throw new HttpError(
+      503,
+      "El servicio de correo no esta configurado. No se puede enviar la verificacion por email.",
+    );
+  }
+
   const account = await prisma.globalUserAccount.findUnique({ where: { email: req.body.email } });
 
   if (!account || !account.isActive) {
@@ -815,7 +822,6 @@ export const requestEmailVerification = async (
 
   res.json({
     message: "Si el correo existe, se envio un enlace de verificacion",
-    ...(env.NODE_ENV !== "production" ? { devToken: token } : {}),
   });
 };
 

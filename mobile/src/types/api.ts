@@ -108,6 +108,20 @@ export interface ProgressSummary {
   timeline: ProgressTimelinePoint[];
 }
 
+export type HealthProvider = "apple_health" | "google_fit" | "health_connect";
+
+export interface HealthConnection {
+  id: string;
+  userId: string;
+  provider: HealthProvider;
+  externalEmail?: string | null;
+  externalSubject?: string | null;
+  metadata?: string | null;
+  isActive: boolean;
+  linkedAt: string;
+  updatedAt: string;
+}
+
 export interface RoutineCheckin {
   id: string;
   weekStart: string;

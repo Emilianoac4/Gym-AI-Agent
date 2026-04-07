@@ -3,7 +3,7 @@ import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, Te
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
-import { Measurement, ProgressSummary } from "../../types/api";
+import { HealthConnection, HealthProvider, Measurement, ProgressSummary } from "../../types/api";
 import { palette } from "../../theme/palette";
 
 function toOptionalPositiveNumber(value: string): number | undefined {
@@ -21,6 +21,7 @@ export function MeasurementsScreen() {
   const { user, token } = useAuth();
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [progressSummary, setProgressSummary] = useState<ProgressSummary | null>(null);
+  const [healthConnections, setHealthConnections] = useState<HealthConnection[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [weightKg, setWeightKg] = useState("");
@@ -52,14 +53,62 @@ export function MeasurementsScreen() {
 
     setLoading(true);
     try {
-      const [measurementsData, summaryData] = await Promise.all([
+      const [measurementsData, summaryData, connectionsData] = await Promise.all([
         api.getMeasurements(user.id, token),
         api.getProgressSummary(user.id, token),
+        api.getHealthConnections(user.id, token),
       ]);
       setMeasurements(measurementsData.measurements);
       setProgressSummary(summaryData.summary);
+      setHealthConnections(connectionsData.connections);
     } catch (error) {
       Alert.alert("No se pudieron cargar mediciones", error instanceof Error ? error.message : "Error inesperado");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const providerLabels: Record<HealthProvider, string> = {
+    apple_health: "Apple Health",
+    google_fit: "Google Fit",
+    health_connect: "Health Connect",
+  };
+
+  const providerOrder: HealthProvider[] = ["apple_health", "google_fit", "health_connect"];
+
+  const getConnection = (provider: HealthProvider) =>
+    healthConnections.find((item) => item.provider === provider) ?? null;
+
+  const onActivateConnection = async (provider: HealthProvider) => {
+    if (!user || !token) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const metadata = `manual_viability_check platform=${Platform.OS} at=${new Date().toISOString()}`;
+      await api.upsertHealthConnection(user.id, token, { provider, metadata });
+      await loadMeasurements();
+      Alert.alert("Conexion actualizada", `${providerLabels[provider]} se marco como activa.`);
+    } catch (error) {
+      Alert.alert("No se pudo activar", error instanceof Error ? error.message : "Error inesperado");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onToggleConnection = async (provider: HealthProvider, isActive: boolean) => {
+    if (!user || !token) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.setHealthConnectionState(user.id, provider, token, isActive);
+      await loadMeasurements();
+      Alert.alert("Conexion actualizada", `${providerLabels[provider]} ${isActive ? "activada" : "desactivada"}.`);
+    } catch (error) {
+      Alert.alert("No se pudo actualizar", error instanceof Error ? error.message : "Error inesperado");
     } finally {
       setLoading(false);
     }
@@ -182,6 +231,43 @@ export function MeasurementsScreen() {
           </View>
         </View>
       ) : null}
+
+      <Text style={styles.sectionTitle}>Integracion de salud (evaluacion)</Text>
+      <View style={styles.card}>
+        <Text style={styles.integrationHint}>
+          Estado para piloto: solo lectura. El dato manual mantiene prioridad cuando exista conflicto.
+        </Text>
+        {providerOrder.map((provider) => {
+          const connection = getConnection(provider);
+          const isActive = connection?.isActive ?? false;
+          const linkedAtText = connection?.linkedAt
+            ? new Date(connection.linkedAt).toLocaleDateString()
+            : "Sin enlace";
+
+          return (
+            <View key={provider} style={styles.integrationRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.integrationProvider}>{providerLabels[provider]}</Text>
+                <Text style={styles.integrationMeta}>Estado: {isActive ? "Activo" : "Inactivo"}</Text>
+                <Text style={styles.integrationMeta}>Ultimo enlace: {linkedAtText}</Text>
+              </View>
+              {connection ? (
+                <AppButton
+                  label={isActive ? "Desactivar" : "Activar"}
+                  onPress={() => onToggleConnection(provider, !isActive)}
+                  disabled={loading}
+                />
+              ) : (
+                <AppButton
+                  label="Marcar activo"
+                  onPress={() => onActivateConnection(provider)}
+                  disabled={loading}
+                />
+              )}
+            </View>
+          );
+        })}
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.label}>Peso (kg)</Text>
@@ -377,6 +463,31 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     color: palette.ink,
+  },
+  integrationHint: {
+    color: palette.textMuted,
+    marginBottom: 12,
+  },
+  integrationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    backgroundColor: palette.surface,
+  },
+  integrationProvider: {
+    color: palette.ink,
+    fontWeight: "700",
+  },
+  integrationMeta: {
+    color: palette.textMuted,
+    marginTop: 2,
+    fontSize: 12,
   },
   card: {
     backgroundColor: palette.card,

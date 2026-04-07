@@ -10,6 +10,8 @@ import {
   DirectMessage,
   GeneralNotification,
   GeneratedRoutine,
+  HealthConnection,
+  HealthProvider,
   GymAvailabilityDay,
   GymAvailabilityExceptionDay,
   GymAvailabilityPermissions,
@@ -575,6 +577,34 @@ export const api = {
         body,
       }
     ),
+
+  getHealthConnections: (id: string, token: string) =>
+    request<{ connections: HealthConnection[] }>(`/users/${id}/health-connections`, {
+      token,
+    }),
+
+  upsertHealthConnection: (
+    id: string,
+    token: string,
+    body: {
+      provider: HealthProvider;
+      externalEmail?: string;
+      externalSubject?: string;
+      metadata?: string;
+    },
+  ) =>
+    request<{ message: string; connection: HealthConnection }>(`/users/${id}/health-connections`, {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  setHealthConnectionState: (id: string, provider: HealthProvider, token: string, isActive: boolean) =>
+    request<{ message: string; connection: HealthConnection }>(`/users/${id}/health-connections/${provider}`, {
+      method: "PATCH",
+      token,
+      body: { isActive },
+    }),
 
   deleteUser: (id: string, token: string) =>
     request<{ message: string; user: { id: string; role: string } }>(`/users/${id}`, {

@@ -598,9 +598,8 @@ export const getKpi = async (req: Request, res: Response): Promise<void> => {
   if (actor.role !== UserRole.admin) throw new HttpError(403, "Solo el administrador puede ver los KPIs");
 
   const now = new Date();
-  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const weekStart = new Date(todayStart);
-  weekStart.setUTCDate(todayStart.getUTCDate() - 6);
+  const todayStart = getCrDayStart(now);
+  const weekStart = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
 
   const [
     totalActiveMembers,
@@ -794,6 +793,7 @@ async function buildAdminDashboardPayload(
   const gym = await prisma.gym.findUnique({ where: { id: gymId }, select: { currency: true } });
   const reportCurrency = normalizeCurrency(gym?.currency);
   const errors: Record<string, string> = {};
+  const forcedCardError = process.env.SMOKE_FORCE_DASHBOARD_CARD_ERROR;
 
   const [
     trainersActiveNowResult,
@@ -814,9 +814,10 @@ async function buildAdminDashboardPayload(
     txYesterday,
     chatLastActivity,
   ] = await Promise.all([
-    prisma.trainerPresenceSession
-      .count({ where: { gymId, endedAt: null } })
-      .catch(() => null as null),
+    (forcedCardError === "trainersActiveNow"
+      ? Promise.reject(new Error("forced trainersActiveNow error"))
+      : prisma.trainerPresenceSession.count({ where: { gymId, endedAt: null } })
+    ).catch(() => null as null),
 
     memberIds.length === 0
       ? Promise.resolve([] as string[])

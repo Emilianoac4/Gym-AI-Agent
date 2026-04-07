@@ -756,6 +756,7 @@ export const renewMembershipByUserId = async (
       gymId: true,
       role: true,
       isActive: true,
+      deletedAt: true,
       membershipEndAt: true,
       fullName: true,
       email: true,
@@ -766,28 +767,23 @@ export const renewMembershipByUserId = async (
     throw new HttpError(404, "User not found");
   }
 
-
   if (targetUser.deletedAt !== null) {
     throw new HttpError(404, "User not found");
   }
+
   if (targetUser.gymId !== requester.gymId) {
     throw new HttpError(403, "Forbidden");
-  const targetUser = await prisma.user.findUnique({
-    where: { id: req.params.id },
-    select: {
-      id: true,
-      role: true,
-      gymId: true,
-      isActive: true,
-      deletedAt: true,
-      fullName: true,
-      email: true,
-    },
-  });
-      ? targetUser.membershipEndAt
+  }
 
-  res.json({
-    message: "User deleted",
+  if (targetUser.role !== "member") {
+    throw new HttpError(400, "Solo se pueden renovar membresias de usuarios miembro");
+  }
+
+  const membershipStartAt =
+    targetUser.membershipEndAt && targetUser.membershipEndAt > new Date()
+      ? targetUser.membershipEndAt
+      : new Date();
+  const membershipEndAt = new Date(membershipStartAt);
   membershipEndAt.setMonth(membershipEndAt.getMonth() + req.body.membershipMonths);
 
   const updated = await prisma.user.update({
@@ -865,10 +861,11 @@ export const listHealthConnectionsByUserId = async (
       role: true,
       gymId: true,
       isActive: true,
+      deletedAt: true,
     },
   });
 
-  if (!targetUser || !targetUser.isActive) {
+  if (!targetUser || !targetUser.isActive || targetUser.deletedAt !== null) {
     throw new HttpError(404, "User not found");
   }
 
@@ -897,10 +894,11 @@ export const upsertHealthConnectionByUserId = async (
       role: true,
       gymId: true,
       isActive: true,
+      deletedAt: true,
     },
   });
 
-  if (!targetUser || !targetUser.isActive) {
+  if (!targetUser || !targetUser.isActive || targetUser.deletedAt !== null) {
     throw new HttpError(404, "User not found");
   }
 
@@ -950,10 +948,11 @@ export const setHealthConnectionStateByUserId = async (
       role: true,
       gymId: true,
       isActive: true,
+      deletedAt: true,
     },
   });
 
-  if (!targetUser || !targetUser.isActive) {
+  if (!targetUser || !targetUser.isActive || targetUser.deletedAt !== null) {
     throw new HttpError(404, "User not found");
   }
 
