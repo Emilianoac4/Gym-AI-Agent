@@ -13,10 +13,41 @@ import { platformRouter } from "./modules/platform/platform.routes";
 import { assistanceRouter } from "./modules/assistance/assistance.routes";
 import { trainerRoutinesRouter } from "./modules/trainer-routines/trainer-routines.routes";
 import { leadsRouter } from "./modules/leads/leads.routes";
+import { createRateLimiter } from "./middleware/rate-limit.middleware";
 import { notFoundHandler } from "./middleware/not-found.middleware";
 import { errorHandler } from "./middleware/error.middleware";
 
 export const app = express();
+
+const globalRateLimit = createRateLimiter({
+  scope: "global",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.RATE_LIMIT_GLOBAL_MAX,
+});
+
+const authRateLimit = createRateLimiter({
+  scope: "auth",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.RATE_LIMIT_AUTH_MAX,
+});
+
+const aiRateLimit = createRateLimiter({
+  scope: "ai",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.RATE_LIMIT_AI_MAX,
+});
+
+const leadsRateLimit = createRateLimiter({
+  scope: "leads",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.RATE_LIMIT_LEADS_MAX,
+});
+
+const platformAuthRateLimit = createRateLimiter({
+  scope: "platform-auth",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.RATE_LIMIT_PLATFORM_AUTH_MAX,
+});
 
 app.set("trust proxy", 1);
 
@@ -47,22 +78,25 @@ app.use(
   })
 );
 app.use(express.json({ limit: "2mb" }));
+app.use(globalRateLimit);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.use("/auth", authRouter);
+app.use("/auth", authRateLimit, authRouter);
 app.use("/users", usersRouter);
 app.use("/users", measurementsRouter);
-app.use("/ai", aiRouter);
+app.use("/ai", aiRateLimit, aiRouter);
 app.use("/availability", availabilityRouter);
 app.use("/operations", operationsRouter);
 app.use("/notifications", notificationsRouter);
+app.use("/platform/auth/login", platformAuthRateLimit);
+app.use("/platform/auth/bootstrap", platformAuthRateLimit);
 app.use("/platform", platformRouter);
 app.use("/assistance", assistanceRouter);
 app.use("/trainer-routines", trainerRoutinesRouter);
-app.use("/leads", leadsRouter);
+app.use("/leads", leadsRateLimit, leadsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

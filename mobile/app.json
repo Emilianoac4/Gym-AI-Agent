@@ -23,7 +23,8 @@
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "android.permission.ACTIVITY_RECOGNITION"
-      ]
+      ],
+      "package": "com.gymai.mobile"
     },
     "plugins": [
       [

@@ -29,6 +29,12 @@ const envSchema = z.object({
   PLATFORM_ADMIN_TOKEN: z.string().min(24).optional(),
   PLATFORM_JWT_SECRET: z.string().min(24).optional(),
   PLATFORM_SUBSCRIPTION_GRACE_DAYS: z.coerce.number().min(1).max(30).default(3),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().min(1000).default(60_000),
+  RATE_LIMIT_GLOBAL_MAX: z.coerce.number().min(1).default(120),
+  RATE_LIMIT_AUTH_MAX: z.coerce.number().min(1).default(20),
+  RATE_LIMIT_AI_MAX: z.coerce.number().min(1).default(30),
+  RATE_LIMIT_LEADS_MAX: z.coerce.number().min(1).default(10),
+  RATE_LIMIT_PLATFORM_AUTH_MAX: z.coerce.number().min(1).default(10),
 });
 
 const parsed = envSchema.safeParse(process.env);
