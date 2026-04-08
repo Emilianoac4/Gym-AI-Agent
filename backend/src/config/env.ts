@@ -32,7 +32,11 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().min(1000).default(60_000),
   RATE_LIMIT_GLOBAL_MAX: z.coerce.number().min(1).default(120),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().min(1).default(20),
+  RATE_LIMIT_AUTH_LOGIN_MAX: z.coerce.number().min(1).default(8),
+  RATE_LIMIT_AUTH_RECOVERY_MAX: z.coerce.number().min(1).default(6),
   RATE_LIMIT_AI_MAX: z.coerce.number().min(1).default(30),
+  RATE_LIMIT_AI_CHAT_MAX: z.coerce.number().min(1).default(12),
+  RATE_LIMIT_AI_GENERATION_MAX: z.coerce.number().min(1).default(10),
   RATE_LIMIT_LEADS_MAX: z.coerce.number().min(1).default(10),
   RATE_LIMIT_PLATFORM_AUTH_MAX: z.coerce.number().min(1).default(10),
 });

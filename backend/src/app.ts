@@ -31,10 +31,34 @@ const authRateLimit = createRateLimiter({
   maxRequests: env.RATE_LIMIT_AUTH_MAX,
 });
 
+const authLoginRateLimit = createRateLimiter({
+  scope: "auth-login",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.RATE_LIMIT_AUTH_LOGIN_MAX,
+});
+
+const authRecoveryRateLimit = createRateLimiter({
+  scope: "auth-recovery",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.RATE_LIMIT_AUTH_RECOVERY_MAX,
+});
+
 const aiRateLimit = createRateLimiter({
   scope: "ai",
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   maxRequests: env.RATE_LIMIT_AI_MAX,
+});
+
+const aiChatRateLimit = createRateLimiter({
+  scope: "ai-chat",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.RATE_LIMIT_AI_CHAT_MAX,
+});
+
+const aiGenerationRateLimit = createRateLimiter({
+  scope: "ai-generation",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.RATE_LIMIT_AI_GENERATION_MAX,
 });
 
 const leadsRateLimit = createRateLimiter({
@@ -84,9 +108,15 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+app.use("/auth/login", authLoginRateLimit);
+app.use("/auth/forgot-password", authRecoveryRateLimit);
+app.use("/auth/reset-password", authRecoveryRateLimit);
 app.use("/auth", authRateLimit, authRouter);
 app.use("/users", usersRouter);
 app.use("/users", measurementsRouter);
+app.use("/ai/:userId/chat", aiChatRateLimit);
+app.use("/ai/:userId/routine", aiGenerationRateLimit);
+app.use("/ai/:userId/nutrition", aiGenerationRateLimit);
 app.use("/ai", aiRateLimit, aiRouter);
 app.use("/availability", availabilityRouter);
 app.use("/operations", operationsRouter);

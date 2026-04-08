@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { HttpError } from "../utils/http-error";
+import { emitSecurityAuditEvent } from "./security-audit.middleware";
 
 export const errorHandler = (
   err: unknown,
@@ -21,6 +22,18 @@ export const errorHandler = (
   }
 
   if (err instanceof HttpError) {
+    if (err.statusCode === 401 || err.statusCode === 403) {
+      emitSecurityAuditEvent({
+        req,
+        eventType: err.statusCode === 401 ? "unauthorized_request" : "forbidden_request",
+        severity: "warning",
+        message: err.message,
+        metadata: {
+          statusCode: err.statusCode,
+        },
+      });
+    }
+
     res.status(err.statusCode).json({ message: err.message, requestId });
     return;
   }
@@ -29,6 +42,17 @@ export const errorHandler = (
     res.status(502).json({ message: err.message, requestId });
     return;
   }
+
+  emitSecurityAuditEvent({
+    req,
+    eventType: "unhandled_server_error",
+    severity: "critical",
+    message: err instanceof Error ? err.message : "Unhandled unknown error",
+    metadata: {
+      statusCode: 500,
+      errorName: err instanceof Error ? err.name : "Unknown",
+    },
+  });
 
   console.error("Unhandled error", {
     requestId,

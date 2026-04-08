@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { emitSecurityAuditEvent } from "./security-audit.middleware";
 
 type RateLimitOptions = {
   scope: string;
@@ -68,6 +69,21 @@ export function createRateLimiter(options: RateLimitOptions) {
     if (current.count > maxRequests) {
       const retryAfterSeconds = Math.max(1, Math.ceil((current.resetAt - now) / 1000));
       res.setHeader("Retry-After", String(retryAfterSeconds));
+      res.setHeader("X-Security-Event", "rate_limit_exceeded");
+
+      emitSecurityAuditEvent({
+        req,
+        eventType: "rate_limit_exceeded",
+        severity: "warning",
+        message: `Rate limit exceeded for scope '${scope}'`,
+        metadata: {
+          scope,
+          maxRequests,
+          currentCount: current.count,
+          retryAfterSeconds,
+        },
+      });
+
       return res.status(429).json({
         message: "Too many requests",
         code: "RATE_LIMIT_EXCEEDED",
