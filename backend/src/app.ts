@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { randomUUID } from "crypto";
 import { env } from "./config/env";
 import { authRouter } from "./modules/auth/auth.routes";
@@ -18,6 +19,8 @@ import { notFoundHandler } from "./middleware/not-found.middleware";
 import { errorHandler } from "./middleware/error.middleware";
 
 export const app = express();
+
+app.disable("x-powered-by");
 
 const globalRateLimit = createRateLimiter({
   scope: "global",
@@ -74,6 +77,14 @@ const platformAuthRateLimit = createRateLimiter({
 });
 
 app.set("trust proxy", 1);
+
+app.use(
+  helmet({
+    // Backend serves a few HTML pages with inline styles/scripts for auth flows.
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: false,
+  }),
+);
 
 app.use((req, res, next) => {
   const requestId = randomUUID();

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
+import * as SecureStore from "expo-secure-store";
 import { api } from "../services/api";
 import { AuthUser, GymSelectionOption } from "../types/api";
 
@@ -39,15 +40,72 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const SESSION_STORAGE_KEY = "tuco.auth.session.v1";
+
+type StoredSession = {
+  token: string;
+  refreshToken: string;
+  user: AuthUser;
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [pendingGymSelection, setPendingGymSelection] = useState<{
     selectorToken: string;
     gyms: GymSelectionOption[];
   } | null>(null);
   const pushTokenRef = useRef<string | null>(null);
+
+  const persistSession = async (session: StoredSession) => {
+    await SecureStore.setItemAsync(SESSION_STORAGE_KEY, JSON.stringify(session));
+  };
+
+  const clearSessionStorage = async () => {
+    await SecureStore.deleteItemAsync(SESSION_STORAGE_KEY);
+  };
+
+  const applySession = async (session: StoredSession) => {
+    setPendingGymSelection(null);
+    setToken(session.token);
+    setRefreshToken(session.refreshToken);
+    setUser(session.user);
+    await persistSession(session);
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await SecureStore.getItemAsync(SESSION_STORAGE_KEY);
+        if (!raw) {
+          return;
+        }
+
+        const stored = JSON.parse(raw) as Partial<StoredSession>;
+        if (!stored?.refreshToken) {
+          await clearSessionStorage();
+          return;
+        }
+
+        const refreshed = await api.refreshSession(stored.refreshToken);
+        await applySession({
+          token: refreshed.token,
+          refreshToken: refreshed.refreshToken,
+          user: refreshed.user,
+        });
+      } catch {
+        setPendingGymSelection(null);
+        setToken(null);
+        setRefreshToken(null);
+        setUser(null);
+        await clearSessionStorage().catch(() => {});
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   // Register device push token whenever the user authenticates
   useEffect(() => {
@@ -88,19 +146,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const data = await api.login({ identifier, password });
       if (data.requiresGymSelection && data.selectorToken && data.gyms) {
+        await clearSessionStorage().catch(() => {});
         setPendingGymSelection({ selectorToken: data.selectorToken, gyms: data.gyms });
         setToken(null);
+        setRefreshToken(null);
         setUser(null);
         return;
       }
 
-      if (!data.token || !data.user) {
+      if (!data.token || !data.refreshToken || !data.user) {
         throw new Error("Respuesta de autenticacion invalida");
       }
 
-      setPendingGymSelection(null);
-      setToken(data.token);
-      setUser(data.user);
+      await applySession({
+        token: data.token,
+        refreshToken: data.refreshToken,
+        user: data.user,
+      });
     } finally {
       setLoading(false);
     }
@@ -117,9 +179,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         selectorToken: pendingGymSelection.selectorToken,
         userId,
       });
-      setPendingGymSelection(null);
-      setToken(data.token);
-      setUser(data.user);
+      await applySession({
+        token: data.token,
+        refreshToken: data.refreshToken,
+        user: data.user,
+      });
     } finally {
       setLoading(false);
     }
@@ -129,8 +193,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const data = await api.loginWithGoogle({ idToken });
-      setToken(data.token);
-      setUser(data.user);
+      await applySession({
+        token: data.token,
+        refreshToken: data.refreshToken,
+        user: data.user,
+      });
     } finally {
       setLoading(false);
     }
@@ -140,8 +207,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const data = await api.loginWithApple({ idToken });
-      setToken(data.token);
-      setUser(data.user);
+      await applySession({
+        token: data.token,
+        refreshToken: data.refreshToken,
+        user: data.user,
+      });
     } finally {
       setLoading(false);
     }
@@ -203,22 +273,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Respuesta de autenticacion invalida");
       }
 
-      setToken(data.token);
-      setUser(data.user);
+      if (!data.refreshToken) {
+        throw new Error("Respuesta de autenticacion invalida: falta refresh token");
+      }
+
+      await applySession({
+        token: data.token,
+        refreshToken: data.refreshToken,
+        user: data.user,
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const logout = () => {
-    // Best-effort cleanup of push token
-    if (token && pushTokenRef.current) {
-      api.unregisterPushToken(token, { token: pushTokenRef.current }).catch(() => {});
-      pushTokenRef.current = null;
-    }
+    const tokenToCleanup = token;
+    const pushTokenToCleanup = pushTokenRef.current;
+    const refreshToRevoke = refreshToken;
+
+    pushTokenRef.current = null;
     setPendingGymSelection(null);
     setToken(null);
+    setRefreshToken(null);
     setUser(null);
+
+    void (async () => {
+      if (tokenToCleanup && pushTokenToCleanup) {
+        await api.unregisterPushToken(tokenToCleanup, { token: pushTokenToCleanup }).catch(() => {});
+      }
+      await api.logout(refreshToRevoke ?? undefined).catch(() => {});
+      await clearSessionStorage().catch(() => {});
+    })();
   };
 
   const value = useMemo(

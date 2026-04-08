@@ -127,6 +127,7 @@ export const api = {
   login: (payload: { identifier: string; password: string }) =>
     requestWithRetry<{
       token?: string;
+      refreshToken?: string;
       user?: {
         id: string;
         email: string;
@@ -154,6 +155,7 @@ export const api = {
   selectGym: (payload: { selectorToken: string; userId: string }) =>
     requestWithRetry<{
       token: string;
+      refreshToken: string;
       user: {
         id: string;
         email: string;
@@ -169,9 +171,35 @@ export const api = {
       timeoutMs: AUTH_TIMEOUT_MS,
     }),
 
+  refreshSession: (refreshToken: string) =>
+    requestWithRetry<{
+      token: string;
+      refreshToken: string;
+      user: {
+        id: string;
+        email: string;
+        fullName: string;
+        role: "admin" | "trainer" | "member";
+        gymId: string;
+        username?: string;
+        mustChangePassword?: boolean;
+      };
+    }>("/auth/refresh", {
+      method: "POST",
+      body: { refreshToken },
+      timeoutMs: AUTH_TIMEOUT_MS,
+    }),
+
+  logout: (refreshToken?: string) =>
+    request<{ message: string }>("/auth/logout", {
+      method: "POST",
+      body: refreshToken ? { refreshToken } : {},
+    }),
+
   loginWithGoogle: (payload: { idToken: string }) =>
     requestWithRetry<{
       token: string;
+      refreshToken: string;
       user: {
         id: string;
         email: string;
@@ -189,6 +217,7 @@ export const api = {
   loginWithApple: (payload: { idToken: string }) =>
     requestWithRetry<{
       token: string;
+      refreshToken: string;
       user: {
         id: string;
         email: string;

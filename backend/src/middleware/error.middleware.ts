@@ -12,6 +12,23 @@ export const errorHandler = (
   const isDevelopment = process.env.NODE_ENV !== "production";
   const requestId = req.requestId;
 
+  const bodyParserLikeError = err as { status?: number; type?: string; message?: string };
+  if (bodyParserLikeError?.status === 400 || bodyParserLikeError?.type === "entity.parse.failed") {
+    emitSecurityAuditEvent({
+      req,
+      eventType: "malformed_request_payload",
+      severity: "warning",
+      message: bodyParserLikeError?.message ?? "Malformed JSON payload",
+      metadata: {
+        statusCode: 400,
+        parserType: bodyParserLikeError?.type ?? "unknown",
+      },
+    });
+
+    res.status(400).json({ message: "Invalid request payload", requestId });
+    return;
+  }
+
   if (err instanceof ZodError) {
     res.status(400).json({
       message: "Validation error",
@@ -39,6 +56,16 @@ export const errorHandler = (
   }
 
   if (err instanceof Error && err.message.startsWith("AI provider error")) {
+    emitSecurityAuditEvent({
+      req,
+      eventType: "ai_provider_upstream_error",
+      severity: "warning",
+      message: err.message,
+      metadata: {
+        statusCode: 502,
+      },
+    });
+
     res.status(502).json({ message: err.message, requestId });
     return;
   }

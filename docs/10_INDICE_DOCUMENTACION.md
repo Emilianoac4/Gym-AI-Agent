@@ -1,8 +1,8 @@
 # GymAI - Índice de Documentación Completa
 
 **Tabla de Contenidos Maestra**  
-**Ultima actualizacion**: Abril 1, 2026  
-**Version**: 2.1 (Plan Prioritario de 3 perfiles activo)
+**Ultima actualizacion**: Abril 8, 2026  
+**Version**: 2.2 (Plan prioritario + checklist de seguridad alta)
 
 ---
 
@@ -278,6 +278,60 @@
 - necesitas decidir como modelar horario estandar y dias especiales
 - necesitas habilitar edicion solo a admins y trainers autorizados
 - quieres saber que construir despues de esta capacidad
+
+---
+
+### 🔐 [16_CHECKLIST_SEGURIDAD_ALTA.md](docs/16_CHECKLIST_SEGURIDAD_ALTA.md)  📍 **NUEVO**
+**Contenido**: checklist ejecutiva de seguridad alta + plan de implementacion por fases  
+**Para quién**: founders, backend lead, mobile lead, architect, operaciones  
+**Tiempo**: 12-15 min  
+**Secciones**:
+- checklist por prioridad (critico, alto, medio)
+- baseline actual de seguridad
+- brechas pendientes por capa
+- fases S0-S3 con criterio de salida
+- gobierno operativo y evidencia requerida
+
+**Cuándo consultar**:
+- quieres elevar la seguridad antes de escalar el piloto
+- necesitas priorizar MFA, storage, secretos, restore y guardrails IA
+- quieres saber que controles ya existen y cuales siguen pendientes
+- necesitas integrar seguridad al plan oficial de necesidades
+
+---
+
+### 🛡️ [17_BACKLOG_SEGURIDAD_PILOTO.md](docs/17_BACKLOG_SEGURIDAD_PILOTO.md)  📍 **NUEVO**
+**Contenido**: backlog tecnico de seguridad hasta piloto con evidencia real del repo  
+**Para quién**: product, backend lead, mobile lead, DevOps, architect  
+**Tiempo**: 10-12 min  
+**Secciones**:
+- estado real por control con evidencia del repo
+- backlog por area (backend, mobile, infra, portal, IA)
+- sprints concretos hasta el 21 de abril
+- siguiente paso exacto recomendado del plan
+
+**Cuándo consultar**:
+- quieres ejecutar la seguridad como backlog real y no solo como checklist
+- necesitas decidir que entra antes del piloto
+- quieres justificar prioridades con evidencia concreta del repo actual
+- necesitas saber cual es el siguiente paso del plan sin ambiguedad
+
+---
+
+### 🔑 [18_RUNBOOK_ROTACION_SECRETOS.md](docs/18_RUNBOOK_ROTACION_SECRETOS.md)  📍 **NUEVO**
+**Contenido**: procedimiento operativo de rotacion de secretos por entorno  
+**Para quién**: DevOps, backend lead, operaciones de plataforma  
+**Tiempo**: 8-10 min  
+**Secciones**:
+- alcance de secretos criticos
+- politica minima de rotacion
+- pasos de ejecucion en staging y produccion
+- checklist de salida y bitacora de rotaciones
+
+**Cuándo consultar**:
+- vas a ejecutar rotacion de secretos en Sprint S0-A
+- necesitas estandarizar ventanas y validaciones post-rotacion
+- quieres reducir riesgo de exposicion por configuracion
 
 **Parte 2 - Troubleshooting (Indexed)**:
 - 15+ errores comunes

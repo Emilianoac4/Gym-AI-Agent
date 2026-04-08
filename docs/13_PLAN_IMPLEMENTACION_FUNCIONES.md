@@ -1,7 +1,7 @@
 # GymAI - Plan Prioritario de Implementacion de Funciones
 
-**Version**: 2.0  
-**Fecha**: Abril 1, 2026  
+**Version**: 2.1  
+**Fecha**: Abril 8, 2026  
 **Estado**: PRIORIDAD TOTAL DE PRODUCTO Y DESARROLLO  
 **Objetivo**: ejecutar la nueva perspectiva de 3 perfiles (administrador, entrenador, usuario) con base tecnica solida, trazabilidad y foco en retencion.
 
@@ -284,6 +284,32 @@ Este documento pasa a ser la referencia principal de ejecucion.
 	- Retencion de historicos: **hasta que el gimnasio cancele el servicio Tuco**. Al cancelar, los datos quedan sujetos a la politica de baja de datos del contrato.
 	- Acceso post-baja de usuario: el admin del gimnasio puede seguir consultando el historial de pagos de un usuario dado de baja.
 	- Garantia tecnica: ningun endpoint de eliminacion de usuario debe ejecutar `DELETE` en cascada sobre tablas de transacciones o membresias. Requiere test automatizado que valide esta restriccion.
+
+- **Programa transversal de seguridad alta para GymAI/Tuco**
+	- Naturaleza: necesidad **transversal**; no es un modulo aislado. Afecta backend, mobile, base de datos, storage, portal central y flujos con IA.
+	- Prioridad: **critica** antes de ampliar superficies sensibles como MFA-less admin growth, fotos de usuario, analisis visual, portal central y multi-tenant a mayor escala.
+	- Objetivo: llevar la plataforma a un nivel de seguridad alto, auditable y operable para una app de fitness con datos de salud, imagenes, pagos y asistentes IA.
+	- Baseline actual confirmado:
+		- RLS/endurecimiento de acceso a BD ya avanzado.
+		- Rate limiting backend ya implementado para rutas sensibles.
+		- Telemetria runtime y auditoria de eventos de seguridad ya operativas.
+		- Validacion de payloads y manejo de errores fortalecido.
+	- Brechas prioritarias pendientes:
+		- MFA para roles privilegiados.
+		- Rotacion/revocacion robusta de tokens y sesiones.
+		- Politica formal de secretos, retencion, backup/restore y storage sensible.
+		- Escaneo de dependencias y pruebas de seguridad en CI.
+		- Guardrails backend de IA y moderacion de cargas multimedia.
+	- Documento rector de ejecucion: ver `docs/16_CHECKLIST_SEGURIDAD_ALTA.md`.
+	- Backlog operativo para piloto: ver `docs/17_BACKLOG_SEGURIDAD_PILOTO.md`.
+	- Fases de implementacion aprobadas para incorporar al plan oficial:
+		- **Fase S0**: tokens, secretos, observabilidad y abuso de auth.
+		- **Fase S1**: datos sensibles, imagenes, retencion y restore.
+		- **Fase S2**: MFA, permisos por accion, sesiones y pruebas de autorizacion.
+		- **Fase S3**: guardrails IA, headers HTTP/CSP y seguridad de supply chain.
+	- Siguiente paso recomendado del plan:
+		- ejecutar **Sprint S0-A** del backlog de seguridad con prioridad inmediata en rotacion/saneamiento de secretos y definicion de refresh tokens + revocacion.
+	- Regla de gobierno: ningun item critico de seguridad se considera cerrado sin evidencia verificable (tests, dashboard, politica aprobada o simulacro exitoso).
 
 ---
 
