@@ -49,9 +49,60 @@ interface RequestOptions {
   timeoutMs?: number;
 }
 
+type AuthSession = {
+  token: string;
+  refreshToken: string;
+  user: {
+    id: string;
+    email: string;
+    fullName: string;
+    role: "admin" | "trainer" | "member";
+    gymId: string;
+    username?: string;
+    mustChangePassword?: boolean;
+  };
+};
+
+type AuthSessionHooks = {
+  getSession: () => { token: string | null; refreshToken: string | null };
+  onSessionRefreshed: (session: AuthSession) => Promise<void>;
+  onSessionExpired: () => Promise<void>;
+};
+
 const REQUEST_TIMEOUT_MS = 15000;
 const AI_TIMEOUT_MS = 60000;
 const AUTH_TIMEOUT_MS = 90000; // longer for cold starts on Render free tier
+
+let authSessionHooks: AuthSessionHooks | null = null;
+let refreshInFlight: Promise<AuthSession> | null = null;
+
+export function configureAuthSessionHooks(hooks: AuthSessionHooks | null) {
+  authSessionHooks = hooks;
+}
+
+async function refreshAccessSession(refreshToken: string): Promise<AuthSession> {
+  if (!refreshInFlight) {
+    refreshInFlight = request<AuthSession>("/auth/refresh", {
+      method: "POST",
+      body: { refreshToken },
+      timeoutMs: AUTH_TIMEOUT_MS,
+    }).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+
+  return refreshInFlight;
+}
+
+class ApiRequestError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = "ApiRequestError";
+  }
+}
 
 async function requestWithRetry<T>(path: string, options: RequestOptions = {}, retries = 1): Promise<T> {
   try {
@@ -82,7 +133,11 @@ function parseJsonSafe(text: string): unknown {
   }
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+  hasRetriedAfterRefresh = false,
+): Promise<T> {
   const controller = new AbortController();
   const timeout = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -112,9 +167,29 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const requestId = response.headers.get("x-request-id") ?? data?.requestId;
 
   if (!response.ok) {
+    if (response.status === 401 && options.token && authSessionHooks && !hasRetriedAfterRefresh) {
+      const session = authSessionHooks.getSession();
+
+      if (session.refreshToken) {
+        try {
+          const refreshed = await refreshAccessSession(session.refreshToken);
+          await authSessionHooks.onSessionRefreshed(refreshed);
+
+          return request<T>(path, {
+            ...options,
+            token: refreshed.token,
+          }, true);
+        } catch {
+          await authSessionHooks.onSessionExpired();
+        }
+      } else {
+        await authSessionHooks.onSessionExpired();
+      }
+    }
+
     const baseMessage = data?.message ?? `Request failed (${response.status})`;
     const messageWithTrace = requestId ? `${baseMessage} [requestId: ${requestId}]` : baseMessage;
-    throw new Error(messageWithTrace);
+    throw new ApiRequestError(response.status, messageWithTrace);
   }
 
   return data as T;

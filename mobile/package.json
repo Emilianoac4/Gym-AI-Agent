@@ -11,7 +11,8 @@
     "android:dev": "expo run:android",
     "ios:dev": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:auth-smoke": "tsx scripts/smoke-auth-auto-refresh.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
@@ -40,6 +41,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
+    "tsx": "^4.20.6",
     "typescript": "~5.9.2"
   }
 }

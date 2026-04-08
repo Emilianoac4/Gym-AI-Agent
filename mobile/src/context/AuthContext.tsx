@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
-import { api } from "../services/api";
+import { api, configureAuthSessionHooks } from "../services/api";
 import { AuthUser, GymSelectionOption } from "../types/api";
 
 // Show in-app notifications as banners
@@ -58,6 +58,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     gyms: GymSelectionOption[];
   } | null>(null);
   const pushTokenRef = useRef<string | null>(null);
+  const tokenRef = useRef<string | null>(null);
+  const refreshTokenRef = useRef<string | null>(null);
 
   const persistSession = async (session: StoredSession) => {
     await SecureStore.setItemAsync(SESSION_STORAGE_KEY, JSON.stringify(session));
@@ -72,8 +74,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(session.token);
     setRefreshToken(session.refreshToken);
     setUser(session.user);
+    tokenRef.current = session.token;
+    refreshTokenRef.current = session.refreshToken;
     await persistSession(session);
   };
+
+  const clearLocalSession = async () => {
+    setPendingGymSelection(null);
+    setToken(null);
+    setRefreshToken(null);
+    setUser(null);
+    tokenRef.current = null;
+    refreshTokenRef.current = null;
+    await clearSessionStorage().catch(() => {});
+  };
+
+  useEffect(() => {
+    configureAuthSessionHooks({
+      getSession: () => ({
+        token: tokenRef.current,
+        refreshToken: refreshTokenRef.current,
+      }),
+      onSessionRefreshed: async (session) => {
+        await applySession({
+          token: session.token,
+          refreshToken: session.refreshToken,
+          user: session.user,
+        });
+      },
+      onSessionExpired: async () => {
+        pushTokenRef.current = null;
+        await clearLocalSession();
+      },
+    });
+
+    return () => {
+      configureAuthSessionHooks(null);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -96,11 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           user: refreshed.user,
         });
       } catch {
-        setPendingGymSelection(null);
-        setToken(null);
-        setRefreshToken(null);
-        setUser(null);
-        await clearSessionStorage().catch(() => {});
+        await clearLocalSession();
       } finally {
         setLoading(false);
       }
@@ -288,11 +322,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    const tokenToCleanup = token;
+    const tokenToCleanup = tokenRef.current;
     const pushTokenToCleanup = pushTokenRef.current;
-    const refreshToRevoke = refreshToken;
+    const refreshToRevoke = refreshTokenRef.current;
 
     pushTokenRef.current = null;
+    tokenRef.current = null;
+    refreshTokenRef.current = null;
     setPendingGymSelection(null);
     setToken(null);
     setRefreshToken(null);
