@@ -3,8 +3,10 @@ import {
 	changeTemporaryPassword,
 	forgotPassword,
 	login,
+	logout,
 	oauthApple,
 	oauthGoogle,
+	refreshSession,
 	requestEmailVerification,
 	register,
 	resetPassword,
@@ -18,7 +20,9 @@ import {
 	changeTemporaryPasswordSchema,
 	forgotPasswordSchema,
 	loginSchema,
+	logoutSchema,
 	oauthLoginSchema,
+	refreshSessionSchema,
 	requestEmailVerificationSchema,
 	registerSchema,
 	resetPasswordSchema,
@@ -31,6 +35,8 @@ const authRouter = Router();
 
 authRouter.post("/register", validate(registerSchema), register);
 authRouter.post("/login", validate(loginSchema), login);
+authRouter.post("/refresh", validate(refreshSessionSchema), refreshSession);
+authRouter.post("/logout", validate(logoutSchema), logout);
 authRouter.post("/select-gym", validate(selectGymSchema), selectGym);
 authRouter.post("/oauth/google", validate(oauthLoginSchema), oauthGoogle);
 authRouter.post("/oauth/apple", validate(oauthLoginSchema), oauthApple);

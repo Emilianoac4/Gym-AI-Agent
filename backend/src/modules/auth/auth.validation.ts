@@ -54,6 +54,14 @@ export const changeTemporaryPasswordSchema = z.object({
   newPassword: z.string().min(8),
 });
 
+export const refreshSessionSchema = z.object({
+  refreshToken: z.string().min(16),
+});
+
+export const logoutSchema = z.object({
+  refreshToken: z.string().min(16).optional(),
+});
+
 export const requestEmailVerificationSchema = z.object({
   email: z.string().email(),
 });
@@ -76,6 +84,8 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type SelectGymInput = z.infer<typeof selectGymSchema>;
 export type OauthLoginInput = z.infer<typeof oauthLoginSchema>;
 export type ChangeTemporaryPasswordInput = z.infer<typeof changeTemporaryPasswordSchema>;
+export type RefreshSessionInput = z.infer<typeof refreshSessionSchema>;
+export type LogoutInput = z.infer<typeof logoutSchema>;
 export type RequestEmailVerificationInput = z.infer<typeof requestEmailVerificationSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;

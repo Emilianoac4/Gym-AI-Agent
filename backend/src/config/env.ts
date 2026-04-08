@@ -10,6 +10,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 chars"),
   JWT_EXPIRES_IN: z.string().default("1h"),
+  JWT_REFRESH_SECRET: z.string().min(16).optional(),
+  JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
   GOOGLE_OAUTH_CLIENT_IDS: z.string().optional(),
   APPLE_OAUTH_AUDIENCES: z.string().optional(),
   AUTH_ALLOW_UNVERIFIED_SOCIAL_EMAIL: z

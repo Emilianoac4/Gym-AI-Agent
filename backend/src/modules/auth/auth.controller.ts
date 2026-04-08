@@ -1,15 +1,25 @@
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
 import { UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
 import { HttpError } from "../../utils/http-error";
-import { signAuthToken, signGymSelectorToken, verifyGymSelectorToken, verifyAuthToken } from "../../utils/jwt";
+import {
+  signAuthToken,
+  signGymSelectorToken,
+  signRefreshToken,
+  verifyGymSelectorToken,
+  verifyAuthToken,
+  verifyRefreshToken,
+} from "../../utils/jwt";
 import {
   ChangeTemporaryPasswordInput,
   ForgotPasswordInput,
   LoginInput,
+  LogoutInput,
   OauthLoginInput,
+  RefreshSessionInput,
   RequestEmailVerificationInput,
   RegisterInput,
   ResetPasswordInput,
@@ -25,6 +35,7 @@ import {
   sendPasswordReset,
 } from "../../utils/email-auth";
 import { generateGymScopedUsername } from "../../utils/username";
+import { isRefreshTokenRevoked, revokeRefreshToken } from "./refresh-token.store";
 
 const TEMP_PASSWORD_PREFIX = "TEMP$";
 const EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
@@ -50,6 +61,38 @@ const ensureMembershipActive = async (user: {
     });
     throw new HttpError(403, "Tu membresia vencio. Solicita renovacion con tu gimnasio.");
   }
+};
+
+const buildAuthSessionResponse = (params: {
+  userId: string;
+  role: UserRole;
+  email: string;
+  fullName: string;
+  gymId: string;
+  username?: string | null;
+  mustChangePassword: boolean;
+}) => {
+  const token = signAuthToken({ userId: params.userId, role: params.role });
+  const refreshToken = signRefreshToken({
+    type: "refresh",
+    userId: params.userId,
+    role: params.role,
+    jti: randomUUID(),
+  });
+
+  return {
+    token,
+    refreshToken,
+    user: {
+      id: params.userId,
+      email: params.email,
+      fullName: params.fullName,
+      role: params.role,
+      gymId: params.gymId,
+      username: params.username ?? undefined,
+      mustChangePassword: params.mustChangePassword,
+    },
+  };
 };
 
 const parseAdminFromHeader = (req: Request): { userId: string; role: UserRole } | null => {
@@ -437,7 +480,19 @@ export const login = async (
   req: Request<unknown, unknown, LoginInput>,
   res: Response,
 ): Promise<void> => {
-  const { identifier, password } = req.body;
+  const body = req.body as LoginInput & { email?: string };
+  const rawIdentifier =
+    typeof body.identifier === "string"
+      ? body.identifier
+      : typeof body.email === "string"
+        ? body.email
+        : "";
+  const identifier = rawIdentifier.trim();
+  const password = body.password;
+
+  if (!identifier) {
+    throw new HttpError(400, "Se requiere correo electrónico o nombre de usuario");
+  }
 
   const isEmail = identifier.includes("@");
 
@@ -452,7 +507,12 @@ export const login = async (
     }
 
     const comparableHash = getComparablePasswordHash(globalAccount.passwordHash);
-    const isValidPassword = await bcrypt.compare(password, comparableHash);
+    let isValidPassword = false;
+    try {
+      isValidPassword = await bcrypt.compare(password, comparableHash);
+    } catch {
+      throw new HttpError(401, "Invalid credentials");
+    }
     if (!isValidPassword) {
       throw new HttpError(401, "Invalid credentials");
     }
@@ -480,19 +540,17 @@ export const login = async (
     if (unlockedMemberships.length === 1) {
       const membership = unlockedMemberships[0];
       await ensureMembershipActive(membership);
-      const token = signAuthToken({ userId: membership.id, role: membership.role });
-      res.json({
-        token,
-        user: {
-          id: membership.id,
+      res.json(
+        buildAuthSessionResponse({
+          userId: membership.id,
+          role: membership.role,
           email: globalAccount.email,
           fullName: globalAccount.fullName,
-          role: membership.role,
           gymId: membership.gymId,
-          username: membership.username ?? undefined,
+          username: membership.username,
           mustChangePassword: isTemporaryPasswordHash(globalAccount.passwordHash),
-        },
-      });
+        }),
+      );
       return;
     }
 
@@ -532,7 +590,12 @@ export const login = async (
   // (all users with same username share the same email → same global account)
   const globalAccount = validUsers[0].globalAccount;
   const comparableHash = getComparablePasswordHash(globalAccount.passwordHash);
-  const isValidPassword = await bcrypt.compare(password, comparableHash);
+  let isValidPassword = false;
+  try {
+    isValidPassword = await bcrypt.compare(password, comparableHash);
+  } catch {
+    throw new HttpError(401, "Invalid credentials");
+  }
   if (!isValidPassword) {
     throw new HttpError(401, "Invalid credentials");
   }
@@ -544,19 +607,17 @@ export const login = async (
   if (validUsers.length === 1) {
     const user = validUsers[0];
     await ensureMembershipActive(user);
-    const token = signAuthToken({ userId: user.id, role: user.role });
-    res.json({
-      token,
-      user: {
-        id: user.id,
+    res.json(
+      buildAuthSessionResponse({
+        userId: user.id,
+        role: user.role,
         email: globalAccount.email,
         fullName: globalAccount.fullName,
-        role: user.role,
         gymId: user.gymId,
-        username: user.username ?? undefined,
+        username: user.username,
         mustChangePassword: isTemporaryPasswordHash(globalAccount.passwordHash),
-      },
-    });
+      }),
+    );
     return;
   }
 
@@ -611,19 +672,17 @@ export const selectGym = async (
 
   await ensureMembershipActive(membership);
 
-  const token = signAuthToken({ userId: membership.id, role: membership.role });
-  res.json({
-    token,
-    user: {
-      id: membership.id,
+  res.json(
+    buildAuthSessionResponse({
+      userId: membership.id,
+      role: membership.role,
       email: membership.globalAccount.email,
       fullName: membership.globalAccount.fullName,
-      role: membership.role,
       gymId: membership.gymId,
-      username: membership.username ?? undefined,
+      username: membership.username,
       mustChangePassword: isTemporaryPasswordHash(membership.globalAccount.passwordHash),
-    },
-  });
+    }),
+  );
 };
 
 const completeOauthLogin = async (
@@ -664,19 +723,17 @@ const completeOauthLogin = async (
   if (unlockedMemberships.length === 1) {
     const membership = unlockedMemberships[0];
     await ensureMembershipActive(membership);
-    const token = signAuthToken({ userId: membership.id, role: membership.role });
-    res.json({
-      token,
-      user: {
-        id: membership.id,
+    res.json(
+      buildAuthSessionResponse({
+        userId: membership.id,
+        role: membership.role,
         email: globalAccount.email,
         fullName: globalAccount.fullName,
-        role: membership.role,
         gymId: membership.gymId,
-        username: membership.username ?? undefined,
+        username: membership.username,
         mustChangePassword: false,
-      },
-    });
+      }),
+    );
     return;
   }
 
@@ -692,6 +749,76 @@ const completeOauthLogin = async (
       role: m.role,
     })),
   });
+};
+
+export const refreshSession = async (
+  req: Request<unknown, unknown, RefreshSessionInput>,
+  res: Response,
+): Promise<void> => {
+  let payload;
+  try {
+    payload = verifyRefreshToken(req.body.refreshToken);
+  } catch {
+    throw new HttpError(401, "Refresh token invalido o expirado");
+  }
+
+  if (isRefreshTokenRevoked(payload.jti)) {
+    throw new HttpError(401, "Refresh token revocado");
+  }
+
+  const membership = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    include: {
+      globalAccount: true,
+      gym: { select: { lockedAt: true } },
+    },
+  });
+
+  if (!membership || !membership.isActive) {
+    throw new HttpError(401, "Sesion invalida");
+  }
+
+  if (!membership.globalAccount.isActive) {
+    throw new HttpError(401, "Sesion invalida");
+  }
+
+  if (membership.gym.lockedAt) {
+    throw new HttpError(403, "El acceso a este gimnasio ha sido bloqueado. Contacta al soporte.");
+  }
+
+  await ensureMembershipActive(membership);
+
+  revokeRefreshToken(payload.jti, payload.exp);
+
+  res.json(
+    buildAuthSessionResponse({
+      userId: membership.id,
+      role: membership.role,
+      email: membership.globalAccount.email,
+      fullName: membership.globalAccount.fullName,
+      gymId: membership.gymId,
+      username: membership.username,
+      mustChangePassword: isTemporaryPasswordHash(membership.globalAccount.passwordHash),
+    }),
+  );
+};
+
+export const logout = async (
+  req: Request<unknown, unknown, LogoutInput>,
+  res: Response,
+): Promise<void> => {
+  const refreshToken = req.body.refreshToken;
+
+  if (refreshToken) {
+    try {
+      const payload = verifyRefreshToken(refreshToken);
+      revokeRefreshToken(payload.jti, payload.exp);
+    } catch {
+      // Keep logout idempotent and do not leak token validation details.
+    }
+  }
+
+  res.json({ message: "Sesion cerrada" });
 };
 
 export const changeTemporaryPassword = async (

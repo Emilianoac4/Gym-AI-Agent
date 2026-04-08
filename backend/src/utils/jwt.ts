@@ -1,4 +1,4 @@
-import jwt, { SignOptions } from "jsonwebtoken";
+import jwt, { JwtPayload, SignOptions } from "jsonwebtoken";
 import { env } from "../config/env";
 import { UserRole } from "@prisma/client";
 
@@ -10,6 +10,13 @@ export type AuthPayload = {
 export type GymSelectorPayload = {
   type: "gym-selector";
   globalAccountId: string;
+};
+
+export type RefreshPayload = {
+  type: "refresh";
+  userId: string;
+  role: UserRole;
+  jti: string;
 };
 
 export const signAuthToken = (payload: AuthPayload): string => {
@@ -32,5 +39,24 @@ export const verifyGymSelectorToken = (token: string): GymSelectorPayload => {
   if (payload.type !== "gym-selector") {
     throw new Error("Invalid token type");
   }
+  return payload;
+};
+
+const getRefreshSecret = () => env.JWT_REFRESH_SECRET || env.JWT_SECRET;
+
+export const signRefreshToken = (payload: RefreshPayload): string => {
+  const options: SignOptions = {
+    expiresIn: env.JWT_REFRESH_EXPIRES_IN as SignOptions["expiresIn"],
+  };
+  return jwt.sign(payload, getRefreshSecret(), options);
+};
+
+export const verifyRefreshToken = (token: string): (RefreshPayload & JwtPayload) => {
+  const payload = jwt.verify(token, getRefreshSecret()) as RefreshPayload & JwtPayload;
+
+  if (payload.type !== "refresh" || !payload.userId || !payload.role || !payload.jti) {
+    throw new Error("Invalid token payload");
+  }
+
   return payload;
 };
