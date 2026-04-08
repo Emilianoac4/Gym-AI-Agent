@@ -3,6 +3,7 @@ import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, Te
 import { AppButton } from "../../components/AppButton";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
+import { healthService } from "../../services/health.service";
 import { HealthConnection, HealthProvider, Measurement, ProgressSummary } from "../../types/api";
 import { palette } from "../../theme/palette";
 
@@ -23,6 +24,7 @@ export function MeasurementsScreen() {
   const [progressSummary, setProgressSummary] = useState<ProgressSummary | null>(null);
   const [healthConnections, setHealthConnections] = useState<HealthConnection[]>([]);
   const [loading, setLoading] = useState(false);
+  const [importingProvider, setImportingProvider] = useState<HealthProvider | null>(null);
 
   const [weightKg, setWeightKg] = useState("");
   const [bodyFatPct, setBodyFatPct] = useState("");
@@ -79,6 +81,8 @@ export function MeasurementsScreen() {
   const getConnection = (provider: HealthProvider) =>
     healthConnections.find((item) => item.provider === provider) ?? null;
 
+  const runtimeMode = healthService.getRuntimeMode();
+
   const onActivateConnection = async (provider: HealthProvider) => {
     if (!user || !token) {
       return;
@@ -111,6 +115,54 @@ export function MeasurementsScreen() {
       Alert.alert("No se pudo actualizar", error instanceof Error ? error.message : "Error inesperado");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const onImportFromHealth = async (provider: HealthProvider) => {
+    if (!user || !token) {
+      return;
+    }
+
+    const readiness = healthService.canImportNow(provider);
+    if (!readiness.ready) {
+      Alert.alert("Importacion no disponible", readiness.reason);
+      return;
+    }
+
+    setImportingProvider(provider);
+    try {
+      const imported = await healthService.importLatestMeasurement(provider);
+
+      await api.createMeasurement(user.id, token, {
+        date: imported.sampledAt,
+        weightKg: imported.weightKg,
+        bodyFatPct: imported.bodyFatPct,
+        muscleMass: imported.muscleMass,
+      });
+
+      await api.upsertHealthConnection(user.id, token, {
+        provider,
+        metadata: `native_import_last_at=${new Date().toISOString()} sampled_at=${imported.sampledAt}`,
+      });
+
+      await loadMeasurements();
+
+      const importedParts = [
+        imported.weightKg ? `Peso ${imported.weightKg} kg` : null,
+        imported.bodyFatPct ? `Grasa ${imported.bodyFatPct}%` : null,
+        imported.muscleMass ? `Masa muscular ${imported.muscleMass} kg` : null,
+      ].filter(Boolean);
+
+      Alert.alert(
+        "Importacion completada",
+        importedParts.length > 0
+          ? `Datos importados: ${importedParts.join(" | ")}`
+          : "Se importaron datos desde salud.",
+      );
+    } catch (error) {
+      Alert.alert("Importacion no completada", error instanceof Error ? error.message : "Error inesperado");
+    } finally {
+      setImportingProvider(null);
     }
   };
 
@@ -235,7 +287,10 @@ export function MeasurementsScreen() {
       <Text style={styles.sectionTitle}>Integracion de salud (evaluacion)</Text>
       <View style={styles.card}>
         <Text style={styles.integrationHint}>
-          Estado para piloto: solo lectura. El dato manual mantiene prioridad cuando exista conflicto.
+          Estado para piloto: integracion progresiva. Runtime actual: {runtimeMode === "expo-go" ? "Expo Go" : "Native Build"}.
+        </Text>
+        <Text style={styles.integrationHint}>
+          El dato manual mantiene prioridad cuando exista conflicto.
         </Text>
         {providerOrder.map((provider) => {
           const connection = getConnection(provider);
@@ -243,6 +298,8 @@ export function MeasurementsScreen() {
           const linkedAtText = connection?.linkedAt
             ? new Date(connection.linkedAt).toLocaleDateString()
             : "Sin enlace";
+          const availability = healthService.getProviderAvailability(provider);
+          const canImport = isActive && healthService.canImportNow(provider).ready;
 
           return (
             <View key={provider} style={styles.integrationRow}>
@@ -250,20 +307,33 @@ export function MeasurementsScreen() {
                 <Text style={styles.integrationProvider}>{providerLabels[provider]}</Text>
                 <Text style={styles.integrationMeta}>Estado: {isActive ? "Activo" : "Inactivo"}</Text>
                 <Text style={styles.integrationMeta}>Ultimo enlace: {linkedAtText}</Text>
+                <Text style={styles.integrationMeta}>Disponibilidad: {availability.reason}</Text>
               </View>
-              {connection ? (
+              <View style={styles.integrationActions}>
+                {connection ? (
+                  <AppButton
+                    label={isActive ? "Desactivar" : "Activar"}
+                    onPress={() => onToggleConnection(provider, !isActive)}
+                    disabled={loading}
+                    fullWidth={false}
+                  />
+                ) : (
+                  <AppButton
+                    label="Marcar activo"
+                    onPress={() => onActivateConnection(provider)}
+                    disabled={loading}
+                    fullWidth={false}
+                  />
+                )}
+
                 <AppButton
-                  label={isActive ? "Desactivar" : "Activar"}
-                  onPress={() => onToggleConnection(provider, !isActive)}
-                  disabled={loading}
+                  label={importingProvider === provider ? "Importando..." : "Importar"}
+                  onPress={() => onImportFromHealth(provider)}
+                  disabled={loading || importingProvider !== null || !canImport}
+                  fullWidth={false}
+                  variant="secondary"
                 />
-              ) : (
-                <AppButton
-                  label="Marcar activo"
-                  onPress={() => onActivateConnection(provider)}
-                  disabled={loading}
-                />
-              )}
+              </View>
             </View>
           );
         })}
@@ -488,6 +558,10 @@ const styles = StyleSheet.create({
     color: palette.textMuted,
     marginTop: 2,
     fontSize: 12,
+  },
+  integrationActions: {
+    gap: 8,
+    alignItems: "flex-end",
   },
   card: {
     backgroundColor: palette.card,

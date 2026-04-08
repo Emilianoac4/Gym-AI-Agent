@@ -12,14 +12,17 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
-        ]
+        ],
+        "NSHealthShareUsageDescription": "Tuco necesita leer tus metricas de salud para registrar progreso de entrenamiento.",
+        "NSHealthUpdateUsageDescription": "Tuco puede escribir metricas de entrenamiento cuando el usuario lo autorice."
       }
     },
     "android": {
       "permissions": [
         "NOTIFICATIONS",
         "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
+        "VIBRATE",
+        "android.permission.ACTIVITY_RECOGNITION"
       ]
     },
     "plugins": [
@@ -30,6 +33,14 @@
           "sounds": []
         }
       ],
+      [
+        "react-native-health",
+        {
+          "healthSharePermission": "Tuco necesita leer tus metricas de salud para tu seguimiento fitness.",
+          "healthUpdatePermission": "Tuco puede actualizar metricas de salud cuando lo autorices."
+        }
+      ],
+      "react-native-health-connect",
       "@react-native-community/datetimepicker"
     ]
   }

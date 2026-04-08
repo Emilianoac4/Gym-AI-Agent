@@ -33,11 +33,21 @@ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<google-web-client-id>
 npm install
 ```
 
-4. Inicia Expo:
+4. Inicia Expo (Expo Go):
 
 ```bash
 npm run start
 ```
+
+5. Development Build (requerido para HealthKit/Health Connect):
+
+```bash
+npm run android:dev
+npm run ios:dev
+npm run start:dev-client
+```
+
+Nota: Expo Go no soporta integraciones nativas de salud.
 
 ## Flujo actual implementado
 
