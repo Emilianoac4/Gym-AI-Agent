@@ -5,9 +5,12 @@ import { authenticate, authorizeAction } from "../../middleware/auth.middleware"
 import {
   addExerciseToRoutineSchema,
   addRoutineDaySchema,
+  actionProposalParamsSchema,
   chatMessageSchema,
+  confirmActionProposalSchema,
   exerciseCheckinSchema,
   exerciseOptionsSchema,
+  rejectActionProposalSchema,
   regenerateRoutineDaySchema,
   removeRoutineExerciseSchema,
   replaceRoutineExerciseSchema,
@@ -93,6 +96,20 @@ aiRouter.post(
   "/:userId/chat",
   validate(chatMessageSchema),
   AIController.chat
+);
+
+aiRouter.post(
+  "/:userId/action-proposals/:proposalId/confirm",
+  validate(actionProposalParamsSchema),
+  validate(confirmActionProposalSchema),
+  AIController.confirmActionProposal
+);
+
+aiRouter.post(
+  "/:userId/action-proposals/:proposalId/reject",
+  validate(actionProposalParamsSchema),
+  validate(rejectActionProposalSchema),
+  AIController.rejectActionProposal
 );
 
 // Get daily fitness tip

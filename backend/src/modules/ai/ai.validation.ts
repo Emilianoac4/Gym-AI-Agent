@@ -10,6 +10,27 @@ export const chatMessageSchema = z.object({
 
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 
+export const actionProposalParamsSchema = z.object({
+  userId: z.string().uuid("Invalid userId"),
+  proposalId: z.string().uuid("Invalid proposalId"),
+});
+
+export const confirmActionProposalSchema = z.object({
+  selectedDay: z
+    .string()
+    .min(1, "selectedDay is required")
+    .max(50, "selectedDay is too long")
+    .optional(),
+});
+
+export const rejectActionProposalSchema = z.object({
+  reason: z
+    .string()
+    .min(3, "Reason is too short")
+    .max(240, "Reason is too long")
+    .optional(),
+});
+
 export const routineCheckinSchema = z.object({
   sessionDay: z
     .string()

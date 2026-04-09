@@ -43,6 +43,34 @@ type GeneratedRoutine = {
   nutrition_notes?: string;
 };
 
+type ActionProposalType = "routine_replace" | "exercise_add";
+type ActionProposalStatus = "PROPOSED" | "CONFIRMED" | "REJECTED" | "APPLIED" | "FAILED";
+
+type ActionProposalSummary = {
+  proposalId: string;
+  type: ActionProposalType;
+  targetUserId: string;
+  status: ActionProposalStatus;
+  summary: string;
+  rationale: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string;
+};
+
+type ActionProposalRow = {
+  id: string;
+  gym_id: string;
+  target_user_id: string;
+  proposal_type: ActionProposalType;
+  status: ActionProposalStatus;
+  summary: string;
+  rationale: string;
+  proposal_payload: unknown;
+  expires_at: Date;
+  created_at: Date;
+};
+
 const LB_TO_KG = 0.45359237;
 
 function getWeekStartIso(date: Date): string {
@@ -130,6 +158,140 @@ function normalizeDayName(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
+}
+
+function normalizeText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function toActionProposalSummary(row: ActionProposalRow): ActionProposalSummary {
+  return {
+    proposalId: row.id,
+    type: row.proposal_type,
+    targetUserId: row.target_user_id,
+    status: row.status,
+    summary: row.summary,
+    rationale: row.rationale,
+    payload: (row.proposal_payload as Record<string, unknown>) || {},
+    createdAt: row.created_at.toISOString(),
+    expiresAt: row.expires_at.toISOString(),
+  };
+}
+
+async function insertActionProposal(params: {
+  gymId: string;
+  targetUserId: string;
+  proposalType: ActionProposalType;
+  summary: string;
+  rationale: string;
+  payload: Record<string, unknown>;
+  expiresAt: Date;
+}): Promise<ActionProposalRow> {
+  const payloadJson = JSON.stringify(params.payload);
+  const rows = await prisma.$queryRaw<ActionProposalRow[]>`
+    INSERT INTO "ai_action_proposals" (
+      "gym_id",
+      "target_user_id",
+      "proposal_type",
+      "status",
+      "summary",
+      "rationale",
+      "proposal_payload",
+      "expires_at"
+    )
+    VALUES (
+      ${params.gymId},
+      ${params.targetUserId},
+      ${params.proposalType},
+      ${"PROPOSED"},
+      ${params.summary},
+      ${params.rationale},
+      ${payloadJson}::jsonb,
+      ${params.expiresAt}
+    )
+    RETURNING
+      "id",
+      "gym_id",
+      "target_user_id",
+      "proposal_type",
+      "status",
+      "summary",
+      "rationale",
+      "proposal_payload",
+      "expires_at",
+      "created_at"
+  `;
+
+  if (!rows[0]) {
+    throw new HttpError(500, "Unable to create action proposal");
+  }
+
+  return rows[0];
+}
+
+async function getOpenActionProposalOrThrow(params: {
+  proposalId: string;
+  targetUserId: string;
+}): Promise<ActionProposalRow> {
+  const rows = await prisma.$queryRaw<ActionProposalRow[]>`
+    SELECT
+      "id",
+      "gym_id",
+      "target_user_id",
+      "proposal_type",
+      "status",
+      "summary",
+      "rationale",
+      "proposal_payload",
+      "expires_at",
+      "created_at"
+    FROM "ai_action_proposals"
+    WHERE "id" = ${params.proposalId}
+      AND "target_user_id" = ${params.targetUserId}
+    LIMIT 1
+  `;
+
+  const proposal = rows[0];
+  if (!proposal) {
+    throw new HttpError(404, "Action proposal not found");
+  }
+
+  if (proposal.status !== "PROPOSED") {
+    throw new HttpError(409, "Action proposal is no longer pending");
+  }
+
+  if (proposal.expires_at.getTime() < Date.now()) {
+    throw new HttpError(409, "Action proposal expired");
+  }
+
+  return proposal;
+}
+
+async function updateActionProposalStatus(params: {
+  proposalId: string;
+  status: ActionProposalStatus;
+  confirmedByUserId?: string;
+  rejectedByUserId?: string;
+  rejectionReason?: string;
+  appliedAt?: Date;
+  errorMessage?: string;
+}): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "ai_action_proposals"
+    SET
+      "status" = ${params.status},
+      "confirmed_by_user_id" = ${params.confirmedByUserId ?? null},
+      "rejected_by_user_id" = ${params.rejectedByUserId ?? null},
+      "rejection_reason" = ${params.rejectionReason ?? null},
+      "applied_at" = ${params.appliedAt ?? null},
+      "error_message" = ${params.errorMessage ?? null},
+      "updated_at" = NOW()
+    WHERE "id" = ${params.proposalId}
+  `;
 }
 
 function convertToKg(value: number, unit: "kg" | "lb"): number {
@@ -1422,6 +1584,31 @@ export class AIController {
         throw new HttpError(400, "Message is required and must be a string");
       }
 
+      const targetUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, gymId: true },
+      });
+
+      if (!targetUser) {
+        throw new HttpError(404, "User not found");
+      }
+
+      const actionProposal = await AIController.buildActionProposalFromChat(
+        targetUser.gymId,
+        userId,
+        message,
+      );
+
+      if (actionProposal) {
+        res.json({
+          message: "Chat response received",
+          response: actionProposal.assistantMessage,
+          actionProposal: actionProposal.proposal,
+          disclaimer: AI_MEDICAL_DISCLAIMER,
+        });
+        return;
+      }
+
       // Chat with AI
       const response = await aiService.chat(userId, message, {
         startNewConversation: Boolean(startNewConversation),
@@ -1431,6 +1618,223 @@ export class AIController {
         message: "Chat response received",
         response,
         disclaimer: AI_MEDICAL_DISCLAIMER,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  private static async buildActionProposalFromChat(
+    gymId: string,
+    userId: string,
+    message: string,
+  ): Promise<{ assistantMessage: string; proposal: ActionProposalSummary } | null> {
+    const normalizedMessage = normalizeText(message);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    const asksNewRoutine =
+      /(nueva rutina|cambiar rutina|actualizar rutina|otra rutina|recomiendame.*rutina|recomiend[a-z]*.*rutina)/.test(
+        normalizedMessage,
+      );
+
+    if (asksNewRoutine) {
+      const context = await AIController.getUserProfileContext(userId);
+      const routineRaw = await aiService.generateRoutine(userId, context);
+      const parsedRoutine = parseRoutinePayload(routineRaw) as GeneratedRoutine | null;
+
+      if (!parsedRoutine || !Array.isArray(parsedRoutine.sessions)) {
+        return null;
+      }
+
+      const impactPreview = {
+        weeklySessions: parsedRoutine.weekly_sessions,
+        days: parsedRoutine.sessions.map((session) => session.day),
+      };
+
+      const created = await insertActionProposal({
+        gymId,
+        targetUserId: userId,
+        proposalType: "routine_replace",
+        summary: "Tuco propone reemplazar tu rutina actual por una nueva version personalizada.",
+        rationale: "Propuesta creada segun tu contexto de objetivo, nivel, disponibilidad y progreso.",
+        payload: {
+          routine: parsedRoutine,
+          impactPreview,
+        },
+        expiresAt,
+      });
+
+      return {
+        assistantMessage:
+          "Te propongo una nueva rutina personalizada. Si quieres, puedo aplicarla automaticamente en tu seccion de rutinas. ¿Deseas confirmarla?",
+        proposal: toActionProposalSummary(created),
+      };
+    }
+
+    const exerciseIntent = /(quiero|agregar|anadir|añadir).*(ejercicio|hacer)/.test(normalizedMessage);
+    if (!exerciseIntent) {
+      return null;
+    }
+
+    const exerciseMatch = normalizedMessage.match(
+      /(?:quiero|agregar|anadir|añadir)(?:\s+hacer)?\s+([a-z0-9\s\-]{3,80})/,
+    );
+
+    const extractedExercise = exerciseMatch?.[1]?.trim();
+    if (!extractedExercise) {
+      return null;
+    }
+
+    const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
+    const sessions = latestRoutine.routine.sessions;
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+      return null;
+    }
+
+    const suggestedDay = sessions[0].day;
+
+    const created = await insertActionProposal({
+      gymId,
+      targetUserId: userId,
+      proposalType: "exercise_add",
+      summary: `Tuco propone agregar el ejercicio \"${extractedExercise}\" a tu rutina.`,
+      rationale: "Propuesta basada en tu plan actual y en tu solicitud desde chat.",
+      payload: {
+        exercise: {
+          name: extractedExercise,
+          sets: 3,
+          reps: "8-12",
+          rest_seconds: 90,
+          notes: "Agregar con carga progresiva y tecnica controlada.",
+        },
+        suggestedDay,
+        allowedDays: sessions.map((session) => session.day),
+      },
+      expiresAt,
+    });
+
+    return {
+      assistantMessage:
+        `Puedo agregar ${extractedExercise} en ${suggestedDay}. ¿Quieres confirmarlo o prefieres otro dia?`,
+      proposal: toActionProposalSummary(created),
+    };
+  }
+
+  static async confirmActionProposal(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.params.userId as string;
+      const proposalId = req.params.proposalId as string;
+      const auth = (req as any).auth;
+      const { selectedDay } = req.body as { selectedDay?: string };
+
+      await assertAiAccess(auth, userId);
+
+      const proposal = await getOpenActionProposalOrThrow({ proposalId, targetUserId: userId });
+
+      await updateActionProposalStatus({
+        proposalId,
+        status: "CONFIRMED",
+        confirmedByUserId: auth.userId,
+      });
+
+      try {
+        let appliedRoutine: GeneratedRoutine | null = null;
+        const payload = (proposal.proposal_payload as Record<string, unknown>) || {};
+
+        if (proposal.proposal_type === "routine_replace") {
+          const routinePayload = payload.routine as GeneratedRoutine | undefined;
+          if (!routinePayload || !Array.isArray(routinePayload.sessions)) {
+            throw new HttpError(400, "Invalid routine proposal payload");
+          }
+
+          await AIController.saveRoutineSnapshot(userId, routinePayload, `ACTION_PROPOSAL::${proposalId}`);
+          appliedRoutine = routinePayload;
+        } else if (proposal.proposal_type === "exercise_add") {
+          const latest = await AIController.getLatestRoutineSnapshot(userId);
+          const context = await AIController.getUserProfileContext(userId);
+          const exercise = payload.exercise as
+            | { name: string; sets: number; reps: string; rest_seconds?: number; notes?: string }
+            | undefined;
+          const allowedDays = (payload.allowedDays as string[] | undefined) || [];
+          const preferredDay = selectedDay || (payload.suggestedDay as string | undefined) || allowedDays[0];
+
+          if (!exercise?.name || !preferredDay) {
+            throw new HttpError(400, "Invalid exercise proposal payload");
+          }
+
+          if (allowedDays.length > 0 && !allowedDays.includes(preferredDay)) {
+            throw new HttpError(400, "Selected day is not allowed for this proposal");
+          }
+
+          const manualExercise = {
+            name: exercise.name,
+            sets: Number(exercise.sets || 3),
+            reps: String(exercise.reps || "8-12"),
+          };
+
+          appliedRoutine = await aiService.addExerciseToRoutine(
+            userId,
+            context,
+            latest.routine,
+            preferredDay,
+            manualExercise,
+          );
+        }
+
+        await updateActionProposalStatus({
+          proposalId,
+          status: "APPLIED",
+          confirmedByUserId: auth.userId,
+          appliedAt: new Date(),
+        });
+
+        res.json({
+          message: "Action proposal applied",
+          proposal: {
+            ...toActionProposalSummary(proposal),
+            status: "APPLIED",
+          },
+          routine: appliedRoutine,
+        });
+      } catch (error) {
+        await updateActionProposalStatus({
+          proposalId,
+          status: "FAILED",
+          confirmedByUserId: auth.userId,
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+        });
+        throw error;
+      }
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async rejectActionProposal(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.params.userId as string;
+      const proposalId = req.params.proposalId as string;
+      const auth = (req as any).auth;
+      const { reason } = req.body as { reason?: string };
+
+      await assertAiAccess(auth, userId);
+
+      const proposal = await getOpenActionProposalOrThrow({ proposalId, targetUserId: userId });
+
+      await updateActionProposalStatus({
+        proposalId,
+        status: "REJECTED",
+        rejectedByUserId: auth.userId,
+        rejectionReason: reason,
+      });
+
+      res.json({
+        message: "Action proposal rejected",
+        proposal: {
+          ...toActionProposalSummary(proposal),
+          status: "REJECTED",
+        },
       });
     } catch (error) {
       next(error);

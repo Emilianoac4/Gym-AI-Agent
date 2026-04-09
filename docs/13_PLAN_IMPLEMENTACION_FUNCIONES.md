@@ -175,6 +175,15 @@ Este documento pasa a ser la referencia principal de ejecucion.
 	- Solicitud de eliminacion del perfil conversacional: se aplica **soft delete con retencion controlada**, manteniendo identidad solo para consulta de admin autorizado con trazabilidad de acceso.
 	- Estado: pendiente definir reglas de auditoria de cambios de tono visibles para admin.
 
+- **Tuco accionable sobre rutinas desde chat (aprobacion explicita)**
+	- Objetivo: convertir recomendaciones de Tuco en acciones reales sobre la rutina del usuario, sin edicion manual fuera del flujo de chat.
+	- Flujo 1 (nueva rutina): si Tuco recomienda una nueva rutina, debe solicitar aprobacion explicita del usuario; al aprobar, la rutina se carga automaticamente en la seccion de rutinas.
+	- Flujo 2 (ejercicio especifico): si el usuario pide un ejercicio puntual, Tuco sugiere el mejor dia segun contexto y pregunta si desea agregarlo. El usuario confirma el dia final y el sistema lo agrega automaticamente en ese dia.
+	- Regla de seguridad: toda accion debe ser confirmada por el usuario final (sin autoaplicacion silenciosa).
+	- Regla de trazabilidad: guardar auditoria de propuesta, aprobacion/rechazo, usuario actor y cambios aplicados.
+	- Regla de UX: mostrar previsualizacion de cambios antes de confirmar aplicacion.
+	- Estado: pendiente de implementacion en bloque de IA/personalizacion como extension del chat transaccional.
+
 - **Preferencia de ejercicios por usuario (like/dislike y favoritos)**
 	- Alcance de preferencia: por **objetivo** del usuario (no global unico).
 	- Regla de uso en generacion: afecta tanto rutinas generadas por **IA** como rutinas personalizadas por **trainer**.
@@ -709,8 +718,71 @@ Este bloque se implementa en subetapas por complejidad tecnica.
 | # | Necesidad | Alcance | Prioridad |
 |---|---|---|---|
 | 11 | Personalizacion de tono de Tuco | Dinamico por conversacion; sin panel dedicado; soft delete del perfil conversacional | **P** |
+| 11b | Tuco accionable sobre rutinas desde chat | Proponer cambio, solicitar aprobacion explicita, aplicar rutina/ejercicio en agenda del usuario y auditar accion | **P** |
 
-**Criterio de salida**: tono se ajusta dinamicamente sin configuracion manual del usuario.
+**Criterio de salida**: tono se ajusta dinamicamente sin configuracion manual del usuario y Tuco puede aplicar cambios de rutina/ejercicios solo tras aprobacion explicita del usuario.
+
+#### Especificacion tecnica previa (obligatoria antes de desarrollo)
+
+Esta capacidad se implementa como **chat transaccional**. Tuco propone, el usuario confirma y el backend aplica.
+
+1) Estados del flujo
+- `PROPOSED`: Tuco genero una propuesta estructurada, aun sin aplicar.
+- `CONFIRMED`: el usuario aprobo explicitamente la propuesta.
+- `REJECTED`: el usuario rechazo la propuesta.
+- `APPLIED`: el backend aplico el cambio sobre la rutina del usuario.
+- `FAILED`: el backend intento aplicar y fallo; conserva auditoria del error.
+
+2) Tipos de propuesta
+- `routine_replace`: propuesta de nueva rutina completa.
+- `exercise_add`: propuesta de agregar ejercicio a un dia de rutina.
+
+3) Contrato minimo del payload de propuesta
+- Campos comunes:
+	- `proposalId` (uuid)
+	- `type` (`routine_replace` | `exercise_add`)
+	- `targetUserId`
+	- `summary` (texto breve para UI)
+	- `rationale` (por que Tuco recomienda el cambio)
+	- `createdAt`
+	- `expiresAt`
+- Para `routine_replace`:
+	- `routine` (estructura valida de rutina)
+	- `impactPreview` (dias que cambian, ejercicios nuevos/removidos)
+- Para `exercise_add`:
+	- `exercise` (`name`, `sets`, `reps`, `rest_seconds`, `notes`)
+	- `suggestedDay`
+	- `allowedDays` (opciones que puede elegir el usuario)
+
+4) Endpoints iniciales (fase 1)
+- `POST /ai/:userId/chat`:
+	- puede devolver respuesta conversacional normal o `actionProposal` estructurada.
+- `POST /ai/:userId/action-proposals/:proposalId/confirm`:
+	- valida ownership + gym_id + vigencia.
+	- cambia estado a `CONFIRMED` y aplica en transaccion.
+	- respuesta final con estado `APPLIED` o `FAILED`.
+- `POST /ai/:userId/action-proposals/:proposalId/reject`:
+	- cambia estado a `REJECTED` con motivo opcional.
+
+5) Reglas de seguridad
+- Nunca aplicar cambios sin confirmacion explicita del usuario.
+- Aislamiento obligatorio por `gym_id` en todas las operaciones.
+- Usuario solo puede confirmar/rechazar propuestas dirigidas a su propio `targetUserId`.
+- Admin puede operar solo dentro de su gimnasio.
+
+6) Auditoria minima obligatoria
+- Tabla sugerida: `ai_action_proposals`.
+- Campos minimos:
+	- `id`, `gym_id`, `target_user_id`, `proposal_type`, `proposal_payload`
+	- `status`, `confirmed_by_user_id`, `rejected_by_user_id`
+	- `applied_at`, `error_message`, `created_at`, `updated_at`
+- Registrar cada transicion de estado con `requestId` para trazabilidad.
+
+7) Criterio de salida de esta subcapacidad
+- Usuario recibe propuesta clara en chat.
+- Usuario confirma o rechaza dentro del chat/UI.
+- Si confirma, el cambio aparece aplicado en la seccion de rutinas sin pasos manuales adicionales.
+- Auditoria completa visible para soporte/admin segun permisos.
 
 ---
 

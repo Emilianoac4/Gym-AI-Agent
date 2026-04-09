@@ -1,5 +1,6 @@
 import {
   AIChatLog,
+  AIActionProposal,
   AdminDashboardSummary,
   AdminKpi,
   AssistanceRequest,
@@ -575,7 +576,7 @@ export const api = {
     message: string,
     options?: { startNewConversation?: boolean }
   ) =>
-    request<{ message: string; response: string }>(`/ai/${id}/chat`, {
+    request<{ message: string; response: string; actionProposal?: AIActionProposal }>(`/ai/${id}/chat`, {
       method: "POST",
       token,
       body: {
@@ -583,6 +584,37 @@ export const api = {
         startNewConversation: options?.startNewConversation ?? false,
       },
       timeoutMs: AI_TIMEOUT_MS,
+    }),
+
+  confirmActionProposal: (
+    id: string,
+    proposalId: string,
+    token: string,
+    body?: { selectedDay?: string }
+  ) =>
+    request<{
+      message: string;
+      proposal: AIActionProposal;
+      routine?: unknown;
+    }>(`/ai/${id}/action-proposals/${proposalId}/confirm`, {
+      method: "POST",
+      token,
+      body: body ?? {},
+    }),
+
+  rejectActionProposal: (
+    id: string,
+    proposalId: string,
+    token: string,
+    body?: { reason?: string }
+  ) =>
+    request<{
+      message: string;
+      proposal: AIActionProposal;
+    }>(`/ai/${id}/action-proposals/${proposalId}/reject`, {
+      method: "POST",
+      token,
+      body: body ?? {},
     }),
 
   getChatHistory: (id: string, token: string, limit = 20) =>

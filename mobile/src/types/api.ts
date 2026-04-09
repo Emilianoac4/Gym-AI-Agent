@@ -360,6 +360,21 @@ export interface RoutineHistorySnapshot {
   routine: GeneratedRoutine;
 }
 
+export type AIActionProposalType = "routine_replace" | "exercise_add";
+export type AIActionProposalStatus = "PROPOSED" | "CONFIRMED" | "REJECTED" | "APPLIED" | "FAILED";
+
+export interface AIActionProposal {
+  proposalId: string;
+  type: AIActionProposalType;
+  targetUserId: string;
+  status: AIActionProposalStatus;
+  summary: string;
+  rationale: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string;
+}
+
 /* ─── Notifications ──────────────────────────────────────── */
 
 export type NotificationCategory = "schedule" | "pricing" | "event" | "maintenance" | "general";

@@ -255,6 +255,29 @@ model AIUserMemoryProfile {
   @@map("ai_user_memory_profiles")
 }
 
+model AIActionProposal {
+  id                String   @id @default(uuid())
+  gymId             String   @map("gym_id")
+  targetUserId      String   @map("target_user_id")
+  proposalType      String   @map("proposal_type")
+  status            String   @default("PROPOSED")
+  summary           String
+  rationale         String
+  proposalPayload   Json     @map("proposal_payload")
+  confirmedByUserId String?  @map("confirmed_by_user_id")
+  rejectedByUserId  String?  @map("rejected_by_user_id")
+  rejectionReason   String?  @map("rejection_reason")
+  appliedAt         DateTime? @map("applied_at")
+  errorMessage      String?  @map("error_message")
+  expiresAt         DateTime @map("expires_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([gymId, targetUserId])
+  @@index([status, expiresAt])
+  @@map("ai_action_proposals")
+}
+
 model RoutineSessionLog {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")
