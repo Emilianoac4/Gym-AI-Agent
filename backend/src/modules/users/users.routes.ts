@@ -15,6 +15,9 @@ import {
 	updateAvatarById,
 	triggerDailySummary,
 } from "./users.controller";
+import {
+	requestAvatarUploadUrl,
+} from "./users.controller";
 import { authenticate, authorizeAction } from "../../middleware/auth.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import {
@@ -51,6 +54,7 @@ usersRouter.put(
 	updateUserProfileById,
 );
 usersRouter.patch("/:id/avatar", authenticate, updateAvatarById);
+usersRouter.post("/:id/avatar/upload-url", authenticate, requestAvatarUploadUrl);
 usersRouter.get(
 	"/:id/health-connections",
 	authenticate,

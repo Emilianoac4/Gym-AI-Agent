@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { aiService } from "./ai.service";
+import { AI_MEDICAL_DISCLAIMER } from "./ai.guardrails";
 import { HttpError } from "../../utils/http-error";
 import { prisma } from "../../config/prisma";
 
@@ -1329,6 +1330,7 @@ export class AIController {
       res.json({
         message: "Routine generated successfully",
         routine: mergedRoutine,
+        disclaimer: AI_MEDICAL_DISCLAIMER,
       });
     } catch (error) {
       next(error);
@@ -1382,6 +1384,7 @@ export class AIController {
       res.json({
         message: "Nutrition plan generated successfully",
         plan: parsedPlan,
+        disclaimer: AI_MEDICAL_DISCLAIMER,
       });
     } catch (error) {
       next(error);
@@ -1414,6 +1417,7 @@ export class AIController {
       res.json({
         message: "Chat response received",
         response,
+        disclaimer: AI_MEDICAL_DISCLAIMER,
       });
     } catch (error) {
       next(error);
@@ -1436,6 +1440,7 @@ export class AIController {
       res.json({
         message: "Daily tip generated",
         tip,
+        disclaimer: AI_MEDICAL_DISCLAIMER,
       });
     } catch (error) {
       next(error);
@@ -1509,6 +1514,7 @@ export class AIController {
         message: "Chat history retrieved",
         count: history.length,
         history,
+        disclaimer: AI_MEDICAL_DISCLAIMER,
       });
     } catch (error) {
       next(error);

@@ -1,5 +1,12 @@
 import OpenAI from "openai";
-import { PrismaClient } from "@prisma/client";
+import { AuditAction, PrismaClient } from "@prisma/client";
+import { createAuditLog } from "../../utils/audit";
+import {
+  AI_OUT_OF_SCOPE_REPLY,
+  appendMedicalDisclaimer,
+  classifyAiUserIntent,
+  validateAiOutputPolicy,
+} from "./ai.guardrails";
 
 const prisma = new PrismaClient();
 const ROUTINE_CHECKIN_PREFIX = "ROUTINE_CHECKIN::";
@@ -57,9 +64,6 @@ class AIService {
     tip: string;
     nutrition: string;
   };
-  private static readonly OUT_OF_SCOPE_REPLY =
-    "Solo puedo ayudarte con entrenamiento, nutricion deportiva, recuperacion, habitos saludables y dudas del gimnasio. Si quieres, reformula tu pregunta en ese contexto.";
-
   private static readonly CHAT_SYSTEM_PROMPT = `
 Eres Tuco, el coach de inteligencia artificial de tu gimnasio.
 Mision y limites:
@@ -71,16 +75,6 @@ Si una solicitud esta fuera de alcance, recuerdala amablemente y redirige al tem
 Responde en el mismo idioma que el usuario.
 Mantén las respuestas practicas, concisas y de menos de 220 palabras.
   `;
-
-  private static readonly OUT_OF_SCOPE_PATTERNS: RegExp[] = [
-    /\b(codigo|programacion|programar|javascript|python|sql|bug|debug|software|api)\b/i,
-    /\b(hack|hacking|phishing|malware|exploit|ddos|ransomware|password)\b/i,
-    /\b(crypto|bitcoin|trading|inversion|acciones|forex|impuestos|taxes|contabilidad)\b/i,
-    /\b(abogado|demanda|contrato legal|ley|legal advice|lawsuit)\b/i,
-    /\b(tarea|examen|homework|ensayo|thesis|tesis|resumen de libro)\b/i,
-    /\b(politica|elecciones|presidente|partido politico)\b/i,
-    /\b(sexo|sexual|porn|erotico|nudes)\b/i,
-  ];
 
   private static readonly DEFAULT_CHAT_CONTEXT_TURNS = 12;
   private static readonly MAX_CHAT_CONTEXT_TURNS = 20;
@@ -170,13 +164,18 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
     }
   }
 
-  private isOutOfScope(message: string): boolean {
-    const trimmed = message.trim();
-    if (!trimmed) {
-      return true;
+  private async saveGuardrailAudit(userId: string, metadata: Record<string, unknown>): Promise<void> {
+    try {
+      await createAuditLog({
+        actorUserId: userId,
+        action: AuditAction.platform_action,
+        resourceType: "ai_guardrail",
+        resourceId: `${Date.now()}`,
+        metadata,
+      });
+    } catch (error) {
+      console.warn("Failed to persist AI guardrail audit", error);
     }
-
-    return AIService.OUT_OF_SCOPE_PATTERNS.some((pattern) => pattern.test(trimmed));
   }
 
   private async getUserChatContext(userId: string): Promise<string> {
@@ -944,15 +943,23 @@ Reglas:
     userMessage: string,
     options: { startNewConversation?: boolean } = {}
   ): Promise<string> {
-    if (this.isOutOfScope(userMessage)) {
+    const decision = classifyAiUserIntent(userMessage);
+    if (!decision.allowed) {
+      await this.saveGuardrailAudit(userId, {
+        stage: "input",
+        decisionCode: decision.code,
+        reason: decision.reason,
+        userMessagePreview: userMessage.substring(0, 220),
+      });
+
       await this.saveLogSafely({
         userId,
         type: "CHAT",
         userMessage: userMessage.substring(0, 500),
-        aiResponse: AIService.OUT_OF_SCOPE_REPLY,
+        aiResponse: AI_OUT_OF_SCOPE_REPLY,
       });
 
-      return AIService.OUT_OF_SCOPE_REPLY;
+      return AI_OUT_OF_SCOPE_REPLY;
     }
 
     let response;
@@ -983,15 +990,36 @@ Reglas:
     }
 
     const content = response.choices[0]?.message?.content || "";
+    const outputDecision = validateAiOutputPolicy(content);
+
+    if (!outputDecision.allowed) {
+      await this.saveGuardrailAudit(userId, {
+        stage: "output",
+        decisionCode: outputDecision.code,
+        reason: outputDecision.reason,
+        modelResponsePreview: content.substring(0, 220),
+      });
+
+      await this.saveLogSafely({
+        userId,
+        type: "CHAT",
+        userMessage: userMessage.substring(0, 500),
+        aiResponse: AI_OUT_OF_SCOPE_REPLY,
+      });
+
+      return AI_OUT_OF_SCOPE_REPLY;
+    }
+
+    const finalResponse = appendMedicalDisclaimer(content);
 
     await this.saveLogSafely({
       userId,
       type: "CHAT",
       userMessage: userMessage.substring(0, 500),
-      aiResponse: content.substring(0, 1000),
+      aiResponse: finalResponse.substring(0, 1000),
     });
 
-    return content;
+    return finalResponse;
   }
 
   /**
@@ -1016,15 +1044,16 @@ Make it actionable and encouraging. Keep it under 100 words.
     }
 
     const content = response.choices[0]?.message?.content || "";
+    const finalTip = appendMedicalDisclaimer(content);
 
     await this.saveLogSafely({
       userId,
       type: "DAILY_TIP",
       userMessage: "Generate daily tip",
-      aiResponse: content.substring(0, 1000),
+      aiResponse: finalTip.substring(0, 1000),
     });
 
-    return content;
+    return finalTip;
   }
 
   /**

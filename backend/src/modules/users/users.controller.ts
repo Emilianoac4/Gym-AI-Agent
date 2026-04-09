@@ -5,6 +5,12 @@ import { prisma } from "../../config/prisma";
 import { HttpError } from "../../utils/http-error";
 import { createAuditLog } from "../../utils/audit";
 import {
+  generateUploadUrl,
+  getAvatarUrl,
+  deleteAvatar,
+  buildAvatarPath,
+} from "../../services/avatar-storage.service";
+import {
   CreateUserInput,
   RenewMembershipInput,
   SetHealthConnectionStateInput,
@@ -208,23 +214,19 @@ export const updateUserProfileById = async (
 };
 
 // PATCH /users/:id/avatar ΓÇö update profile picture (self or admin)
-export const updateAvatarById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+// POST /users/:id/avatar/upload-url — request a presigned PUT URL (BE-SEC-05)
+export const requestAvatarUploadUrl = async (
+  req: Request<{ id: string }>,
+  res: Response,
+): Promise<void> => {
   if (!req.auth) throw new HttpError(401, "Unauthorized");
 
   const { id } = req.params;
-  const { imageBase64 } = req.body as { imageBase64?: string };
+  const { mimeType } = req.body as { mimeType?: string };
 
-  if (!imageBase64 || typeof imageBase64 !== "string") {
-    throw new HttpError(400, "imageBase64 is required");
-  }
-
-  // Strip data URI prefix if present
-  const dataUriMatch = imageBase64.match(/^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/);
-  const rawBase64 = dataUriMatch ? dataUriMatch[2] : imageBase64;
-
-  // Size guard: 250 KB base64 Γëê ~186 KB image. Anything bigger wasn't properly compressed client-side.
-  if (rawBase64.length > 260_000) {
-    throw new HttpError(400, "Image too large. Please compress before uploading (max ~190 KB).");
+  const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+  if (!mimeType || !allowed.includes(mimeType)) {
+    throw new HttpError(400, "mimeType is required. Allowed: image/jpeg, image/png, image/webp");
   }
 
   const existingUser = await prisma.user.findUnique({
@@ -233,7 +235,6 @@ export const updateAvatarById = async (req: Request<{ id: string }>, res: Respon
   });
   if (!existingUser || !existingUser.isActive) throw new HttpError(404, "User not found");
 
-  // Only the user themselves or an admin in the same gym can update
   const actor = await prisma.user.findUnique({
     where: { id: req.auth.userId },
     select: { id: true, role: true, gymId: true },
@@ -242,15 +243,83 @@ export const updateAvatarById = async (req: Request<{ id: string }>, res: Respon
   if (actor.gymId !== existingUser.gymId) throw new HttpError(403, "Forbidden");
   if (actor.id !== existingUser.id && actor.role !== "admin") throw new HttpError(403, "Forbidden");
 
-  const dataUri = `data:image/jpeg;base64,${rawBase64}`;
+  const result = await generateUploadUrl(existingUser.gymId!, id, mimeType);
 
-  const profile = await prisma.userProfile.upsert({
+  res.status(200).json({
+    uploadUrl: result.uploadUrl,
+    path: result.path,
+    signedGetUrl: result.signedGetUrl,
+    expiresIn: 300, // client has 5 min to complete the PUT
+  });
+};
+
+// PATCH /users/:id/avatar — confirm upload and persist path (BE-SEC-05)
+export const updateAvatarById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+  if (!req.auth) throw new HttpError(401, "Unauthorized");
+
+  const { id } = req.params;
+  const { avatarPath } = req.body as { avatarPath?: string };
+
+  if (!avatarPath || typeof avatarPath !== "string" || avatarPath.trim().length === 0) {
+    throw new HttpError(400, "avatarPath is required");
+  }
+
+  // Validate path format: gymId/userId.ext — reject path traversal
+  if (!/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\.(jpg|jpeg|png|webp)$/.test(avatarPath)) {
+    throw new HttpError(400, "Invalid avatarPath format");
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, role: true, gymId: true, isActive: true },
+  });
+  if (!existingUser || !existingUser.isActive) throw new HttpError(404, "User not found");
+
+  const actor = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: { id: true, role: true, gymId: true },
+  });
+  if (!actor) throw new HttpError(403, "Forbidden");
+  if (actor.gymId !== existingUser.gymId) throw new HttpError(403, "Forbidden");
+  if (actor.id !== existingUser.id && actor.role !== "admin") throw new HttpError(403, "Forbidden");
+
+  // Confirm the path belongs to this user's gym to prevent cross-tenant writes
+  const expectedPrefix = buildAvatarPath(existingUser.gymId!, id, "image/jpeg").split("/")[0];
+  if (!avatarPath.startsWith(`${expectedPrefix}/`)) {
+    throw new HttpError(403, "avatarPath does not match user's gym");
+  }
+
+  // Remove previous avatar from storage if it was already a storage path (not a data URI)
+  const existing = await prisma.userProfile.findUnique({
     where: { userId: id },
-    create: { id: randomUUID(), userId: id, avatarUrl: dataUri },
-    update: { avatarUrl: dataUri },
+    select: { avatarUrl: true },
+  });
+  if (existing?.avatarUrl && !existing.avatarUrl.startsWith("data:")) {
+    void deleteAvatar(existing.avatarUrl).catch((err) =>
+      console.warn("[avatar] Failed to delete old avatar from storage", err),
+    );
+  }
+
+  await prisma.userProfile.upsert({
+    where: { userId: id },
+    create: { id: randomUUID(), userId: id, avatarUrl: avatarPath },
+    update: { avatarUrl: avatarPath },
   });
 
-  res.json({ message: "Avatar updated", avatarUrl: profile.avatarUrl });
+  const signedUrl = await getAvatarUrl(avatarPath);
+
+  void createAuditLog({
+    gymId: existingUser.gymId ?? undefined,
+    actorUserId: req.auth.userId,
+    action: AuditAction.platform_action,
+    resourceType: "user_avatar",
+    resourceId: id,
+    metadata: { avatarPath },
+    ipAddress: req.ip,
+    userAgent: req.headers["user-agent"] as string | undefined,
+  });
+
+  res.json({ message: "Avatar updated", avatarUrl: signedUrl });
 };
 
 export const deactivateUserById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {

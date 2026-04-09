@@ -41,6 +41,21 @@ const envSchema = z.object({
   RATE_LIMIT_AI_GENERATION_MAX: z.coerce.number().min(1).default(10),
   RATE_LIMIT_LEADS_MAX: z.coerce.number().min(1).default(10),
   RATE_LIMIT_PLATFORM_AUTH_MAX: z.coerce.number().min(1).default(10),
+  DATA_RETENTION_JOB_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value === "true"),
+  DATA_RETENTION_INTERVAL_HOURS: z.coerce.number().min(1).max(168).default(24),
+  RETENTION_AUDIT_LOG_DAYS: z.coerce.number().min(1).default(180),
+  RETENTION_AI_CHAT_LOG_DAYS: z.coerce.number().min(1).default(90),
+  RETENTION_MEASUREMENTS_DAYS: z.coerce.number().min(1).default(365),
+  RETENTION_HEALTH_METADATA_DAYS: z.coerce.number().min(1).default(180),
+  RETENTION_INACTIVE_AVATAR_DAYS: z.coerce.number().min(1).default(90),
+    // Supabase Storage (BE-SEC-05)
+    SUPABASE_URL: z.string().url().optional(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
+    AVATAR_BUCKET: z.string().default("avatars"),
+    AVATAR_SIGNED_URL_TTL_SECONDS: z.coerce.number().min(60).default(3600),
 });
 
 const parsed = envSchema.safeParse(process.env);
