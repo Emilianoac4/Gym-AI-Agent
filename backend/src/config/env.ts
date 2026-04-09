@@ -41,6 +41,11 @@ const envSchema = z.object({
   RATE_LIMIT_AI_GENERATION_MAX: z.coerce.number().min(1).default(10),
   RATE_LIMIT_LEADS_MAX: z.coerce.number().min(1).default(10),
   RATE_LIMIT_PLATFORM_AUTH_MAX: z.coerce.number().min(1).default(10),
+    // Supabase Storage (BE-SEC-05)
+    SUPABASE_URL: z.string().url().optional(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
+    AVATAR_BUCKET: z.string().default("avatars"),
+    AVATAR_SIGNED_URL_TTL_SECONDS: z.coerce.number().min(60).default(3600),
 });
 
 const parsed = envSchema.safeParse(process.env);
