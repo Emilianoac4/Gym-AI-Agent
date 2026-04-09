@@ -11,7 +11,7 @@ export const createUserSchema = z.object({
     .regex(/^[a-zA-Z0-9]+$/, "El nombre de usuario solo puede contener letras y numeros"),
   role: z.enum(["trainer", "member"]),
   membershipMonths: z.number().int().min(1).max(12).optional(),
-  paymentMethod: z.enum(["card", "transfer", "cash"]).optional(),
+  paymentMethod: z.enum(["card", "transfer", "cash", "sinpe"]).optional(),
   paymentAmount: z.number().positive().optional(),
   profile: z
     .object({
@@ -70,7 +70,7 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 
 export const renewMembershipSchema = z.object({
   membershipMonths: z.number().int().min(1).max(12),
-  paymentMethod: z.enum(["card", "transfer", "cash"]),
+  paymentMethod: z.enum(["card", "transfer", "cash", "sinpe"]),
   paymentAmount: z.number().positive(),
 });
 
