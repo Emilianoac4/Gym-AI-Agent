@@ -3,6 +3,7 @@ import { AuditAction, PrismaClient } from "@prisma/client";
 import { createAuditLog } from "../../utils/audit";
 import {
   AI_OUT_OF_SCOPE_REPLY,
+  appendMedicalDisclaimer,
   classifyAiUserIntent,
   validateAiOutputPolicy,
 } from "./ai.guardrails";
@@ -1009,14 +1010,16 @@ Reglas:
       return AI_OUT_OF_SCOPE_REPLY;
     }
 
+    const finalResponse = appendMedicalDisclaimer(content);
+
     await this.saveLogSafely({
       userId,
       type: "CHAT",
       userMessage: userMessage.substring(0, 500),
-      aiResponse: content.substring(0, 1000),
+      aiResponse: finalResponse.substring(0, 1000),
     });
 
-    return content;
+    return finalResponse;
   }
 
   /**
@@ -1041,15 +1044,16 @@ Make it actionable and encouraging. Keep it under 100 words.
     }
 
     const content = response.choices[0]?.message?.content || "";
+    const finalTip = appendMedicalDisclaimer(content);
 
     await this.saveLogSafely({
       userId,
       type: "DAILY_TIP",
       userMessage: "Generate daily tip",
-      aiResponse: content.substring(0, 1000),
+      aiResponse: finalTip.substring(0, 1000),
     });
 
-    return content;
+    return finalTip;
   }
 
   /**

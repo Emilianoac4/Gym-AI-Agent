@@ -18,6 +18,9 @@ export type GuardrailDecision = {
 export const AI_OUT_OF_SCOPE_REPLY =
   "Solo puedo ayudarte con entrenamiento, nutricion deportiva, recuperacion, habitos saludables y dudas del gimnasio. Si quieres, reformula tu pregunta en ese contexto.";
 
+export const AI_MEDICAL_DISCLAIMER =
+  "Disclaimer: esta orientacion es solo para fitness y bienestar general; no sustituye evaluacion, diagnostico ni tratamiento medico profesional.";
+
 const FITNESS_ALLOW_PATTERNS: RegExp[] = [
   /\b(gym|gimnasio|entren|rutina|pesas|fuerza|hipertrofia|cardio|movilidad|estiramiento)\b/i,
   /\b(nutricion|proteina|calorias|macros|hidratacion|suplement)\b/i,
@@ -139,4 +142,20 @@ export function validateAiOutputPolicy(outputText: string): GuardrailDecision {
     code: "ALLOW_FITNESS",
     reason: "Salida compatible con guardrails.",
   };
+}
+
+export function appendMedicalDisclaimer(text: string): string {
+  const base = (text || "").trim();
+  if (!base) {
+    return AI_MEDICAL_DISCLAIMER;
+  }
+
+  const normalized = base.toLowerCase();
+  const disclaimerNormalized = AI_MEDICAL_DISCLAIMER.toLowerCase();
+
+  if (normalized.includes(disclaimerNormalized)) {
+    return base;
+  }
+
+  return `${base}\n\n${AI_MEDICAL_DISCLAIMER}`;
 }
