@@ -13,14 +13,23 @@ import { HttpError } from '../../utils/http-error';
  */
 export async function recordPayment(req: Request, res: Response): Promise<void> {
   try {
-    const auth = (req as any).auth;
-    const gymId = auth?.gymId || req.body.gymId;
-    const actorUserId = auth?.id;
-
-    if (!gymId || !actorUserId) {
-      res.status(400).json({ error: 'Missing gym or user context' });
+    if (!req.auth) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+
+    const actorUserId = req.auth.userId;
+    const requester = await prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { gymId: true, isActive: true },
+    });
+
+    if (!requester || !requester.isActive) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const gymId = requester.gymId;
 
     // Validate input
     const validated = recordPaymentSchema.parse(req.body);
@@ -131,12 +140,32 @@ export async function recordPayment(req: Request, res: Response): Promise<void> 
  */
 export async function getMembershipStatus(req: Request, res: Response): Promise<void> {
   try {
-    const auth = (req as any).auth;
-    const gymId = auth?.gymId;
-    const { userId } = req.params;
+    if (!req.auth) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const requester = await prisma.user.findUnique({
+      where: { id: req.auth.userId },
+      select: { gymId: true, isActive: true },
+    });
+
+    if (!requester || !requester.isActive) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const gymId = requester.gymId;
+    const userIdParam = req.params.userId;
+    const userId = Array.isArray(userIdParam) ? userIdParam[0] : userIdParam;
 
     if (!gymId) {
       res.status(400).json({ error: 'Missing gym context' });
+      return;
+    }
+
+    if (!userId) {
+      res.status(400).json({ error: 'Missing user id' });
       return;
     }
 
@@ -177,13 +206,22 @@ export async function getMembershipStatus(req: Request, res: Response): Promise<
  */
 export async function getGymPaymentSummary(req: Request, res: Response): Promise<void> {
   try {
-    const auth = (req as any).auth;
-    const gymId = auth?.gymId;
-
-    if (!gymId) {
-      res.status(400).json({ error: 'Missing gym context' });
+    if (!req.auth) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+
+    const requester = await prisma.user.findUnique({
+      where: { id: req.auth.userId },
+      select: { gymId: true, isActive: true },
+    });
+
+    if (!requester || !requester.isActive) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const gymId = requester.gymId;
 
     const transactions = await prisma.membershipTransaction.findMany({
       where: { gymId },

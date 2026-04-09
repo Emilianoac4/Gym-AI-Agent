@@ -1,11 +1,8 @@
 import express from "express";
 import request from "supertest";
 import { PaymentMethod, UserRole } from "@prisma/client";
-import { authenticate } from "../../src/middleware/auth.middleware";
-import { authorizeAction } from "../../src/middleware/authorize.middleware";
 import { errorHandler } from "../../src/middleware/error.middleware";
 import { signAuthToken } from "../../src/utils/jwt";
-import * as paymentController from "../../src/modules/payments/payment.controller";
 import paymentRoutes from "../../src/modules/payments/payment.routes";
 
 jest.mock("../../src/config/prisma", () => ({
@@ -44,19 +41,16 @@ describe("BE-SEC-07 Payment Endpoint Authorization", () => {
   const trainerToken = signAuthToken({
     userId: "trainer-1",
     role: UserRole.trainer,
-    gymId: "gym-1",
   });
 
   const memberToken = signAuthToken({
     userId: "member-1",
     role: UserRole.member,
-    gymId: "gym-1",
   });
 
   const adminToken = signAuthToken({
     userId: "admin-1",
     role: UserRole.admin,
-    gymId: "gym-1",
   });
 
   it("returns 401 when Authorization header is missing", async () => {

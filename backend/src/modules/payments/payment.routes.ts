@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.middleware';
-import { authorizeAction } from '../../middleware/authorize.middleware';
+import { authorizeAction } from '../../middleware/auth.middleware';
 import { recordPayment, getMembershipStatus, getGymPaymentSummary } from './payment.controller';
 
 const router = Router();
@@ -15,15 +15,15 @@ router.post('/', authenticate, authorizeAction('payments.record'), recordPayment
 /**
  * GET /payments/:userId/status
  * Get current membership status for a user
- * Requires: users.read permission
+ * Requires: users.profile.read permission
  */
-router.get('/:userId/status', authenticate, authorizeAction('users.read'), getMembershipStatus);
+router.get('/:userId/status', authenticate, authorizeAction('users.profile.read'), getMembershipStatus);
 
 /**
  * GET /payments/gym/summary
  * Get payment summary for a gym (admin dashboard)
- * Requires: gym.read permission
+ * Requires: reports.membership.read permission
  */
-router.get('/gym/summary', authenticate, authorizeAction('gym.read'), getGymPaymentSummary);
+router.get('/gym/summary', authenticate, authorizeAction('reports.membership.read'), getGymPaymentSummary);
 
 export default router;
