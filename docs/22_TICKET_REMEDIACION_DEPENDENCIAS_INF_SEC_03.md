@@ -3,7 +3,7 @@
 **Ticket ID**: INF-SEC-03-REM-DEP-001  
 **Fecha**: Abril 8, 2026  
 **Prioridad**: Critica  
-**Estado**: Abierto
+**Estado**: En progreso (Fase A backend completada)
 
 ---
 
@@ -71,6 +71,12 @@ Actualmente el gate falla por vulnerabilidades high en ambos proyectos.
 - `npm run test:security`
 - `npm run build`
 
+**Avance (Abril 8, 2026):**
+- Ejecutado `npm audit fix` en backend.
+- Resultado: vulnerabilidades high backend **4 -> 0**.
+- Validaciones: `npm run typecheck` PASS y `npm run test:security` PASS (9 suites, 45 tests).
+- Archivos impactados: `backend/package-lock.json`.
+
 ### Fase B - Mobile (riesgo alto por major)
 
 1. Crear rama tecnica para upgrade de `react-native-health`.
@@ -93,9 +99,9 @@ Actualmente el gate falla por vulnerabilidades high en ambos proyectos.
 
 ## 6. Criterios de aceptacion (DoD)
 
-- [ ] Backend `npm audit --omit=dev --audit-level=high` retorna exit code 0.
+- [x] Backend `npm audit --omit=dev --audit-level=high` retorna exit code 0.
 - [ ] Mobile `npm audit --omit=dev --audit-level=high` retorna exit code 0.
-- [ ] `npm run test:security` pasa completo.
+- [x] `npm run test:security` pasa completo.
 - [ ] `npm run typecheck` pasa en backend y mobile.
 - [ ] Workflow INF-SEC-03 pasa en PR/push.
 - [ ] Documento Go/No-Go actualizado: [docs/21_GO_NO_GO_SEGURIDAD_PUBLICACION.md](docs/21_GO_NO_GO_SEGURIDAD_PUBLICACION.md).
