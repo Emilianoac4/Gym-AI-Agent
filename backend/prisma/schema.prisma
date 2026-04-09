@@ -103,19 +103,20 @@ model Gym {
 }
 
 model User {
-  id                String      @id @default(uuid())
-  gymId             String      @map("gym_id")
-  globalUserId      String      @map("global_user_id")
+  id                String            @id @default(uuid())
+  gymId             String            @map("gym_id")
+  globalUserId      String            @map("global_user_id")
   email             String
   username          String?
-  fullName          String      @map("full_name")
-  role              UserRole    @default(member)
-  membershipStartAt DateTime?   @map("membership_start_at")
-  membershipEndAt   DateTime?   @map("membership_end_at")
-  createdAt         DateTime    @default(now()) @map("created_at")
-  updatedAt         DateTime    @updatedAt @map("updated_at")
-  isActive          Boolean     @default(true) @map("is_active")
-  deletedAt         DateTime?   @map("deleted_at")
+  fullName          String            @map("full_name")
+  role              UserRole          @default(member)
+  membershipStartAt DateTime?         @map("membership_start_at")
+  membershipEndAt   DateTime?         @map("membership_end_at")
+  membershipStatus  MembershipStatus? @map("membership_status")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  isActive          Boolean           @default(true) @map("is_active")
+  deletedAt         DateTime?         @map("deleted_at")
 
   gym           Gym                @relation(fields: [gymId], references: [id], onDelete: Cascade)
   globalAccount GlobalUserAccount  @relation(fields: [globalUserId], references: [id], onDelete: Cascade)
@@ -188,10 +189,18 @@ enum MembershipTransactionType {
   renewal
 }
 
+enum MembershipStatus {
+  ACTIVE
+  EXPIRING
+  EXPIRED
+  INACTIVE
+}
+
 enum PaymentMethod {
   card
   transfer
   cash
+  sinpe
 }
 
 enum SubscriptionPlanTier {

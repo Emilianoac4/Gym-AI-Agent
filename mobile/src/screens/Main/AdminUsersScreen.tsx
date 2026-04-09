@@ -18,7 +18,7 @@ import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
 
 type UserRole = "trainer" | "member";
-type PaymentMethod = "card" | "transfer" | "cash";
+type PaymentMethod = "card" | "transfer" | "cash" | "sinpe";
 type GenderOption = "female" | "male" | "prefer_not_to_say";
 
 interface GymUser {
@@ -52,6 +52,7 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   card: "Tarjeta",
   transfer: "Transferencia",
   cash: "Efectivo",
+  sinpe: "SINPE",
 };
 
 const GENDER_LABELS: Record<GenderOption, string> = {
@@ -600,7 +601,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
 
                 <Text style={[styles.membershipLabel, { marginTop: 12 }]}>Metodo de pago</Text>
                 <View style={styles.paymentMethodsRow}>
-                  {(["card", "transfer", "cash"] as PaymentMethod[]).map((method) => (
+                  {(["card", "transfer", "cash", "sinpe"] as PaymentMethod[]).map((method) => (
                     <TouchableOpacity
                       key={method}
                       style={[
@@ -923,7 +924,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
 
                 <Text style={[styles.membershipLabel, { marginTop: 12 }]}>Metodo de pago</Text>
                 <View style={styles.paymentMethodsRow}>
-                  {(["card", "transfer", "cash"] as PaymentMethod[]).map((method) => (
+                  {(["card", "transfer", "cash", "sinpe"] as PaymentMethod[]).map((method) => (
                     <TouchableOpacity
                       key={method}
                       style={[
