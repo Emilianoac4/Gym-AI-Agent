@@ -244,6 +244,17 @@ model AIChatLog {
   @@map("ai_chat_logs")
 }
 
+model AIUserMemoryProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique @map("user_id")
+  preferredTone String?  @map("preferred_tone")
+  memoryNotes   String?  @map("memory_notes")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_user_memory_profiles")
+}
+
 model RoutineSessionLog {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")

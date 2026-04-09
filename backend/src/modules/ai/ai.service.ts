@@ -45,12 +45,51 @@ type UserRoutineContext = {
   medicalConditions?: string;
 };
 
+function formatIsoDate(date: Date | null | undefined): string {
+  if (!date) {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
 function normalizeDay(value: string): string {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
+}
+
+function normalizeText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function estimatedOneRM(loadKg: number, reps: number | null): number | null {
+  if (!reps || reps <= 0) {
+    return null;
+  }
+
+  const value = loadKg * (1 + reps / 30);
+  return Number(value.toFixed(2));
+}
+
+function parseRoutinePayload(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 class AIService {
@@ -70,9 +109,12 @@ Mision y limites:
 - Permitido: programacion de entrenamientos, tecnica de ejercicios, habitos de gym, recuperacion, sueno, hidratacion, coaching de estilo de vida saludable, nutricion deportiva para objetivos de fitness.
 - No permitido: legal, finanzas, programacion de software, examenes academicos, romance, politica, hacking/ciberseguridad, contenido sexual explicito, violencia, y cualquier tarea no relacionada con el gimnasio.
 - Seguridad medica: no diagnostiques enfermedades ni recetes medicamentos. Si el usuario pide un diagnostico medico, suggiere consultar a un profesional licenciado.
+- Si se te proporciona contexto estructurado del usuario como progreso de fuerza, mediciones, rutina o membresia, usalo directamente para personalizar la respuesta. Si faltan datos, dilo con precision; no afirmes que no tienes acceso si el contexto ya fue proporcionado.
 
 Si una solicitud esta fuera de alcance, recuerdala amablemente y redirige al tema de fitness/gym.
 Responde en el mismo idioma que el usuario.
+Adapta el tono por usuario: cercano y tecnico por defecto; si notas preferencias claras de estilo en su historial, manten consistencia.
+La personalizacion de tono y memoria es implicita: no pidas al usuario configurar sliders o ajustes manuales de personalidad.
 Mantén las respuestas practicas, concisas y de menos de 220 palabras.
   `;
 
@@ -112,10 +154,14 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
 
   private async getRecentChatContext(userId: string) {
     try {
+      const fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const history = await prisma.aIChatLog.findMany({
         where: {
           userId,
           type: "CHAT",
+          createdAt: {
+            gte: fromDate,
+          },
           NOT: [
             {
               userMessage: {
@@ -180,19 +226,61 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
 
   private async getUserChatContext(userId: string): Promise<string> {
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          fullName: true,
-          profile: {
-            select: {
-              goal: true,
-              experienceLvl: true,
-              injuries: true,
+      const [user, latestMeasurement, strengthLogs, latestRoutineLog] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            fullName: true,
+            membershipStatus: true,
+            membershipEndAt: true,
+            profile: {
+              select: {
+                goal: true,
+                experienceLvl: true,
+                injuries: true,
+                availability: true,
+                medicalConds: true,
+                heightCm: true,
+              },
             },
           },
-        },
-      });
+        }),
+        prisma.measurement.findFirst({
+          where: { userId },
+          orderBy: { date: "desc" },
+          select: {
+            date: true,
+            weightKg: true,
+            bodyFatPct: true,
+            muscleMass: true,
+            chestCm: true,
+            waistCm: true,
+            hipCm: true,
+            armCm: true,
+          },
+        }),
+        prisma.routineExerciseLog.findMany({
+          where: {
+            userId,
+            loadKg: { not: null },
+          },
+          orderBy: [{ performedAt: "desc" }],
+          take: 60,
+          select: {
+            exerciseName: true,
+            loadKg: true,
+            reps: true,
+            sets: true,
+            performedAt: true,
+            normalizedExerciseName: true,
+          },
+        }),
+        prisma.aIChatLog.findFirst({
+          where: { userId, type: "ROUTINE_GENERATION" },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true, aiResponse: true },
+        }),
+      ]);
 
       if (!user) {
         return "";
@@ -208,8 +296,104 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       if (user.profile?.experienceLvl?.trim()) {
         lines.push(`Experience level: ${user.profile.experienceLvl.trim()}`);
       }
+      if (user.profile?.availability?.trim()) {
+        lines.push(`Availability: ${user.profile.availability.trim()}`);
+      }
+      if (typeof user.profile?.heightCm === "number") {
+        lines.push(`Height: ${user.profile.heightCm} cm`);
+      }
       if (user.profile?.injuries?.trim()) {
         lines.push(`Injuries/limitations: ${user.profile.injuries.trim()}`);
+      }
+      if (user.profile?.medicalConds?.trim()) {
+        lines.push(`Medical considerations already declared in profile: ${user.profile.medicalConds.trim()}`);
+      }
+      if (user.membershipStatus) {
+        lines.push(`Membership status: ${user.membershipStatus}`);
+      }
+      if (user.membershipEndAt) {
+        lines.push(`Membership valid until: ${formatIsoDate(user.membershipEndAt)}`);
+      }
+
+      if (latestMeasurement) {
+        const measurementParts = [
+          `Latest body measurement date: ${formatIsoDate(latestMeasurement.date)}`,
+          typeof latestMeasurement.weightKg === "number" ? `weight ${latestMeasurement.weightKg} kg` : null,
+          typeof latestMeasurement.bodyFatPct === "number" ? `body fat ${latestMeasurement.bodyFatPct}%` : null,
+          typeof latestMeasurement.muscleMass === "number" ? `muscle mass ${latestMeasurement.muscleMass}` : null,
+          typeof latestMeasurement.chestCm === "number" ? `chest ${latestMeasurement.chestCm} cm` : null,
+          typeof latestMeasurement.waistCm === "number" ? `waist ${latestMeasurement.waistCm} cm` : null,
+          typeof latestMeasurement.hipCm === "number" ? `hip ${latestMeasurement.hipCm} cm` : null,
+          typeof latestMeasurement.armCm === "number" ? `arm ${latestMeasurement.armCm} cm` : null,
+        ].filter((value): value is string => Boolean(value));
+
+        if (measurementParts.length > 0) {
+          lines.push(measurementParts.join(", "));
+        }
+      }
+
+      if (strengthLogs.length > 0) {
+        const bestByExercise = new Map<
+          string,
+          {
+            exerciseName: string;
+            loadKg: number;
+            reps: number | null;
+            sets: number | null;
+            performedAt: Date;
+          }
+        >();
+
+        for (const log of strengthLogs) {
+          const key = log.normalizedExerciseName;
+          const currentBest = bestByExercise.get(key);
+          if (!currentBest || (log.loadKg ?? 0) > currentBest.loadKg) {
+            bestByExercise.set(key, {
+              exerciseName: log.exerciseName,
+              loadKg: log.loadKg ?? 0,
+              reps: log.reps,
+              sets: log.sets,
+              performedAt: log.performedAt,
+            });
+          }
+        }
+
+        const personalRecords = Array.from(bestByExercise.values())
+          .sort((left, right) => right.performedAt.getTime() - left.performedAt.getTime())
+          .slice(0, 8)
+          .map((record) => {
+            const repInfo = record.reps ? ` x ${record.reps} reps` : "";
+            const setInfo = record.sets ? ` (${record.sets} sets)` : "";
+            return `${record.exerciseName}: ${record.loadKg} kg${repInfo}${setInfo} on ${formatIsoDate(record.performedAt)}`;
+          });
+
+        if (personalRecords.length > 0) {
+          lines.push(`Known strength records: ${personalRecords.join(" | ")}`);
+        }
+
+        const recentStrength = strengthLogs
+          .slice(0, 5)
+          .map((log) => {
+            const repInfo = log.reps ? ` x ${log.reps} reps` : "";
+            return `${log.exerciseName}: ${log.loadKg ?? 0} kg${repInfo} on ${formatIsoDate(log.performedAt)}`;
+          });
+
+        if (recentStrength.length > 0) {
+          lines.push(`Recent strength activity: ${recentStrength.join(" | ")}`);
+        }
+      } else {
+        lines.push("Known strength records: no strength logs registered yet.");
+      }
+
+      if (latestRoutineLog?.aiResponse) {
+        const parsedRoutine = parseRoutinePayload(latestRoutineLog.aiResponse) as GeneratedRoutine | null;
+        if (parsedRoutine?.routine_name && Array.isArray(parsedRoutine.sessions)) {
+          const sessionSummary = parsedRoutine.sessions
+            .slice(0, 4)
+            .map((session) => `${session.day}: ${session.focus}`)
+            .join(" | ");
+          lines.push(`Latest routine: ${parsedRoutine.routine_name} (${parsedRoutine.weekly_sessions} sessions/week). Sessions: ${sessionSummary}`);
+        }
       }
 
       return lines.join("\n");
@@ -217,6 +401,196 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       console.warn("Failed to load user chat context", error);
       return "";
     }
+  }
+
+  private async buildDeterministicStrengthReply(userId: string, userMessage: string): Promise<string | null> {
+    const normalizedMessage = normalizeText(userMessage);
+    const asksForStrengthRecord =
+      /(record|marca personal|maximo|maxima|peso max|1rm|rm)/.test(normalizedMessage) &&
+      /(press|banca|bench|sentadilla|squat|peso muerto|deadlift|hombro|militar|remo)/.test(normalizedMessage);
+
+    const asksMeasurements =
+      /(peso|medicion|medidas|grasa corporal|muscular|cintura|cadera|brazo|imc|composicion)/.test(normalizedMessage);
+
+    const asksMembership =
+      /(membresia|vencimiento|vencer|expira|dias de membresia|estado de membresia)/.test(normalizedMessage);
+
+    const asksWeeklyAdherence =
+      /(adherencia|constancia|racha|cumpli|cumplimiento|semanal|avance semanal|entrene esta semana)/.test(normalizedMessage);
+
+    if (!asksForStrengthRecord && !asksMeasurements && !asksMembership && !asksWeeklyAdherence) {
+      return null;
+    }
+
+    if (asksMembership) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          membershipStatus: true,
+          membershipEndAt: true,
+        },
+      });
+
+      if (!user) {
+        return "No pude encontrar tu perfil para consultar tu estado de membresia.";
+      }
+
+      const endDateText = user.membershipEndAt ? formatIsoDate(user.membershipEndAt) : "sin fecha registrada";
+      return `Tu estado de membresia actual es ${user.membershipStatus ?? "INACTIVE"} y la fecha de vencimiento registrada es ${endDateText}.`;
+    }
+
+    if (asksMeasurements) {
+      const measurement = await prisma.measurement.findFirst({
+        where: { userId },
+        orderBy: { date: "desc" },
+        select: {
+          date: true,
+          weightKg: true,
+          bodyFatPct: true,
+          muscleMass: true,
+          waistCm: true,
+          hipCm: true,
+          armCm: true,
+          chestCm: true,
+        },
+      });
+
+      if (!measurement) {
+        return "Si tengo acceso a tus datos, pero no hay mediciones corporales registradas aun.";
+      }
+
+      const parts = [
+        typeof measurement.weightKg === "number" ? `peso ${measurement.weightKg} kg` : null,
+        typeof measurement.bodyFatPct === "number" ? `grasa corporal ${measurement.bodyFatPct}%` : null,
+        typeof measurement.muscleMass === "number" ? `masa muscular ${measurement.muscleMass}` : null,
+        typeof measurement.chestCm === "number" ? `pecho ${measurement.chestCm} cm` : null,
+        typeof measurement.waistCm === "number" ? `cintura ${measurement.waistCm} cm` : null,
+        typeof measurement.hipCm === "number" ? `cadera ${measurement.hipCm} cm` : null,
+        typeof measurement.armCm === "number" ? `brazo ${measurement.armCm} cm` : null,
+      ].filter((value): value is string => Boolean(value));
+
+      return `Tu ultima medicion registrada es del ${formatIsoDate(measurement.date)}: ${parts.join(", ") || "sin detalle de campos"}.`;
+    }
+
+    if (asksWeeklyAdherence) {
+      const [latestRoutineLog, completedSessions] = await Promise.all([
+        prisma.aIChatLog.findFirst({
+          where: { userId, type: "ROUTINE_GENERATION" },
+          orderBy: { createdAt: "desc" },
+          select: { aiResponse: true },
+        }),
+        prisma.routineSessionLog.findMany({
+          where: {
+            userId,
+            completedAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            },
+          },
+          select: { id: true, completedAt: true },
+        }),
+      ]);
+
+      const routine = latestRoutineLog?.aiResponse
+        ? (parseRoutinePayload(latestRoutineLog.aiResponse) as GeneratedRoutine | null)
+        : null;
+      const planned = typeof routine?.weekly_sessions === "number" ? routine.weekly_sessions : null;
+      const done = completedSessions.length;
+
+      if (planned === null) {
+        return `Esta semana tienes ${done} sesion(es) completadas en los ultimos 7 dias. Aun no tengo una rutina activa para comparar meta semanal.`;
+      }
+
+      const adherencePct = planned > 0 ? Math.min(100, Math.round((done / planned) * 100)) : 0;
+      return `En los ultimos 7 dias completaste ${done} de ${planned} sesiones planificadas. Tu adherencia semanal estimada es ${adherencePct}%.`;
+    }
+
+    const logs = await prisma.routineExerciseLog.findMany({
+      where: {
+        userId,
+        loadKg: { not: null },
+      },
+      orderBy: [{ performedAt: "desc" }],
+      take: 200,
+      select: {
+        exerciseName: true,
+        normalizedExerciseName: true,
+        loadKg: true,
+        reps: true,
+        sets: true,
+        performedAt: true,
+      },
+    });
+
+    if (logs.length === 0) {
+      return "Si tengo acceso a tus datos, pero todavia no veo marcas de fuerza registradas en tu historial. Registra tus cargas para poder darte tu record exacto.";
+    }
+
+    const bestByExercise = new Map<
+      string,
+      {
+        exerciseName: string;
+        loadKg: number;
+        reps: number | null;
+        sets: number | null;
+        performedAt: Date;
+      }
+    >();
+
+    for (const log of logs) {
+      const key = log.normalizedExerciseName;
+      const currentBest = bestByExercise.get(key);
+      if (!currentBest || (log.loadKg ?? 0) > currentBest.loadKg) {
+        bestByExercise.set(key, {
+          exerciseName: log.exerciseName,
+          loadKg: log.loadKg ?? 0,
+          reps: log.reps,
+          sets: log.sets,
+          performedAt: log.performedAt,
+        });
+      }
+    }
+
+    const exerciseAliasMap: Array<{ label: string; aliases: string[] }> = [
+      { label: "press de banca", aliases: ["press banca", "press de banca", "bench", "bench press", "banca"] },
+      { label: "sentadilla", aliases: ["sentadilla", "squat"] },
+      { label: "peso muerto", aliases: ["peso muerto", "deadlift"] },
+    ];
+
+    const targetExercise = exerciseAliasMap.find((entry) =>
+      entry.aliases.some((alias) => normalizedMessage.includes(alias)),
+    );
+
+    if (targetExercise) {
+      const record = Array.from(bestByExercise.values()).find((item) => {
+        const exercise = normalizeText(item.exerciseName);
+        return targetExercise.aliases.some((alias) => exercise.includes(alias));
+      });
+
+      if (!record) {
+        return `Si tengo acceso a tus datos. Aun no aparece una marca registrada de ${targetExercise.label}. Si quieres, te digo tus mejores marcas actuales en otros ejercicios.`;
+      }
+
+      const oneRm = estimatedOneRM(record.loadKg, record.reps);
+      const repsText = record.reps ? ` x ${record.reps} reps` : "";
+      const setsText = record.sets ? ` (${record.sets} series)` : "";
+      const rmText = oneRm ? ` Tu 1RM estimado es ${oneRm} kg.` : "";
+
+      return `Tu mejor marca registrada en ${targetExercise.label} es ${record.loadKg} kg${repsText}${setsText}, del ${formatIsoDate(record.performedAt)}.${rmText}`;
+    }
+
+    const topRecords = Array.from(bestByExercise.values())
+      .sort((left, right) => right.performedAt.getTime() - left.performedAt.getTime())
+      .slice(0, 3)
+      .map((item) => {
+        const repsText = item.reps ? ` x ${item.reps} reps` : "";
+        return `${item.exerciseName}: ${item.loadKg} kg${repsText}`;
+      });
+
+    if (topRecords.length === 0) {
+      return "Si tengo acceso a tus datos, pero todavia no hay registros suficientes para calcular marcas personales.";
+    }
+
+    return `Si tengo acceso a tus datos. Tus mejores marcas registradas recientemente son: ${topRecords.join(" | ")}.`;
   }
 
   private isLogTableMissing(error: unknown): boolean {
@@ -960,6 +1334,20 @@ Reglas:
       });
 
       return AI_OUT_OF_SCOPE_REPLY;
+    }
+
+    const deterministicReply = await this.buildDeterministicStrengthReply(userId, userMessage);
+    if (deterministicReply) {
+      const finalDeterministicReply = appendMedicalDisclaimer(deterministicReply);
+
+      await this.saveLogSafely({
+        userId,
+        type: "CHAT",
+        userMessage: userMessage.substring(0, 500),
+        aiResponse: finalDeterministicReply.substring(0, 1000),
+      });
+
+      return finalDeterministicReply;
     }
 
     let response;

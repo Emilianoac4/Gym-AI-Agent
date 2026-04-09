@@ -140,6 +140,45 @@ function convertToKg(value: number, unit: "kg" | "lb"): number {
   return Number(value.toFixed(3));
 }
 
+async function assertAiAccess(
+  auth: { userId?: string; role?: string } | undefined,
+  targetUserId: string,
+): Promise<void> {
+  if (!auth?.userId || !auth?.role) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (auth.role !== "admin") {
+    if (auth.userId !== targetUserId) {
+      throw new HttpError(403, "Forbidden");
+    }
+    return;
+  }
+
+  const [actor, target] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: auth.userId },
+      select: { id: true, gymId: true, isActive: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, gymId: true, isActive: true },
+    }),
+  ]);
+
+  if (!actor || !actor.isActive) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  if (!target || !target.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  if (actor.gymId !== target.gymId) {
+    throw new HttpError(403, "Forbidden");
+  }
+}
+
 function parseStrengthPayload(raw: string): {
   exerciseName: string;
   loadKg: number;
@@ -361,9 +400,7 @@ export class AIController {
       const userId = req.params.userId as string;
       const auth = (req as any).auth;
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
 
@@ -394,9 +431,7 @@ export class AIController {
         performedAt?: string | Date;
       };
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const unit: "kg" | "lb" = loadUnit === "lb" ? "lb" : "kg";
       const loadKg = convertToKg(loadValue, unit);
@@ -473,9 +508,7 @@ export class AIController {
       const auth = (req as any).auth;
       const { sessionDay } = req.body as { sessionDay: string };
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       if (!sessionDay || !sessionDay.trim()) {
         throw new HttpError(400, "sessionDay is required");
@@ -586,9 +619,7 @@ export class AIController {
         replacementExercise?: RoutineExercise;
       };
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
@@ -643,9 +674,7 @@ export class AIController {
         exerciseName: string;
       };
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const normalizedSession = normalizeDayName(sessionDay);
@@ -725,9 +754,7 @@ export class AIController {
         count?: number;
       };
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
@@ -781,9 +808,7 @@ export class AIController {
         completedAt?: string | Date;
       };
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const completedDate = new Date(toIsoString(completedAt));
       const weekStart = getWeekStartIso(completedDate);
@@ -892,9 +917,7 @@ export class AIController {
       const userId = req.params.userId as string;
       const auth = (req as any).auth;
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const days = req.query.days ? parseInt(req.query.days as string, 10) : 90;
       const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -1074,9 +1097,7 @@ export class AIController {
         completedAt?: string | Date;
       };
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       if (!sessionDay || !sessionDay.trim()) {
         throw new HttpError(400, "sessionDay is required");
@@ -1131,9 +1152,7 @@ export class AIController {
       const userId = req.params.userId as string;
       const auth = (req as any).auth;
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const days = req.query.days ? parseInt(req.query.days as string, 10) : 28;
       const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -1198,9 +1217,7 @@ export class AIController {
       const auth = (req as any).auth;
 
       // Authorization: user can only request their own routine, admin can request any
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       // Fetch user profile for context
       const user = await prisma.user.findUnique({
@@ -1347,9 +1364,7 @@ export class AIController {
       const auth = (req as any).auth;
 
       // Authorization
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       // Fetch user profile
       const user = await prisma.user.findUnique({
@@ -1401,9 +1416,7 @@ export class AIController {
       const auth = (req as any).auth;
 
       // Authorization
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       if (!message || typeof message !== "string") {
         throw new HttpError(400, "Message is required and must be a string");
@@ -1430,9 +1443,7 @@ export class AIController {
       const auth = (req as any).auth;
 
       // Authorization
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       // Generate tip
       const tip = await aiService.generateDailyTip(userId);
@@ -1457,9 +1468,7 @@ export class AIController {
       const auth = (req as any).auth;
 
       // Authorization
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
 
@@ -1531,9 +1540,7 @@ export class AIController {
       const auth = (req as any).auth;
 
       // Authorization
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       let deletedCount = 0;
 
@@ -1592,9 +1599,7 @@ export class AIController {
       const auth = (req as any).auth;
       const { day, focus } = req.body as { day: string; focus: string };
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
@@ -1629,9 +1634,7 @@ export class AIController {
         manual?: { name: string; sets: number; reps: string };
       };
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const latest = await AIController.getLatestRoutineSnapshot(userId);
       const userContext = await AIController.getUserProfileContext(userId);
@@ -1658,9 +1661,7 @@ export class AIController {
       const userId = req.params.userId as string;
       const auth = (req as any).auth;
 
-      if (auth.role !== "admin" && auth.userId !== userId) {
-        throw new HttpError(403, "Forbidden");
-      }
+      await assertAiAccess(auth, userId);
 
       const days = req.query.days ? parseInt(req.query.days as string, 10) : 180;
       const snapshots = await AIController.getRoutineHistorySnapshots(userId, days);

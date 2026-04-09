@@ -577,7 +577,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
             {newRole === "member" && createStep === 1 && (
               <View style={styles.membershipSelectorWrap}>
                 <Text style={styles.membershipLabel}>Duración de membresía (meses)</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.membershipChipGrid}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((months) => (
                     <TouchableOpacity
                       key={months}
@@ -597,7 +597,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
                       </Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </View>
 
                 <Text style={[styles.membershipLabel, { marginTop: 12 }]}>Metodo de pago</Text>
                 <View style={styles.paymentMethodsRow}>
@@ -900,7 +900,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
                 <Text style={styles.modalSubTitle}>{renewingUser?.fullName ?? ""}</Text>
 
                 <Text style={styles.membershipLabel}>Duración de renovación (meses)</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.membershipChipGrid}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((months) => (
                     <TouchableOpacity
                       key={months}
@@ -920,7 +920,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
                       </Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </View>
 
                 <Text style={[styles.membershipLabel, { marginTop: 12 }]}>Metodo de pago</Text>
                 <View style={styles.paymentMethodsRow}>
@@ -1155,6 +1155,11 @@ const styles = StyleSheet.create({
   membershipSelectorWrap: {
     marginBottom: 12,
   },
+  membershipChipGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
   membershipLabel: {
     fontSize: 13,
     color: palette.cocoa + "CC",
@@ -1162,14 +1167,13 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   membershipChip: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     borderWidth: 1,
     borderColor: palette.cocoa + "40",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 8,
     backgroundColor: palette.cream,
   },
   membershipChipActive: {
