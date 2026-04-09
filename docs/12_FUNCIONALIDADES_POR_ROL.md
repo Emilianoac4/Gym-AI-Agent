@@ -1,19 +1,38 @@
 # GymAI - Funcionalidades por Rol
 
-**Version**: 1.0  
-**Ultima actualizacion**: Abril 1, 2026  
+**Version**: 1.1  
+**Ultima actualizacion**: Abril 9, 2026  
 **Objetivo**: traducir la vision comercial en modulos de producto priorizados para mobile, backend y analitica.
 
 ---
 
 ## 1. Roles actuales del producto
 
-Hoy el sistema ya trabaja con dos roles base:
+Hoy el sistema ya trabaja con tres roles base:
 
 - **member**: usuario final del gimnasio.
+- **trainer**: rol operativo para atencion en piso, seguimiento y soporte al usuario.
 - **admin**: dueño o administrador principal del gimnasio.
 
-Esta separacion es suficiente para el MVP. Mas adelante puede abrirse un tercer rol operativo para coach o colaborador, pero no conviene introducirlo todavia si primero queremos validar adopcion y flujo comercial.
+La separacion actual ya permite operar el piloto, pero el rol **trainer** requiere una segunda capa de seguridad para acciones sensibles.
+
+### Necesidad documentada: permisos individuales para trainers
+
+Aunque hoy existen capacidades operativas globales para el rol trainer, queda documentada como necesidad prioritaria la implementacion de **permisos individuales por entrenador** para acciones sensibles de negocio.
+
+**Acciones que deben pasar a permiso delegable por usuario**:
+- Alta de nuevos usuarios.
+- Renovacion de membresias.
+- Registro del movimiento economico asociado a la renovacion cuando aplique.
+
+**Regla objetivo**:
+- El **admin** del gimnasio debe poder otorgar o revocar estos permisos trainer por trainer, de forma individual.
+- La decision debe persistirse en backend, no solo en frontend.
+- Todo otorgamiento o revocacion debe quedar auditado.
+
+**Motivo**:
+- No todos los entrenadores necesariamente deben tener el mismo nivel de autoridad operativa.
+- El gimnasio necesita ajustar esa capacidad segun confianza, turno, antiguedad o responsabilidad interna.
 
 ---
 

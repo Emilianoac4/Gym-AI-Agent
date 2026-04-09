@@ -49,6 +49,9 @@ interface RequestOptions {
   timeoutMs?: number;
 }
 
+const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
+const TRANSIENT_RETRY_DELAY_MS = 1200;
+
 type AuthSession = {
   token: string;
   refreshToken: string;
@@ -137,7 +140,10 @@ async function request<T>(
   path: string,
   options: RequestOptions = {},
   hasRetriedAfterRefresh = false,
+  hasRetriedTransient = false,
 ): Promise<T> {
+  const method = options.method ?? "GET";
+  const canRetryTransient = method === "GET" && !hasRetriedTransient;
   const controller = new AbortController();
   const timeout = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -145,7 +151,7 @@ async function request<T>(
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
-      method: options.method ?? "GET",
+      method,
       headers: {
         "Content-Type": "application/json",
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
@@ -154,6 +160,11 @@ async function request<T>(
       signal: controller.signal,
     });
   } catch (error) {
+    if (canRetryTransient) {
+      await new Promise((resolve) => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS));
+      return request<T>(path, options, hasRetriedAfterRefresh, true);
+    }
+
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error("Tiempo de espera agotado. Revisa tu conexion e intenta de nuevo.");
     }
@@ -167,6 +178,11 @@ async function request<T>(
   const requestId = response.headers.get("x-request-id") ?? data?.requestId;
 
   if (!response.ok) {
+    if (canRetryTransient && RETRYABLE_STATUS_CODES.has(response.status)) {
+      await new Promise((resolve) => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS));
+      return request<T>(path, options, hasRetriedAfterRefresh, true);
+    }
+
     if (response.status === 401 && options.token && authSessionHooks && !hasRetriedAfterRefresh) {
       const session = authSessionHooks.getSession();
 
@@ -178,7 +194,7 @@ async function request<T>(
           return request<T>(path, {
             ...options,
             token: refreshed.token,
-          }, true);
+          }, true, hasRetriedTransient);
         } catch {
           await authSessionHooks.onSessionExpired();
         }

@@ -1,7 +1,7 @@
 # GymAI - Plan Prioritario de Implementacion de Funciones
 
-**Version**: 2.1  
-**Fecha**: Abril 8, 2026  
+**Version**: 2.2  
+**Fecha**: Abril 9, 2026  
 **Estado**: PRIORIDAD TOTAL DE PRODUCTO Y DESARROLLO  
 **Objetivo**: ejecutar la nueva perspectiva de 3 perfiles (administrador, entrenador, usuario) con base tecnica solida, trazabilidad y foco en retencion.
 
@@ -24,6 +24,25 @@ Este documento pasa a ser la referencia principal de ejecucion.
 - Idioma de producto en piloto: **espanol** en toda la experiencia.
 
 ### Necesidades recibidas por definir en detalle
+
+- **Permisos individuales para trainer en acciones sensibles de usuarios/membresias**
+	- Necesidad confirmada: el trainer debe poder operar altas de usuarios nuevos y renovaciones, pero esa autoridad no debe quedar fija para todos los trainers por igual.
+	- Decision funcional objetivo: mover estas capacidades a un esquema de **permiso delegable por usuario**, administrado por el rol **admin** del gimnasio.
+	- Acciones minimas a cubrir en esta capa:
+		- crear nuevos usuarios
+		- renovar membresias
+		- registrar el movimiento economico asociado a la renovacion cuando el flujo lo requiera
+	- Regla de seguridad:
+		- el backend debe resolver autorizacion efectiva por trainer, no confiar en ocultar botones en mobile
+		- cada grant/revoke debe quedar con auditoria de quien lo otorgo, cuando y sobre que accion
+		- el trainer sin grant activo debe conservar acceso de lectura donde corresponda, pero no ejecutar la accion sensible
+	- UX objetivo: el admin debe gestionar estos permisos desde una pantalla administrativa similar al patron ya usado en otros permisos delegables.
+	- Estrategia tecnica recomendada:
+		- sacar estas acciones del set base del rol trainer
+		- reutilizar el mecanismo existente de `user_permission_grants`
+		- exponer endpoints para listar, otorgar y revocar por trainer
+		- reflejar el estado en mobile con feedback claro
+	- Estado: **pendiente de implementacion**. No bloquea la operacion actual del piloto, pero si es una deuda funcional y de seguridad que debe entrar al plan inmediato posterior a la revalidacion funcional en Expo.
 
 - **Integracion Hacienda (Costa Rica)**
 	- Alcance confirmado por ahora: generar reportes de Hacienda con base en los movimientos registrados en la app.
@@ -150,6 +169,8 @@ Este documento pasa a ser la referencia principal de ejecucion.
 - **Personalizacion del tono de Tuco por persona**
 	- Visibilidad del perfil de tono/personalidad: **IA y admin**.
 	- Configuracion manual de preferencias: no se expone panel dedicado; el ajuste se realiza de forma dinamica segun el tono que el usuario use en conversacion (estilo ChatGPT).
+	- Regla de producto confirmada: el usuario **no** gestiona explicitamente tono ni memoria mediante formularios, switches o menus de configuracion. La IA construye ese perfil de forma progresiva durante el uso.
+	- Regla tecnica asociada: no se deben publicar endpoints de "editar tono" o "editar memoria" para usuario final en esta fase.
 	- Consentimiento explicito para activar personalizacion: **no requerido** en esta etapa (viene activo por defecto).
 	- Solicitud de eliminacion del perfil conversacional: se aplica **soft delete con retencion controlada**, manteniendo identidad solo para consulta de admin autorizado con trazabilidad de acceso.
 	- Estado: pendiente definir reglas de auditoria de cambios de tono visibles para admin.
