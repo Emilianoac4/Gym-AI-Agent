@@ -8,6 +8,10 @@
 
 ## 🎯 Start Here (Comienza Aquí)
 
+### Seguridad (actualizacion continua)
+1. Revisa [Go/No-Go de Seguridad para Publicacion](docs/21_GO_NO_GO_SEGURIDAD_PUBLICACION.md)
+2. Revisa [Ticket de Remediacion de Dependencias INF-SEC-03](docs/22_TICKET_REMEDIACION_DEPENDENCIAS_INF_SEC_03.md)
+
 ### Para nuevos desarrolladores:
 1. Lee **este índice** (estás aquí)
 2. Ve a [README.md](APPS_EAC/Agente_Gym/backend/README.md) para Quick Start (5 min)
