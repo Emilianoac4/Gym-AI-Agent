@@ -16,6 +16,7 @@ const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   card: "Tarjeta",
   transfer: "Transferencia",
   cash: "Efectivo",
+  sinpe: "SINPE",
 };
 
 const TRANSACTION_TYPE_LABEL: Record<MembershipTransactionType, string> = {

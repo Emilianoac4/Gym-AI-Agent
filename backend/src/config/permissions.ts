@@ -50,6 +50,7 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
     "notifications.general.send",
     "notifications.messages.read",
     "notifications.messages.write",
+    "payments.record",
   ],
   trainer: [
     "users.list",
@@ -64,6 +65,7 @@ const rolePermissions: Record<AppRole, PermissionAction[]> = {
     "ai.use",
     "availability.read",
     "trainer.presence.write",
+    "reports.membership.read",
     "notifications.messages.read",
     "notifications.messages.write",
     "payments.record",

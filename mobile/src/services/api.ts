@@ -622,7 +622,7 @@ export const api = {
       username: string;
       role: "trainer" | "member";
       membershipMonths?: number;
-      paymentMethod?: "card" | "transfer" | "cash";
+      paymentMethod?: "card" | "transfer" | "cash" | "sinpe";
       paymentAmount?: number;
       profile?: {
         gender: "female" | "male" | "prefer_not_to_say";
@@ -669,7 +669,7 @@ export const api = {
     token: string,
     body: {
       membershipMonths: number;
-      paymentMethod: "card" | "transfer" | "cash";
+      paymentMethod: "card" | "transfer" | "cash" | "sinpe";
       paymentAmount: number;
     }
   ) =>

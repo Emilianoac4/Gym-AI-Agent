@@ -7,6 +7,7 @@ const METHOD_LABEL: Record<PaymentMethod, string> = {
   card: "Tarjeta",
   transfer: "Transferencia",
   cash: "Efectivo",
+  sinpe: "SINPE",
 };
 
 const dayBoundsUtc = (date: Date) => {

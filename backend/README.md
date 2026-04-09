@@ -256,6 +256,7 @@ npm run dev          # Start dev server (with hot reload)
 npm run build        # Compile TypeScript to JS
 npm run start        # Run compiled JavaScript
 npm run typecheck    # Validate TypeScript
+npm run test:e2e:payments -- --identifier <admin_email> --password <admin_password>  # E2E payments flow
 npm run prisma:generate  # Update Prisma client
 ```
 

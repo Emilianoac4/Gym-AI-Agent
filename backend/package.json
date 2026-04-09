@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
     "test:security": "jest --runInBand tests/security",
+    "test:e2e:payments": "node scripts/e2e-payments-flow.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },
