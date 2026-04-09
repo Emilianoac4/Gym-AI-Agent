@@ -47,7 +47,7 @@ Sin esta actualizacion, el ticket de seguridad se considera incompleto.
 |---|---|---|
 | Pipeline de seguridad CI (INF-SEC-03) | **ACTIVO** | [.github/workflows/inf-sec-03-security-pipeline.yml](.github/workflows/inf-sec-03-security-pipeline.yml) |
 | npm audit backend (high+) | **CUMPLE** | 0 vulnerabilidades high tras `npm audit fix` (Abril 8, 2026) |
-| npm audit mobile (high+) | **FALLA** | 4 vulnerabilidades high detectadas (Abril 8, 2026) |
+| npm audit mobile (high+) | **CUMPLE** | 0 vulnerabilidades high tras override `@xmldom/xmldom>=0.8.12` en `mobile/package.json` (Abril 8, 2026) |
 
 ---
 
@@ -83,6 +83,7 @@ Se considera apto para publicacion con lineamientos de seguridad cuando:
 | 2026-04-08 | AI-SEC-02 | Disclaimer fitness no medico uniforme | 72883a6 | Control de riesgo medico en respuestas |
 | 2026-04-08 | INF-SEC-03 | Pipeline CI security gates | ef435ba | Bloquea regresiones de seguridad |
 | 2026-04-08 | INF-SEC-03-REM-DEP-001 (Fase A) | Remediacion backend completada: audit high de 4 a 0 + typecheck/test security PASS | 1dae01b | Gate backend desbloqueado |
+| 2026-04-08 | INF-SEC-03-REM-DEP-001 (Fase B) | Remediacion mobile: override `@xmldom/xmldom>=0.8.12`, react-native-health@1.19.0 conservado, audit high 4 a 0, typecheck PASS | pendiente commit | Gate mobile desbloqueado |
 
 ---
 

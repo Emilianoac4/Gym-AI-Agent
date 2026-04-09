@@ -43,5 +43,8 @@
     "@types/react": "~19.1.10",
     "tsx": "^4.20.6",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "@xmldom/xmldom": ">=0.8.12"
   }
 }

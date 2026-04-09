@@ -3,7 +3,7 @@
 **Ticket ID**: INF-SEC-03-REM-DEP-001  
 **Fecha**: Abril 8, 2026  
 **Prioridad**: Critica  
-**Estado**: En progreso (Fase A backend completada)
+**Estado**: En progreso (Fase B mobile completada — Fase C CI pendiente)
 
 ---
 
@@ -87,6 +87,14 @@ Actualmente el gate falla por vulnerabilidades high en ambos proyectos.
 - permiso HealthKit / Health Connect
 - login + flujo principal de app
 
+**Avance (Abril 8, 2026):**
+- Estrategia: en lugar de downgrade a `react-native-health@1.13.0` (riesgo alto), se aplico `overrides` en `mobile/package.json` para forzar `@xmldom/xmldom>=0.8.12`.
+- Resultado: `@xmldom/xmldom` resuelto a `0.9.9` en todos los paths del arbol de dependencias.
+- `npm audit --omit=dev --audit-level=high` mobile: **4 -> 0 vulnerabilidades high** (exit code 0).
+- `npm run typecheck` mobile: **PASS** (exit code 0).
+- `react-native-health@1.19.0` conservado sin cambios.
+- Archivos impactados: `mobile/package.json`, `mobile/package-lock.json`.
+
 ### Fase C - Cierre CI
 
 1. Ejecutar auditorias finales:
@@ -100,11 +108,11 @@ Actualmente el gate falla por vulnerabilidades high en ambos proyectos.
 ## 6. Criterios de aceptacion (DoD)
 
 - [x] Backend `npm audit --omit=dev --audit-level=high` retorna exit code 0.
-- [ ] Mobile `npm audit --omit=dev --audit-level=high` retorna exit code 0.
+- [x] Mobile `npm audit --omit=dev --audit-level=high` retorna exit code 0.
 - [x] `npm run test:security` pasa completo.
-- [ ] `npm run typecheck` pasa en backend y mobile.
+- [x] `npm run typecheck` pasa en backend y mobile.
 - [ ] Workflow INF-SEC-03 pasa en PR/push.
-- [ ] Documento Go/No-Go actualizado: [docs/21_GO_NO_GO_SEGURIDAD_PUBLICACION.md](docs/21_GO_NO_GO_SEGURIDAD_PUBLICACION.md).
+- [x] Documento Go/No-Go actualizado: [docs/21_GO_NO_GO_SEGURIDAD_PUBLICACION.md](docs/21_GO_NO_GO_SEGURIDAD_PUBLICACION.md).
 
 ---
 
