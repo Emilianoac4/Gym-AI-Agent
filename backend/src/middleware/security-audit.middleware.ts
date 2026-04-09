@@ -1,6 +1,7 @@
 import { AuditAction } from "@prisma/client";
 import { Request } from "express";
 import { createAuditLog } from "../utils/audit";
+import { recordSecurityEvent } from "../services/alert-thresholds.service";
 
 type SecuritySeverity = "info" | "warning" | "critical";
 
@@ -41,6 +42,8 @@ export function emitSecurityAuditEvent(input: SecurityEventInput): void {
   } else {
     console.info(logLine, baseMetadata);
   }
+
+  recordSecurityEvent(eventType);
 
   void createAuditLog({
     actorUserId,
