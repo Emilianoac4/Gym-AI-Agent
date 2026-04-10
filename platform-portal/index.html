@@ -111,6 +111,14 @@
             <span class="accordion-arrow">▾</span>
           </button>
           <div class="accordion-content">
+            <div class="form-grid">
+              <label class="field-label" for="tokenWindowSelect">Ventana de analisis</label>
+              <select id="tokenWindowSelect">
+                <option value="7">Ultimos 7 dias</option>
+                <option value="30" selected>Ultimos 30 dias</option>
+                <option value="90">Ultimos 90 dias</option>
+              </select>
+            </div>
             <div id="tokenUsageSummary" class="summary"></div>
             <div id="tokenUsageList" class="list"></div>
           </div>

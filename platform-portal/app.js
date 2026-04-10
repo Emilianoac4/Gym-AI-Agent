@@ -4,6 +4,7 @@ const state = {
   apiBase: API_BASE,
   token: "",
   selectedGymId: "",
+  tokenWindowDays: 30,
   user: null,
 };
 
@@ -284,7 +285,8 @@ async function loadDashboard() {
   tokenListEl.innerHTML = "";
 
   try {
-    const data = await apiFetch("/platform/dashboard?includeDeleted=true&tokenDays=30");
+    const tokenDays = Number(state.tokenWindowDays || 30);
+    const data = await apiFetch(`/platform/dashboard?includeDeleted=true&tokenDays=${tokenDays}`);
     const activeCompanies  = data.companies.filter((c) => !c.isDeleted);
     const deletedCompanies = data.companies.filter((c) => c.isDeleted);
 
@@ -758,6 +760,12 @@ $("companyCountry").addEventListener("change", syncLocationSelectors);
 $("companyState").addEventListener("change", syncDistrictSelector);
 syncLocationSelectors();
 
+$("tokenWindowSelect").addEventListener("change", async (event) => {
+  const value = Number(event.target.value);
+  state.tokenWindowDays = Number.isFinite(value) ? value : 30;
+  await loadDashboard();
+});
+
 $("refreshBtn").addEventListener("click", async () => {
   await loadDashboard();
   await loadAlerts();
@@ -778,6 +786,11 @@ $("logoutBtn").addEventListener("click", () => {
 
 // Init
 (async function init() {
+  const tokenWindowSelect = $("tokenWindowSelect");
+  if (tokenWindowSelect) {
+    tokenWindowSelect.value = String(state.tokenWindowDays);
+  }
+
   const saved = getSavedToken();
   if (saved) {
     state.token = saved;
