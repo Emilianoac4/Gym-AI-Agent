@@ -347,7 +347,7 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
         SUM(l."total_tokens")::bigint AS "total_tokens",
         COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
       FROM "ai_token_usage_logs" l
-      LEFT JOIN "users" u ON u."id" = l."user_id"
+      LEFT JOIN "users" u ON u."id" = l."user_id"::text
       WHERE l."created_at" >= ${tokenFromDate}
       GROUP BY l."gym_id", l."user_id", u."full_name"
     `;
