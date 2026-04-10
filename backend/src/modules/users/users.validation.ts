@@ -107,9 +107,10 @@ export const setHealthConnectionStateSchema = z.object({
 const pathologyEntrySchema = z.object({
   key: z.string().min(2).max(80),
   customLabel: z.string().min(2).max(120).optional(),
-  notes: z.string().max(240).optional(),
+  notes: z.string().max(500).optional(),
   diagnosedAt: z.string().datetime().optional(),
   isActive: z.boolean().optional(),
+  allowTrainerView: z.boolean().default(false).optional(),
 });
 
 export const upsertUserPathologiesSchema = z.object({

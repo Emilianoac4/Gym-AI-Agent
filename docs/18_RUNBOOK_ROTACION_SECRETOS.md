@@ -1,4 +1,4 @@
-# GymAI - Runbook de Rotacion de Secretos
+# Tuco - Runbook de Rotacion de Secretos
 
 **Version**: 1.0  
 **Fecha**: Abril 8, 2026  

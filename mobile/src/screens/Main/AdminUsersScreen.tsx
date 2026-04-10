@@ -114,6 +114,37 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
   const [renewPaymentMethod, setRenewPaymentMethod] = useState<PaymentMethod>("card");
   const [renewPaymentAmount, setRenewPaymentAmount] = useState("");
   const [routineLoadingId, setRoutineLoadingId] = useState<string | null>(null);
+  const [pathologiesLoadingId, setPathologiesLoadingId] = useState<string | null>(null);
+
+  const onViewPathologies = async (target: GymUser) => {
+    if (!token) return;
+
+    setPathologiesLoadingId(target.id);
+    try {
+      const resp = await api.getUserPathologies(target.id, token);
+      const active = resp.pathologies.filter((item) => item.isActive);
+
+      if (active.length === 0) {
+        Alert.alert(
+          "Padecimientos",
+          `${target.fullName} no ha compartido padecimientos contigo o no tiene registros activos.`,
+        );
+        return;
+      }
+
+      const lines = active.map((item) => {
+        const name = item.key === "other" && item.customLabel ? item.customLabel : item.key.replace(/_/g, " ");
+        const details = item.notes ? `\n   Detalles: ${item.notes}` : "";
+        return `• ${name}${details}`;
+      });
+
+      Alert.alert("Padecimientos del usuario", lines.join("\n\n"));
+    } catch {
+      Alert.alert("Error", "No se pudieron cargar los padecimientos de este usuario.");
+    } finally {
+      setPathologiesLoadingId(null);
+    }
+  };
 
   const loadUsers = useCallback(async () => {
     if (!token) return;
@@ -468,6 +499,7 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
                                     onPress: () =>
                                       navigation.navigate("TrainerRoutineBuilder", {
                                         mode: "edit-assigned",
+                                        memberId: u.id,
                                         assignedRoutineId: routine.id,
                                         assignedRoutine: {
                                           id: routine.id,
@@ -513,6 +545,19 @@ export function AdminUsersScreen({ navigation }: { navigation: any }) {
                         <ActivityIndicator size="small" color={palette.moss} />
                       ) : (
                         <Text style={styles.routineBtnText}>📋 Rutina</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {isTrainer && u.role === "member" && u.isActive && (
+                    <TouchableOpacity
+                      style={[styles.pathologiesBtn, pathologiesLoadingId === u.id && { opacity: 0.6 }]}
+                      disabled={pathologiesLoadingId === u.id}
+                      onPress={() => onViewPathologies(u)}
+                    >
+                      {pathologiesLoadingId === u.id ? (
+                        <ActivityIndicator size="small" color={palette.cocoa} />
+                      ) : (
+                        <Text style={styles.pathologiesBtnText}>Ver padecimientos</Text>
                       )}
                     </TouchableOpacity>
                   )}
@@ -1092,6 +1137,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   routineBtnText: { color: palette.moss, fontWeight: "700", fontSize: 12 },
+  pathologiesBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: palette.cocoa,
+    marginBottom: 8,
+  },
+  pathologiesBtnText: { color: palette.cocoa, fontWeight: "700", fontSize: 12 },
   membershipText: {
     marginTop: 6,
     fontSize: 12,

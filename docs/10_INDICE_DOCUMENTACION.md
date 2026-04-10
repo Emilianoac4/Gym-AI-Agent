@@ -1,8 +1,12 @@
-# GymAI - Índice de Documentación Completa
+# Tuco - Indice de Documentacion Completa
 
 **Tabla de Contenidos Maestra**  
 **Ultima actualizacion**: Abril 8, 2026  
 **Version**: 2.2 (Plan prioritario + checklist de seguridad alta)
+
+Convenciones vigentes de marca y despliegue:
+- Producto: Tuco
+- Portal web central: Cloudflare
 
 ---
 
@@ -11,6 +15,7 @@
 ### Seguridad (actualizacion continua)
 1. Revisa [Go/No-Go de Seguridad para Publicacion](docs/21_GO_NO_GO_SEGURIDAD_PUBLICACION.md)
 2. Revisa [Ticket de Remediacion de Dependencias INF-SEC-03](docs/22_TICKET_REMEDIACION_DEPENDENCIAS_INF_SEC_03.md)
+3. Revisa [Convenciones Oficiales Tuco + Cloudflare](docs/23_CONVENCIONES_OFICIALES_TUCO_CLOUDFLARE.md)
 
 ### Para nuevos desarrolladores:
 1. Lee **este índice** (estás aquí)
@@ -39,13 +44,13 @@
 **Para quién**: Product owners, stakeholders  
 **Tiempo**: 10 min de lectura  
 **Secciones**:
-- Visión GymAI
+- Vision Tuco
 - Fases (1-7)
 - Timeline estimado
 - Objetivos por semana
 
 **Cuándo consultar**:
-- Necesitas entender qué es GymAI
+- Necesitas entender que es Tuco
 - Requieres timeline del proyecto
 - Stakeholder te pregunta sobre roadmap
 
@@ -206,7 +211,7 @@
 
 **Para cada herramienta**:
 - Qué es
-- Configuración en GymAI
+- Configuracion en Tuco
 - Cómo cambiar settings
 - Problemas comunes
 

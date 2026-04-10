@@ -1,4 +1,4 @@
-# 🏗️ GymAI — Arquitectura del Sistema
+# Tuco - Arquitectura del Sistema
 
 ## Diagrama de Arquitectura General
 
@@ -227,7 +227,7 @@ Cada lunes el backend ejecuta un cron job:
 
 ```env
 # Base de datos
-DATABASE_URL=postgresql://user:pass@host:5432/gymaidb
+DATABASE_URL=postgresql://user:pass@host:5432/tucodb
 
 # Auth
 JWT_SECRET=tu-clave-secreta-muy-larga
@@ -251,5 +251,5 @@ SUPABASE_ANON_KEY=eyJ...
 
 ---
 
-*Documento de Arquitectura — GymAI*  
+*Documento de Arquitectura - Tuco*  
 *Marzo 2026*

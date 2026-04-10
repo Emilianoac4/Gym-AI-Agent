@@ -1,7 +1,7 @@
 # Migracion a otra computadora
 
 ## Objetivo
-Mover el proyecto GymAI a otra PC y dejar backend + mobile listos.
+Mover el proyecto Tuco a otra PC y dejar backend + mobile listos.
 
 ## 1) Copiar el proyecto
 Opciones:
@@ -89,3 +89,8 @@ El script termina con codigo 0 si todo pasa y codigo 1 si hay algun FAIL.
 - `mobile/.env.example`
 - `scripts/setup-new-pc.ps1`
 - `scripts/package-for-transfer.ps1`
+
+## Nota de despliegue web (portal central)
+- El portal central de Tuco se publica en Cloudflare Pages.
+- La fuente de verdad del portal es `platform-portal/`.
+- La carpeta `platform-portal/platform-portal/` no es la ruta activa de despliegue.

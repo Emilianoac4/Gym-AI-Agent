@@ -1,4 +1,4 @@
-# GymAI - Plan Prioritario de Implementacion de Funciones
+# Tuco - Plan Prioritario de Implementacion de Funciones
 
 **Version**: 2.2  
 **Fecha**: Abril 9, 2026  
@@ -325,7 +325,7 @@ Este documento pasa a ser la referencia principal de ejecucion.
 	- Acceso post-baja de usuario: el admin del gimnasio puede seguir consultando el historial de pagos de un usuario dado de baja.
 	- Garantia tecnica: ningun endpoint de eliminacion de usuario debe ejecutar `DELETE` en cascada sobre tablas de transacciones o membresias. Requiere test automatizado que valide esta restriccion.
 
-- **Programa transversal de seguridad alta para GymAI/Tuco**
+- **Programa transversal de seguridad alta para Tuco**
 	- Naturaleza: necesidad **transversal**; no es un modulo aislado. Afecta backend, mobile, base de datos, storage, portal central y flujos con IA.
 	- Prioridad: **critica** antes de ampliar superficies sensibles como MFA-less admin growth, fotos de usuario, analisis visual, portal central y multi-tenant a mayor escala.
 	- Objetivo: llevar la plataforma a un nivel de seguridad alto, auditable y operable para una app de fitness con datos de salud, imagenes, pagos y asistentes IA.

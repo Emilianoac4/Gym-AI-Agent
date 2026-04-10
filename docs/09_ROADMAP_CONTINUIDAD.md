@@ -1,4 +1,4 @@
-# GymAI - Roadmap Detallado & Continuidad
+# Tuco - Roadmap Detallado & Continuidad
 
 **Version**: 2.1  
 **Status**: Fase 1-2 completas + Plan Prioritario 3 perfiles activo  

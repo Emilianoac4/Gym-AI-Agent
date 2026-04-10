@@ -1,4 +1,4 @@
-# GymAI - Cierre Operativo INF-SEC-01
+# Tuco - Cierre Operativo INF-SEC-01
 
 Fecha objetivo: 2026-04-08
 Scope: cierre de secretos centralizados por entorno y evidencia post-rotacion.

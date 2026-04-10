@@ -1,4 +1,4 @@
-# 📅 GymAI — Roadmap Técnico Semana a Semana
+# Tuco - Roadmap Tecnico Semana a Semana
 
 ## Cómo Usar Este Roadmap
 
@@ -21,7 +21,7 @@ Cada semana tiene:
 
 ✅ **Tareas:**
 1. Instalar Node.js, Git, y crear cuenta en GitHub
-2. Crear repositorio `gym-ai` en GitHub
+2. Crear repositorio `tuco` en GitHub
 3. Inicializar proyecto backend:
    ```bash
    mkdir backend && cd backend
@@ -427,5 +427,5 @@ Una vez tengas el MVP funcionando, podrías agregar:
 
 ---
 
-*Roadmap Técnico — GymAI*  
+*Roadmap Tecnico - Tuco*  
 *Marzo 2026*

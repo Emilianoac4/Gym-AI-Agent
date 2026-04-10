@@ -1,4 +1,4 @@
-# GymAI – Ciclo de Pruebas Pendientes
+# Tuco - Ciclo de Pruebas Pendientes
 
 **Versión**: 1.3  
 **Fecha**: Abril 5, 2026  

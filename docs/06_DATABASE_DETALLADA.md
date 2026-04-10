@@ -1,4 +1,4 @@
-# GymAI - Documentación de Base de Datos
+# Tuco - Documentacion de Base de Datos
 
 **Versión**: 2.0 (Fase 1 + Fase 2)  
 **Database**: PostgreSQL (Supabase)  
@@ -119,7 +119,7 @@ CREATE TABLE "public"."gyms" (
 | Campo | Tipo | Nulos | Índice | Descripción |
 |-------|------|-------|--------|-------------|
 | `id` | TEXT (UUID) | NO | PK | Identificador único |
-| `name` | TEXT | NO | - | Nombre del gimnasio (e.g., "GymAI São Paulo") |
+| `name` | TEXT | NO | - | Nombre del gimnasio (e.g., "Tuco Sao Paulo") |
 | `owner_name` | TEXT | NO | - | Nombre del propietario |
 | `address` | TEXT | YES | - | Dirección física |
 | `phone` | TEXT | YES | - | Teléfono de contacto |
@@ -136,7 +136,7 @@ CREATE TABLE "public"."gyms" (
 ```json
 {
   "id": "03ce9106-8c7c-4d2e-8e5c-1a2b3c4d5e6f",
-  "name": "GymAI São Paulo",
+  "name": "Tuco Sao Paulo",
   "ownerName": "João Silva",
   "address": "Avenida Paulista 1000",
   "phone": "+55 11 98765-4321",
@@ -149,7 +149,7 @@ CREATE TABLE "public"."gyms" (
 // Crear gimnasio
 await prisma.gym.create({
   data: {
-    name: "GymAI Madrid",
+    name: "Tuco Madrid",
     ownerName: "Carlos López",
     address: "Calle Gran Vía 100",
     phone: "+34 91 123-4567"

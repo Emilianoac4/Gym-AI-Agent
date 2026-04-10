@@ -496,6 +496,12 @@ export function ProfileScreen({ navigation }: { navigation: any }) {
           </TapSurface>
         </View>
       </View>
+        <TapSurface
+          onPress={() => navigation.navigate("Pathologies")}
+          style={styles.pathologiesButton}
+        >
+          <Text style={styles.pathologiesButtonText}>Mis padecimientos</Text>
+        </TapSurface>
         <TapSurface onPress={logout} style={styles.logoutButton}>
           <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
         </TapSurface>
@@ -718,8 +724,24 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontFamily: design.fontFamily,
   },
-  logoutButton: {
+  pathologiesButton: {
     marginTop: design.spacing.x2,
+    borderRadius: design.radius.input,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#6B7280",
+    backgroundColor: "transparent",
+  },
+  pathologiesButtonText: {
+    color: "#374151",
+    fontSize: 16,
+    fontWeight: "600",
+    fontFamily: design.fontFamily,
+  },
+  logoutButton: {
+    marginTop: design.spacing.x1,
     borderRadius: design.radius.input,
     paddingVertical: 16,
     alignItems: "center",

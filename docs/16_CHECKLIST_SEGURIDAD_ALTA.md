@@ -1,9 +1,9 @@
-# GymAI - Checklist de Seguridad Alta y Plan de Implementacion
+# Tuco - Checklist de Seguridad Alta y Plan de Implementacion
 
 **Version**: 1.0  
 **Fecha**: Abril 8, 2026  
 **Estado**: Activo y transversal al piloto  
-**Objetivo**: elevar GymAI/Tuco a un nivel de seguridad alto y operativo para una aplicacion multi-tenant de fitness, salud, IA e imagenes.
+**Objetivo**: elevar Tuco a un nivel de seguridad alto y operativo para una aplicacion multi-tenant de fitness, salud, IA e imagenes.
 
 ---
 
@@ -184,6 +184,6 @@
 
 ## 7) Resumen ejecutivo
 
-GymAI/Tuco ya avanzo en endurecimiento de base de datos, rate limiting y auditoria runtime. El siguiente salto de madurez no depende de agregar mas features primero, sino de cerrar identidad reforzada, secretos, storage sensible, restore, MFA, CI de seguridad y guardrails backend de IA. Este documento convierte ese trabajo en una secuencia ejecutable para integrarlo al plan oficial de necesidades.
+Tuco ya avanzo en endurecimiento de base de datos, rate limiting y auditoria runtime. El siguiente salto de madurez no depende de agregar mas features primero, sino de cerrar identidad reforzada, secretos, storage sensible, restore, MFA, CI de seguridad y guardrails backend de IA. Este documento convierte ese trabajo en una secuencia ejecutable para integrarlo al plan oficial de necesidades.
 
 Complemento operativo: el backlog ejecutable, la clasificacion con evidencia del repo y la bajada a sprints hasta piloto estan documentados en `docs/17_BACKLOG_SEGURIDAD_PILOTO.md`.

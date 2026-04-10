@@ -1,8 +1,8 @@
-# 🏋️ GymAI - Plan de Desarrollo
+# Tuco - Plan de Desarrollo
 
 ## Resumen del Proyecto
 
-**GymAI** es una aplicación móvil (iOS + Android) que conecta una inteligencia artificial con los usuarios de un gimnasio para ofrecer:
+**Tuco** es una aplicacion movil (iOS + Android) que conecta una inteligencia artificial con los usuarios de un gimnasio para ofrecer:
 - Recomendaciones personalizadas de ejercicios y rutinas
 - Planes de alimentación adaptados
 - Seguimiento de progreso en tiempo real

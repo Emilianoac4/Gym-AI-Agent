@@ -8,6 +8,7 @@ BEGIN
     notes TEXT NULL,
     diagnosed_at TIMESTAMPTZ NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    allow_trainer_view BOOLEAN NOT NULL DEFAULT FALSE,
     deactivated_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -15,6 +16,17 @@ BEGIN
   );
 EXCEPTION
   WHEN duplicate_table THEN NULL;
+END $$;
+
+-- If table already exists, add the column if missing
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'user_pathologies' AND column_name = 'allow_trainer_view'
+  ) THEN
+    ALTER TABLE user_pathologies ADD COLUMN allow_trainer_view BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
 END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_pathologies_user_key_label_unique

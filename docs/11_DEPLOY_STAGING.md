@@ -1,5 +1,11 @@
 # 11 - Deploy Staging (Fuera de Red Local)
 
+## Convenciones oficiales
+
+- Nombre de aplicacion/plataforma: Tuco.
+- Portal central web: Cloudflare Pages.
+- Netlify no se usa como proveedor activo del portal.
+
 ## Objetivo
 
 Publicar el backend en internet y conectar la app mobile para pruebas reales en 4G/WiFi externo.
@@ -62,3 +68,16 @@ npm run start
 2. Agregar rate limiting por IP/usuario.
 3. Configurar alertas (errores, latencia, cuota OpenAI).
 4. Usar entorno separado: staging y production.
+
+## 5. Portal central en Cloudflare Pages (oficial)
+
+1. Confirmar que los cambios del portal esten en `platform-portal/`.
+2. Publicar/validar deploy en Cloudflare Pages.
+3. Verificar que rutas SPA y seguridad esten activas:
+	- `platform-portal/_redirects`
+	- `platform-portal/_headers`
+4. Validar en vivo con inspeccion de headers HTTP y navegacion basica.
+5. Confirmar login, dashboard y lectura de metricas en `admin.tucofitness.com`.
+
+Nota operativa:
+- `platform-portal/platform-portal/` es carpeta heredada, no fuente de verdad de despliegue.

@@ -91,6 +91,8 @@ export function TrainerRoutineBuilderScreen({
   });
   const [submitting, setSubmitting] = useState(false);
   const [memberPreferredDays, setMemberPreferredDays] = useState<string[]>([]);
+  const [memberPathologies, setMemberPathologies] = useState<Array<{ label: string; notes?: string }>>([]);
+  const [pathologiesUpdatedAt, setPathologiesUpdatedAt] = useState<Date | null>(null);
   const [scheduledDays, setScheduledDays] = useState<string[]>(
     Array.isArray(assignedRoutine?.scheduledDays) ? assignedRoutine.scheduledDays : []
   );
@@ -130,6 +132,41 @@ export function TrainerRoutineBuilderScreen({
       .then((res) => setMemberPreferredDays(res.preferredDays))
       .catch(() => {});
   }, [isAssign, memberId, token]);
+
+  useEffect(() => {
+    if (!token || !memberId || (!isAssign && !isEditAssigned)) return;
+
+    let cancelled = false;
+
+    const loadPathologies = () => {
+      api.getUserPathologies(memberId, token)
+        .then((res) => {
+          if (cancelled) return;
+          const active = res.pathologies.filter((item) => item.isActive);
+          const parsed = active.map((item) => ({
+            label: item.key === "other" && item.customLabel
+              ? item.customLabel
+              : item.key.replace(/_/g, " "),
+            notes: item.notes ?? undefined,
+          }));
+          setMemberPathologies(parsed);
+          setPathologiesUpdatedAt(new Date());
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setMemberPathologies([]);
+          setPathologiesUpdatedAt(new Date());
+        });
+    };
+
+    loadPathologies();
+    const interval = setInterval(loadPathologies, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [token, memberId, isAssign, isEditAssigned]);
 
   /* ─── exercise helpers ─────────────────────────────── */
 
@@ -337,6 +374,23 @@ export function TrainerRoutineBuilderScreen({
           </View>
         </View>
 
+        {(isAssign || isEditAssigned) && memberPathologies.length > 0 && (
+          <View style={styles.pathologiesCard}>
+            <Text style={styles.pathologiesTitle}>Padecimientos compartidos por el usuario</Text>
+            {pathologiesUpdatedAt ? (
+              <Text style={styles.pathologiesRefreshHint}>
+                Actualizado: {pathologiesUpdatedAt.toLocaleTimeString()}
+              </Text>
+            ) : null}
+            {memberPathologies.map((item, idx) => (
+              <View key={`${item.label}-${idx}`} style={styles.pathologyRow}>
+                <Text style={styles.pathologyName}>• {item.label}</Text>
+                {item.notes ? <Text style={styles.pathologyNotes}>{item.notes}</Text> : null}
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Days selector — assign and edit-assigned modes */}
         {(isAssign || isEditAssigned) && (
           <View style={styles.sectionBox}>
@@ -529,6 +583,39 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionLabel: { fontSize: 13, fontWeight: "700", color: palette.cocoa, marginBottom: 6 },
+
+  pathologiesCard: {
+    backgroundColor: palette.card,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: palette.line,
+    marginBottom: 12,
+  },
+  pathologiesTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: palette.cocoa,
+    marginBottom: 8,
+  },
+  pathologiesRefreshHint: {
+    fontSize: 11,
+    color: palette.textMuted,
+    marginBottom: 8,
+  },
+  pathologyRow: {
+    marginBottom: 8,
+  },
+  pathologyName: {
+    fontSize: 13,
+    color: palette.cocoa,
+    fontWeight: "700",
+  },
+  pathologyNotes: {
+    fontSize: 12,
+    color: palette.textMuted,
+    marginTop: 2,
+  },
 
   exercisesTitle: {
     fontSize: 16,

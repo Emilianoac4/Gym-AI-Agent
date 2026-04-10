@@ -1,4 +1,4 @@
-# GymAI - Decisiones Técnicas & Troubleshooting
+# Tuco - Decisiones Tecnicas & Troubleshooting
 
 **Versión**: 2.0  
 **Fecha**: Marzo 30, 2026  
@@ -38,7 +38,7 @@
 ✅ **Documentación**: Types sirven como documentación ejecutable  
 ✅ **Maintenance**: Code más legible y refactorable  
 
-**Ventajas en GymAI**:
+**Ventajas en Tuco**:
 - Controllers con tipos claros (Request, Response)
 - Prisma genera types automáticamente de schema
 - JWT payload tipado
@@ -67,7 +67,7 @@
 ✅ **Developer Experience**: Prisma Studio GUI para explorar BD  
 ✅ **Ecosystem**: Buen soporte para Next.js, Nest.js, otros frameworks  
 
-**Ventajas en GymAI**:
+**Ventajas en Tuco**:
 ```typescript
 // Antes (TypeORM):
 const user = await userRepository.findOne(userId);  // Type: any
@@ -97,7 +97,7 @@ const user = await prisma.user.findUnique({ where: { id: userId } });  // Type: 
 ✅ **No Lock-in**: Standard SQL, portable a cualquier postgres  
 ✅ **Supabase**: Managed, serverless, auth integrada, realtime  
 
-**Ventajas en GymAI**:
+**Ventajas en Tuco**:
 - Relaciones claras: Gym → Users → Profiles → Measurements
 - Constraints aseguran integridad de datos
 - JSON support en campos (futuro para metadata)
@@ -168,7 +168,7 @@ jwt.verify(token, SECRET);
 ✅ **Errores Claros**: Mensajes de error en array estructurado  
 ✅ **Performance**: Más rápido que alternatives  
 
-**Ejemplo en GymAI**:
+**Ejemplo en Tuco**:
 ```typescript
 const registerSchema = z.object({
   email: z.string().email(),

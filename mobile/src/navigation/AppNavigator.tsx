@@ -29,6 +29,7 @@ import { AssistanceScreen } from "../screens/Main/AssistanceScreen";
 import { AssistanceRequestsScreen } from "../screens/Main/AssistanceRequestsScreen";
 import { TrainerRoutineBuilderScreen } from "../screens/Main/TrainerRoutineBuilderScreen";
 import { TrainerPresetsScreen } from "../screens/Main/TrainerPresetsScreen";
+import { PathologiesScreen } from "../screens/Main/PathologiesScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -215,6 +216,11 @@ export function AppNavigator() {
               <Stack.Screen
                 name="TrainerPresets"
                 component={TrainerPresetsScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Pathologies"
+                component={PathologiesScreen}
                 options={{ headerShown: false }}
               />
             </>

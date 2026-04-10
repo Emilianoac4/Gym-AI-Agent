@@ -1,8 +1,18 @@
-# GymAI - Setup & Configuración Detallada
+# Tuco - Setup & Configuracion Detallada
 
 **Versión**: 2.0  
 **OS**: Linux/macOS/Windows (PowerShell/Bash)  
 **Última actualización**: Marzo 30, 2026  
+
+## Convenciones oficiales vigentes
+
+1. Nombre oficial de la aplicacion: Tuco.
+2. Portal central web: desplegado en Cloudflare Pages.
+3. Netlify no es proveedor operativo activo del portal.
+4. Fuente de verdad del portal: `platform-portal/`.
+
+Para detalle normativo y operativo completo:
+- `docs/23_CONVENCIONES_OFICIALES_TUCO_CLOUDFLARE.md`
 
 ---
 

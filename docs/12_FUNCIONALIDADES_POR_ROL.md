@@ -1,4 +1,4 @@
-# GymAI - Funcionalidades por Rol
+# Tuco - Funcionalidades por Rol
 
 **Version**: 1.1  
 **Ultima actualizacion**: Abril 9, 2026  

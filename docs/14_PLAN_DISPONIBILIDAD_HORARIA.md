@@ -1,4 +1,4 @@
-# GymAI - Plan de Implementacion de Disponibilidad Horaria
+# Tuco - Plan de Implementacion de Disponibilidad Horaria
 
 **Version**: 1.0  
 **Fecha**: Abril 2, 2026  
@@ -470,7 +470,7 @@ Una vez terminada esta capacidad, el mejor siguiente paso no es otra pantalla ai
 
 ### Razon
 
-La disponibilidad horaria abre operacion visible. El siguiente salto de valor real es monetizacion, trazabilidad y estado operativo humano. Eso convierte GymAI en sistema operativo del gimnasio y no solo en app de entrenamiento.
+La disponibilidad horaria abre operacion visible. El siguiente salto de valor real es monetizacion, trazabilidad y estado operativo humano. Eso convierte a Tuco en sistema operativo del gimnasio y no solo en app de entrenamiento.
 
 ---
 

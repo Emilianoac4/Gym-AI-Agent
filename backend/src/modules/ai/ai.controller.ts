@@ -46,6 +46,7 @@ type GeneratedRoutine = {
 type UserPathologyContextRow = {
   pathology_key: string;
   custom_label: string;
+  notes: string | null;
 };
 
 type ActionProposalType = "routine_replace" | "exercise_add";
@@ -421,7 +422,7 @@ function estimatedOneRM(loadKg: number, reps: number | null): number | null {
 export class AIController {
   private static async getMedicalConditionsContext(userId: string, fallback: string | null): Promise<string | undefined> {
     const pathologies = await prisma.$queryRaw<UserPathologyContextRow[]>`
-      SELECT pathology_key, custom_label
+      SELECT pathology_key, custom_label, notes
       FROM user_pathologies
       WHERE user_id = ${userId}
         AND is_active = true
@@ -433,11 +434,17 @@ export class AIController {
       return fallback || undefined;
     }
 
-    const labels = pathologies.map((item) =>
-      item.pathology_key === "other" && item.custom_label
+    const labels = pathologies.map((item) => {
+      const base = item.pathology_key === "other" && item.custom_label
         ? `other: ${item.custom_label}`
-        : item.pathology_key,
-    );
+        : item.pathology_key;
+
+      if (!item.notes?.trim()) {
+        return base;
+      }
+
+      return `${base} (details: ${item.notes.trim()})`;
+    });
 
     return labels.join(", ");
   }

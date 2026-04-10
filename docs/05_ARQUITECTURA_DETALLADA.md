@@ -1,4 +1,4 @@
-# GymAI - Arquitectura General del Sistema
+# Tuco - Arquitectura General del Sistema
 
 **Versión**: 2.0 (Fase 1 + Fase 2)  
 **Fecha**: Marzo 30, 2026  
@@ -8,7 +8,7 @@
 
 ## 📐 Visión General de la Arquitectura
 
-GymAI es una plataforma de gestión de gimnasios con inteligencia artificial. La arquitectura está diseñada con separación de capas, modularidad y escalabilidad en mente.
+Tuco es una plataforma de gestion de gimnasios con inteligencia artificial. La arquitectura esta disenada con separacion de capas, modularidad y escalabilidad en mente.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -559,5 +559,5 @@ const response = await openai.chat.completions.create({ model, messages });
 ---
 
 **Documento actualizado**: Marzo 30, 2026  
-**Preparado por**: GymAI Development Team  
+**Preparado por**: Tuco Development Team  
 **Para**: Future maintainers y continuidad de desarrollo

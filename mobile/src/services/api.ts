@@ -391,6 +391,60 @@ export const api = {
       body,
     }),
 
+  getUserPathologies: (id: string, token: string) =>
+    request<{
+      count: number;
+      pathologies: Array<{
+        id: string;
+        key: string;
+        customLabel: string | null;
+        notes: string | null;
+        diagnosedAt: string | null;
+        isActive: boolean;
+        allowTrainerView: boolean;
+        deactivatedAt: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(`/users/${id}/pathologies`, {
+      token,
+    }),
+
+  upsertUserPathologies: (
+    id: string,
+    token: string,
+    body: {
+      entries: Array<{
+        key: string;
+        customLabel?: string;
+        notes?: string;
+        diagnosedAt?: string;
+        isActive?: boolean;
+        allowTrainerView?: boolean;
+      }>;
+    }
+  ) =>
+    request<{
+      message: string;
+      count: number;
+      pathologies: Array<{
+        id: string;
+        key: string;
+        customLabel: string | null;
+        notes: string | null;
+        diagnosedAt: string | null;
+        isActive: boolean;
+        allowTrainerView: boolean;
+        deactivatedAt: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(`/users/${id}/pathologies`, {
+      method: "PUT",
+      token,
+      body,
+    }),
+
   updateAvatar: (id: string, token: string, imageBase64: string) =>
     request<{ message: string; avatarUrl: string }>(`/users/${id}/avatar`, {
       method: "PATCH",

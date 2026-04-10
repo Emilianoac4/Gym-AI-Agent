@@ -1,4 +1,4 @@
-# GymAI - Backlog Tecnico de Seguridad para Piloto
+# Tuco - Backlog Tecnico de Seguridad para Piloto
 
 **Version**: 1.0  
 **Fecha**: Abril 8, 2026  
