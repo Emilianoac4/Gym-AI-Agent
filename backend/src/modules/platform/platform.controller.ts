@@ -309,8 +309,22 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
     estimated_cost_usd: number | string | null;
   };
 
+  type ModuleTokenUsageRow = {
+    module: string;
+    total_tokens: number | string;
+    estimated_cost_usd: number | string | null;
+  };
+
+  type OperationTokenUsageRow = {
+    operation: string;
+    total_tokens: number | string;
+    estimated_cost_usd: number | string | null;
+  };
+
   let gymTokenUsageRows: GymTokenUsageRow[] = [];
   let userTokenUsageRows: UserTokenUsageRow[] = [];
+  let moduleTokenUsageRows: ModuleTokenUsageRow[] = [];
+  let operationTokenUsageRows: OperationTokenUsageRow[] = [];
 
   try {
     gymTokenUsageRows = await prisma.$queryRaw<GymTokenUsageRow[]>`
@@ -337,6 +351,29 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
       WHERE l."created_at" >= ${tokenFromDate}
       GROUP BY l."gym_id", l."user_id", u."full_name"
     `;
+
+    moduleTokenUsageRows = await prisma.$queryRaw<ModuleTokenUsageRow[]>`
+      SELECT
+        l."module",
+        SUM(l."total_tokens")::bigint AS "total_tokens",
+        COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
+      FROM "ai_token_usage_logs" l
+      WHERE l."created_at" >= ${tokenFromDate}
+      GROUP BY l."module"
+      ORDER BY SUM(l."total_tokens") DESC
+    `;
+
+    operationTokenUsageRows = await prisma.$queryRaw<OperationTokenUsageRow[]>`
+      SELECT
+        l."operation",
+        SUM(l."total_tokens")::bigint AS "total_tokens",
+        COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
+      FROM "ai_token_usage_logs" l
+      WHERE l."created_at" >= ${tokenFromDate}
+      GROUP BY l."operation"
+      ORDER BY SUM(l."total_tokens") DESC
+      LIMIT 10
+    `;
   } catch (error) {
     const shouldIgnore = isAiTokenUsageTableMissing(error);
     if (shouldIgnore) {
@@ -347,7 +384,21 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
 
     gymTokenUsageRows = [];
     userTokenUsageRows = [];
+    moduleTokenUsageRows = [];
+    operationTokenUsageRows = [];
   }
+
+  const moduleBreakdown = moduleTokenUsageRows.map((row) => ({
+    module: row.module,
+    totalTokens: Number(row.total_tokens || 0),
+    estimatedCostUsd: Number(row.estimated_cost_usd || 0),
+  }));
+
+  const topOperations = operationTokenUsageRows.map((row) => ({
+    operation: row.operation,
+    totalTokens: Number(row.total_tokens || 0),
+    estimatedCostUsd: Number(row.estimated_cost_usd || 0),
+  }));
 
   const gymTokenUsageMap = new Map(
     gymTokenUsageRows.map((row) => [
@@ -445,6 +496,10 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
       deleted: deleted.length,
       expiringSoon: expiringSoon.length,
       overflowing: overflowing.length,
+    },
+    aiUsageSummary: {
+      moduleBreakdown,
+      topOperations,
     },
     companies: companyCards,
   });

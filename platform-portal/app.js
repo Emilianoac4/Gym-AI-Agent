@@ -276,12 +276,14 @@ async function loadDashboard() {
   const deletedSummaryEl = $("deletedSummary");
   const deletedListEl = $("deletedCompanyList");
   const tokenSummaryEl = $("tokenUsageSummary");
+  const tokenBreakdownEl = $("tokenUsageBreakdown");
   const tokenListEl = $("tokenUsageList");
   summaryEl.textContent = "Cargando...";
   listEl.innerHTML = "";
   deletedSummaryEl.textContent = "";
   deletedListEl.innerHTML = "";
   tokenSummaryEl.textContent = "Cargando consumo IA...";
+  tokenBreakdownEl.innerHTML = "";
   tokenListEl.innerHTML = "";
 
   try {
@@ -305,6 +307,31 @@ async function loadDashboard() {
       : "Sin empresas eliminadas.";
 
     tokenSummaryEl.textContent = `Ventana: ${data.tokenDays || 30} dias | Tokens totales: ${fmtNumber(totalTokens)} | Costo estimado: ${fmtUsd(totalCostUsd)}`;
+
+    const moduleBreakdown = Array.isArray(data.aiUsageSummary?.moduleBreakdown)
+      ? data.aiUsageSummary.moduleBreakdown
+      : [];
+    const topOperations = Array.isArray(data.aiUsageSummary?.topOperations)
+      ? data.aiUsageSummary.topOperations
+      : [];
+
+    tokenBreakdownEl.innerHTML = `
+      <article class="company-card">
+        <h3>Desglose por modulo</h3>
+        ${moduleBreakdown.length > 0
+          ? `<ul class="mini-list">${moduleBreakdown
+              .map((item) => `<li>${item.module}: ${fmtNumber(item.totalTokens)} tokens (${fmtUsd(item.estimatedCostUsd)})</li>`)
+              .join("")}</ul>`
+          : "<p class=\"company-meta\">Sin datos de modulos en el periodo seleccionado.</p>"}
+      </article>
+      <article class="company-card">
+        <h3>Top operaciones (global)</h3>
+        ${topOperations.length > 0
+          ? `<ul class="mini-list">${topOperations
+              .map((item) => `<li>${item.operation}: ${fmtNumber(item.totalTokens)} tokens (${fmtUsd(item.estimatedCostUsd)})</li>`)
+              .join("")}</ul>`
+          : "<p class=\"company-meta\">Sin operaciones registradas en el periodo seleccionado.</p>"}
+      </article>`;
 
     tokenListEl.innerHTML = activeCompanies
       .slice()
@@ -504,6 +531,7 @@ async function loadDashboard() {
   } catch (error) {
     summaryEl.textContent = `Error: ${error.message}`;
     tokenSummaryEl.textContent = `Error: ${error.message}`;
+    tokenBreakdownEl.innerHTML = "";
     tokenListEl.innerHTML = "";
   }
 }
