@@ -160,6 +160,83 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
     return parsed;
   }
 
+  private extractJsonPayload(rawContent: string): string {
+    const trimmed = rawContent.trim();
+    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const withoutFence = codeBlockMatch?.[1]?.trim() ?? trimmed;
+
+    const firstBrace = withoutFence.indexOf("{");
+    const lastBrace = withoutFence.lastIndexOf("}");
+
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      return withoutFence.slice(firstBrace, lastBrace + 1).trim();
+    }
+
+    return withoutFence;
+  }
+
+  private closeUnterminatedJson(value: string): string {
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+
+    for (const ch of value) {
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (ch === "{" || ch === "[") {
+        stack.push(ch);
+      } else if (ch === "}" && stack[stack.length - 1] === "{") {
+        stack.pop();
+      } else if (ch === "]" && stack[stack.length - 1] === "[") {
+        stack.pop();
+      }
+    }
+
+    let repaired = value.trim();
+    if (inString) {
+      repaired += '"';
+    }
+
+    while (stack.length > 0) {
+      const opener = stack.pop();
+      repaired += opener === "{" ? "}" : "]";
+    }
+
+    repaired = repaired.replace(/,\s*([}\]])/g, "$1");
+    return repaired;
+  }
+
+  private parseJsonFromModel<T>(rawContent: string): { parsed: T; serialized: string } {
+    const extracted = this.extractJsonPayload(rawContent);
+
+    try {
+      const parsed = JSON.parse(extracted) as T;
+      return { parsed, serialized: JSON.stringify(parsed) };
+    } catch (error) {
+      const repaired = this.closeUnterminatedJson(extracted);
+      const parsed = JSON.parse(repaired) as T;
+      return { parsed, serialized: JSON.stringify(parsed) };
+    }
+  }
+
   private trimForContext(text: string): string {
     return text.trim().slice(0, this.chatContextMaxChars);
   }
@@ -1029,31 +1106,47 @@ Genera SOLO JSON valido (sin markdown, sin explicaciones):
 Personaliza la rutina completamente segun el perfil. Devuelve SOLO JSON valido.
     `;
 
-    const response = await this.createCompletionWithUsage(userId, "routine", "generate_routine", {
+    const baseParams = {
       model: this.models.routine,
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: prompt }] as Array<{ role: "user"; content: string }>,
       temperature: 0.7,
       max_tokens: 2000,
-    });
+    };
 
-    const rawContent = (response.choices[0]?.message?.content || "").trim();
+    let content = "";
+    let parsedRoutine: GeneratedRoutine | null = null;
+    let lastError: unknown;
 
-    // Strip potential markdown code fences (```json ... ``` or ``` ... ```)
-    const codeBlockMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    const content = codeBlockMatch?.[1]?.trim() ?? rawContent;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await this.createCompletionWithUsage(userId, "routine", "generate_routine", {
+        ...baseParams,
+        temperature: attempt === 0 ? baseParams.temperature : 0.4,
+        max_tokens: attempt === 0 ? baseParams.max_tokens : 2800,
+      });
 
-    // Validate that response contains valid JSON structure with sessions
-    try {
-      const parsed = JSON.parse(content);
-      if (!parsed.sessions || parsed.sessions.length === 0) {
-        throw new Error("Generated routine has no sessions");
+      const rawContent = (response.choices[0]?.message?.content || "").trim();
+
+      try {
+        const parsedResult = this.parseJsonFromModel<GeneratedRoutine>(rawContent);
+        parsedRoutine = parsedResult.parsed;
+        content = parsedResult.serialized;
+
+        if (!parsedRoutine.sessions || parsedRoutine.sessions.length === 0) {
+          throw new Error("Generated routine has no sessions");
+        }
+
+        if (parsedRoutine.sessions.some((session) => !session.exercises || session.exercises.length === 0)) {
+          throw new Error("Some sessions have no exercises");
+        }
+
+        break;
+      } catch (error) {
+        lastError = error;
       }
-      if (parsed.sessions.some((s: any) => !s.exercises || s.exercises.length === 0)) {
-        throw new Error("Some sessions have no exercises");
-      }
-    } catch (error) {
-      // Surface as AI provider error so it returns 502 with a user-friendly message
-      const detail = error instanceof Error ? error.message : "Invalid JSON from AI";
+    }
+
+    if (!parsedRoutine) {
+      const detail = lastError instanceof Error ? lastError.message : "Invalid JSON from AI";
       throw new Error(`AI provider error: No se pudo generar la rutina completa. Por favor intenta de nuevo. (${detail})`);
     }
 
@@ -1126,13 +1219,10 @@ Reglas:
       max_tokens: 1200,
     });
 
-    const rawDayContent = (response.choices[0]?.message?.content || "").trim();
-    const dayCodeBlockMatch = rawDayContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    const dayContent = dayCodeBlockMatch?.[1]?.trim() ?? rawDayContent;
-
     let newSession: RoutineSession;
     try {
-      newSession = JSON.parse(dayContent) as RoutineSession;
+      const rawDayContent = (response.choices[0]?.message?.content || "").trim();
+      newSession = this.parseJsonFromModel<RoutineSession>(rawDayContent).parsed;
       if (!Array.isArray(newSession.exercises) || newSession.exercises.length < 1) {
         throw new Error("Invalid session exercises");
       }
@@ -1218,13 +1308,10 @@ Reglas:
       max_tokens: 1200,
     });
 
-    const rawContent = (response.choices[0]?.message?.content || "").trim();
-    const codeBlockMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    const cleanContent = codeBlockMatch?.[1]?.trim() ?? rawContent;
-
     let newSession: RoutineSession;
     try {
-      newSession = JSON.parse(cleanContent) as RoutineSession;
+      const rawContent = (response.choices[0]?.message?.content || "").trim();
+      newSession = this.parseJsonFromModel<RoutineSession>(rawContent).parsed;
       if (!Array.isArray(newSession.exercises) || newSession.exercises.length < 1) {
         throw new Error("Invalid session exercises");
       }
