@@ -710,9 +710,9 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
           "estimated_cost_usd"
         )
         VALUES (
-          ${user.gymId},
-          ${data.userId},
-          ${data.module},
+            ${user.gymId}::uuid,
+            ${data.userId}::uuid,
+            ${data.module},
           ${data.operation},
           ${data.modelName},
           ${data.promptTokens},
