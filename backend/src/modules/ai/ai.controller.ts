@@ -1634,7 +1634,7 @@ export class AIController {
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     const asksNewRoutine =
-      /(nueva rutina|cambiar rutina|actualizar rutina|otra rutina|recomiendame.*rutina|recomiend[a-z]*.*rutina)/.test(
+      /(nueva rutina|cambiar rutina|actualizar rutina|otra rutina|recomiendame.*rutina|recomiend[a-z]*.*rutina|aplica[rzla]*.*rutina|carga[rzla]*.*rutina|agrega[rzla]*.*rutina|anad[irzela]*.*rutina|ponla.*rutina)/.test(
         normalizedMessage,
       );
 
@@ -1672,18 +1672,47 @@ export class AIController {
       };
     }
 
-    const exerciseIntent = /(quiero|agregar|anadir|añadir).*(ejercicio|hacer)/.test(normalizedMessage);
+    const exerciseIntent =
+      /(agregar|agrega|anadir|añadir|anade|añade|incluir|incluye|sumar|suma|poner|pon).*(rutina|dia|día|entreno)/.test(
+        normalizedMessage,
+      ) ||
+      /(quiero|puedo|podemos).*(agregar|anadir|añadir|incluir|poner)/.test(normalizedMessage) ||
+      /(quiero|voy a).*(hacer|meter).*(en mi rutina|hoy|manana|mañana)/.test(normalizedMessage);
     if (!exerciseIntent) {
       return null;
     }
 
-    const exerciseMatch = normalizedMessage.match(
-      /(?:quiero|agregar|anadir|añadir)(?:\s+hacer)?\s+([a-z0-9\s\-]{3,80})/,
-    );
+    const exerciseMatch =
+      normalizedMessage.match(
+        /(?:agregar|agrega|anadir|añadir|anade|añade|incluir|incluye|sumar|suma|poner|pon)(?:\s+(?:el|la|un|una))?\s+([a-z0-9\s\-]{3,80}?)(?:\s+(?:a|en|para)\s+(?:mi\s+)?(?:rutina|dia|día|entreno).*)?$/,
+      ) ||
+      normalizedMessage.match(/(?:quiero|voy a)\s+hacer\s+([a-z0-9\s\-]{3,80})(?:\s+.*)?$/);
 
-    const extractedExercise = exerciseMatch?.[1]?.trim();
+    const extractedExerciseRaw = exerciseMatch?.[1]?.trim();
+    const extractedExercise = extractedExerciseRaw
+      ? extractedExerciseRaw
+          .replace(/\b(?:a|en|para)\s+(?:mi\s+)?(?:rutina|dia|día|entreno)\b.*/g, "")
+          .trim()
+      : undefined;
     if (!extractedExercise) {
-      return null;
+      const created = await insertActionProposal({
+        gymId,
+        targetUserId: userId,
+        proposalType: "exercise_add",
+        summary: "Tuco detecto intencion de agregar ejercicio, pero falta el nombre del ejercicio.",
+        rationale: "Se requiere nombre explicito del ejercicio para aplicar el cambio en rutina.",
+        payload: {
+          requiresExerciseName: true,
+          prompt: "Indica el nombre del ejercicio que quieres agregar y en que dia prefieres hacerlo.",
+        },
+        expiresAt,
+      });
+
+      return {
+        assistantMessage:
+          "Si tengo esa capacidad. Para aplicarlo automaticamente necesito que me digas el ejercicio exacto (por ejemplo: press de banca, sentadilla o peso muerto) y si tienes un dia preferido.",
+        proposal: toActionProposalSummary(created),
+      };
     }
 
     const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
