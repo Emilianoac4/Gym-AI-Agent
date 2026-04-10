@@ -187,6 +187,36 @@ const toPathologyResponse = (row: UserPathologyRow) => ({
   updatedAt: row.updated_at.toISOString(),
 });
 
+const isPathologiesSchemaMismatchError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+
+  if (!message) {
+    return false;
+  }
+
+  return (
+    (message.includes("user_pathologies") || message.includes("allow_trainer_view")) &&
+    (
+      message.includes("does not exist") ||
+      message.includes("column") ||
+      message.includes("relation") ||
+      message.includes("42703") ||
+      message.includes("42p01")
+    )
+  );
+};
+
+const rethrowPathologiesStorageError = (error: unknown): never => {
+  if (isPathologiesSchemaMismatchError(error)) {
+    throw new HttpError(
+      503,
+      "La base de datos aun no tiene la migracion requerida para Mis Padecimientos. Ejecuta backend/prisma/add_user_pathologies.sql y vuelve a intentar.",
+    );
+  }
+
+  throw error;
+};
+
 export const getUserProfileById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   if (!req.auth) {
     throw new HttpError(401, "Unauthorized");
@@ -318,27 +348,33 @@ export const listUserPathologiesByUserId = async (
 
   // Trainers only see pathologies the user explicitly shared.
   // Owners and admins can see full pathology history.
-  const rows = !isTrainerViewer
-    ? await prisma.$queryRaw<UserPathologyRow[]>`
-        SELECT
-          id, user_id, pathology_key, custom_label, notes,
-          diagnosed_at, is_active, allow_trainer_view, deactivated_at,
-          created_at, updated_at
-        FROM user_pathologies
-        WHERE user_id = ${id}
-        ORDER BY is_active DESC, updated_at DESC
-      `
-    : await prisma.$queryRaw<UserPathologyRow[]>`
-        SELECT
-          id, user_id, pathology_key, custom_label, notes,
-          diagnosed_at, is_active, allow_trainer_view, deactivated_at,
-          created_at, updated_at
-        FROM user_pathologies
-        WHERE user_id = ${id}
-          AND is_active = true
-          AND allow_trainer_view = true
-        ORDER BY updated_at DESC
-      `;
+  let rows: UserPathologyRow[] = [];
+
+  try {
+    rows = !isTrainerViewer
+      ? await prisma.$queryRaw<UserPathologyRow[]>`
+          SELECT
+            id, user_id, pathology_key, custom_label, notes,
+            diagnosed_at, is_active, allow_trainer_view, deactivated_at,
+            created_at, updated_at
+          FROM user_pathologies
+          WHERE user_id = ${id}
+          ORDER BY is_active DESC, updated_at DESC
+        `
+      : await prisma.$queryRaw<UserPathologyRow[]>`
+          SELECT
+            id, user_id, pathology_key, custom_label, notes,
+            diagnosed_at, is_active, allow_trainer_view, deactivated_at,
+            created_at, updated_at
+          FROM user_pathologies
+          WHERE user_id = ${id}
+            AND is_active = true
+            AND allow_trainer_view = true
+          ORDER BY updated_at DESC
+        `;
+  } catch (error) {
+    rethrowPathologiesStorageError(error);
+  }
 
   res.json({
     count: rows.length,
@@ -409,95 +445,99 @@ export const upsertUserPathologiesByUserId = async (
     current: boolean;
   }> = [];
 
-  await prisma.$transaction(async (tx) => {
-    const existing = await tx.$queryRaw<UserPathologyRow[]>`
+  try {
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.$queryRaw<UserPathologyRow[]>`
       SELECT
         id, user_id, pathology_key, custom_label, notes,
         diagnosed_at, is_active, allow_trainer_view, deactivated_at,
         created_at, updated_at
       FROM user_pathologies
       WHERE user_id = ${id}
-    `;
+      `;
 
-    const existingByTuple = new Map<string, UserPathologyRow>();
-    for (const row of existing) {
-      existingByTuple.set(`${row.pathology_key}::${row.custom_label || ""}`, row);
-    }
-
-    for (const row of existing) {
-      const tuple = `${row.pathology_key}::${row.custom_label || ""}`;
-      if (!activeTupleKeys.has(tuple) && row.is_active) {
-        await tx.$executeRaw`
-          UPDATE user_pathologies
-          SET is_active = false,
-              allow_trainer_view = false,
-              deactivated_at = NOW(),
-              updated_at = NOW()
-          WHERE id = ${row.id}
-        `;
+      const existingByTuple = new Map<string, UserPathologyRow>();
+      for (const row of existing) {
+        existingByTuple.set(`${row.pathology_key}::${row.custom_label || ""}`, row);
       }
-    }
 
-    for (const entry of normalizedEntries) {
-      const tuple = `${entry.key}::${entry.customLabel}`;
-      const current = existingByTuple.get(tuple);
-
-      if (current) {
-        if (current.allow_trainer_view !== entry.allowTrainerView) {
-          permissionChanges.push({
-            key: entry.key,
-            customLabel: entry.customLabel,
-            previous: current.allow_trainer_view,
-            current: entry.allowTrainerView,
-          });
+      for (const row of existing) {
+        const tuple = `${row.pathology_key}::${row.custom_label || ""}`;
+        if (!activeTupleKeys.has(tuple) && row.is_active) {
+          await tx.$executeRaw`
+            UPDATE user_pathologies
+            SET is_active = false,
+                allow_trainer_view = false,
+                deactivated_at = NOW(),
+                updated_at = NOW()
+            WHERE id = ${row.id}::uuid
+          `;
         }
-
-        await tx.$executeRaw`
-          UPDATE user_pathologies
-          SET notes = ${entry.notes},
-              diagnosed_at = ${entry.diagnosedAt},
-              is_active = ${entry.isActive},
-              allow_trainer_view = ${entry.allowTrainerView},
-              deactivated_at = ${entry.isActive ? null : new Date()},
-              updated_at = NOW()
-          WHERE id = ${current.id}
-        `;
-      } else {
-        if (entry.allowTrainerView) {
-          permissionChanges.push({
-            key: entry.key,
-            customLabel: entry.customLabel,
-            previous: false,
-            current: true,
-          });
-        }
-
-        await tx.$executeRaw`
-          INSERT INTO user_pathologies (
-            id,
-            user_id,
-            pathology_key,
-            custom_label,
-            notes,
-            diagnosed_at,
-            is_active,
-            allow_trainer_view,
-            deactivated_at
-          ) VALUES (
-            ${randomUUID()}::uuid,
-            ${id},
-            ${entry.key},
-            ${entry.customLabel},
-            ${entry.notes},
-            ${entry.diagnosedAt},
-            ${entry.isActive},
-            ${entry.allowTrainerView},
-            ${entry.isActive ? null : new Date()}
-          )
-        `;
       }
-    }
-  });
+
+      for (const entry of normalizedEntries) {
+        const tuple = `${entry.key}::${entry.customLabel}`;
+        const current = existingByTuple.get(tuple);
+
+        if (current) {
+          if (current.allow_trainer_view !== entry.allowTrainerView) {
+            permissionChanges.push({
+              key: entry.key,
+              customLabel: entry.customLabel,
+              previous: current.allow_trainer_view,
+              current: entry.allowTrainerView,
+            });
+          }
+
+          await tx.$executeRaw`
+            UPDATE user_pathologies
+            SET notes = ${entry.notes},
+                diagnosed_at = ${entry.diagnosedAt},
+                is_active = ${entry.isActive},
+                allow_trainer_view = ${entry.allowTrainerView},
+                deactivated_at = ${entry.isActive ? null : new Date()},
+                updated_at = NOW()
+              WHERE id = ${current.id}::uuid
+          `;
+        } else {
+          if (entry.allowTrainerView) {
+            permissionChanges.push({
+              key: entry.key,
+              customLabel: entry.customLabel,
+              previous: false,
+              current: true,
+            });
+          }
+
+          await tx.$executeRaw`
+            INSERT INTO user_pathologies (
+              id,
+              user_id,
+              pathology_key,
+              custom_label,
+              notes,
+              diagnosed_at,
+              is_active,
+              allow_trainer_view,
+              deactivated_at
+            ) VALUES (
+              ${randomUUID()}::uuid,
+              ${id},
+              ${entry.key},
+              ${entry.customLabel},
+              ${entry.notes},
+              ${entry.diagnosedAt},
+              ${entry.isActive},
+              ${entry.allowTrainerView},
+              ${entry.isActive ? null : new Date()}
+            )
+          `;
+        }
+      }
+    });
+  } catch (error) {
+    rethrowPathologiesStorageError(error);
+  }
 
   if (permissionChanges.length > 0) {
     await createAuditLog({
@@ -515,15 +555,21 @@ export const upsertUserPathologiesByUserId = async (
     });
   }
 
-  const updatedRows = await prisma.$queryRaw<UserPathologyRow[]>`
-    SELECT
-      id, user_id, pathology_key, custom_label, notes,
-      diagnosed_at, is_active, allow_trainer_view, deactivated_at,
-      created_at, updated_at
-    FROM user_pathologies
-    WHERE user_id = ${id}
-    ORDER BY is_active DESC, updated_at DESC
-  `;
+  let updatedRows: UserPathologyRow[] = [];
+
+  try {
+    updatedRows = await prisma.$queryRaw<UserPathologyRow[]>`
+      SELECT
+        id, user_id, pathology_key, custom_label, notes,
+        diagnosed_at, is_active, allow_trainer_view, deactivated_at,
+        created_at, updated_at
+      FROM user_pathologies
+      WHERE user_id = ${id}
+      ORDER BY is_active DESC, updated_at DESC
+    `;
+  } catch (error) {
+    rethrowPathologiesStorageError(error);
+  }
 
   res.json({
     message: "Pathologies updated",

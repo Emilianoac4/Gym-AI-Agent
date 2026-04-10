@@ -12,6 +12,7 @@
     "test:ai:local": "powershell -ExecutionPolicy Bypass -File ./scripts/ai-iteration-validation.ps1",
     "test:block1": "jest --runInBand tests/security/user-delete-financial-integrity.test.ts",
     "test:block1:ai:cross": "powershell -ExecutionPolicy Bypass -File ./scripts/block1-ai-cross-validation.ps1",
+    "validate:user-pathologies": "node scripts/validate-user-pathologies.js",
     "test:security": "jest --runInBand tests/security",
     "test:e2e:payments": "node scripts/e2e-payments-flow.js",
     "prisma:generate": "prisma generate",
