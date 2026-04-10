@@ -112,7 +112,7 @@ const verifyPlatformPassword = async (platformUserId: string, password: string) 
 const isAiTokenUsageTableMissing = (error: unknown): boolean => {
   const candidate = error as { code?: string; message?: string };
 
-  if (candidate?.code === "P2021") {
+  if (candidate?.code === "P2021" || candidate?.code === "P2010") {
     return true;
   }
 
@@ -338,9 +338,15 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
       GROUP BY l."gym_id", l."user_id", u."full_name"
     `;
   } catch (error) {
-    if (!isAiTokenUsageTableMissing(error)) {
-      throw error;
+    const shouldIgnore = isAiTokenUsageTableMissing(error);
+    if (shouldIgnore) {
+      console.warn("AI token usage table is not available yet. Continuing without token metrics.");
+    } else {
+      console.error("Failed to load AI token usage aggregates for platform dashboard", error);
     }
+
+    gymTokenUsageRows = [];
+    userTokenUsageRows = [];
   }
 
   const gymTokenUsageMap = new Map(
