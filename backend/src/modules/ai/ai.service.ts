@@ -101,6 +101,8 @@ class AIService {
   private readonly chatContextTurns: number;
   private readonly chatContextMaxChars: number;
   private readonly chatMaxTokens: number;
+  private readonly fallbackModel: string;
+  private readonly dailyTokenDegradationThreshold: number;
   private readonly models: {
     routine: string;
     chat: string;
@@ -657,6 +659,10 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
   private getModelPricingPerMillion(modelName: string): { inputUsd: number; outputUsd: number } | null {
     const normalized = modelName.toLowerCase();
 
+    if (normalized.includes("gpt-5.4-mini")) {
+      return { inputUsd: 0.75, outputUsd: 4.5 };
+    }
+
     if (normalized.includes("gpt-4o-mini")) {
       return { inputUsd: 0.15, outputUsd: 0.6 };
     }
@@ -677,6 +683,29 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
     const inputCost = (promptTokens / 1_000_000) * pricing.inputUsd;
     const outputCost = (completionTokens / 1_000_000) * pricing.outputUsd;
     return Number((inputCost + outputCost).toFixed(8));
+  }
+
+  private async getUserDailyTokenUsage(userId: string): Promise<number> {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    try {
+      const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COALESCE(SUM(total_tokens), 0) AS total
+        FROM "ai_token_usage_logs"
+        WHERE "user_id" = ${userId}::uuid
+          AND "created_at" >= ${todayStart}
+      `;
+
+      return Number(rows[0]?.total ?? 0);
+    } catch (error) {
+      if (this.isTokenUsageTableMissing(error)) {
+        return 0;
+      }
+
+      console.warn("[token-usage] Daily usage lookup failed, fallback to 0", error);
+      return 0;
+    }
   }
 
   private async saveTokenUsageSafely(data: {
@@ -733,32 +762,28 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
     }
   }
 
-  private async checkDailyTokenLimit(userId: string): Promise<void> {
+  private checkDailyTokenLimit(usedToday: number): void {
     const limit = env.AI_DAILY_TOKEN_LIMIT_PER_USER;
     if (limit <= 0) return;
 
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
-
-    try {
-      const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
-        SELECT COALESCE(SUM(total_tokens), 0) AS total
-        FROM "ai_token_usage_logs"
-        WHERE "user_id" = ${userId}::uuid
-          AND "created_at" >= ${todayStart}
-      `;
-      const usedToday = Number(rows[0]?.total ?? 0);
-      if (usedToday >= limit) {
-        throw new HttpError(
-          429,
-          "Has alcanzado el límite diario de consultas a Tuco. Vuelve mañana para continuar.",
-        );
-      }
-    } catch (error) {
-      if (error instanceof HttpError) throw error;
-      // Table missing or transient error: skip guard, allow the call.
-      console.warn("[token-limit] Pre-flight check failed, skipping limit guard", error);
+    if (usedToday >= limit) {
+      throw new HttpError(
+        429,
+        "Has alcanzado el límite diario de consultas a Tuco. Vuelve mañana para continuar.",
+      );
     }
+  }
+
+  private resolveModelForUsage(primaryModel: string, usedToday: number): string {
+    if (this.dailyTokenDegradationThreshold <= 0) {
+      return primaryModel;
+    }
+
+    if (usedToday < this.dailyTokenDegradationThreshold) {
+      return primaryModel;
+    }
+
+    return this.fallbackModel;
   }
 
   private async createCompletionWithUsage(
@@ -772,11 +797,17 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       max_tokens: number;
     },
   ) {
-    await this.checkDailyTokenLimit(userId);
+    const usedToday = await this.getUserDailyTokenUsage(userId);
+    this.checkDailyTokenLimit(usedToday);
+    const selectedModel = this.resolveModelForUsage(params.model, usedToday);
+    const completionParams = {
+      ...params,
+      model: selectedModel,
+    };
 
     let response;
     try {
-      response = await this.openai.chat.completions.create(params);
+      response = await this.openai.chat.completions.create(completionParams);
     } catch (error) {
       throw this.extractProviderError(error);
     }
@@ -798,11 +829,11 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
         userId,
         module,
         operation,
-        modelName: params.model,
+        modelName: completionParams.model,
         promptTokens,
         completionTokens,
         totalTokens,
-        estimatedCostUsd: this.estimateUsageCostUsd(params.model, promptTokens, completionTokens),
+        estimatedCostUsd: this.estimateUsageCostUsd(completionParams.model, promptTokens, completionTokens),
       });
     }
 
@@ -830,6 +861,8 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       AIService.DEFAULT_CHAT_MAX_TOKENS,
       { min: 200 }
     );
+    this.fallbackModel = process.env.OPENAI_MODEL_FALLBACK || "gpt-4o-mini";
+    this.dailyTokenDegradationThreshold = env.AI_DAILY_TOKEN_DEGRADATION_THRESHOLD;
     // Use configurable models so deployments do not break when a model is unavailable.
     this.models = {
       routine: process.env.OPENAI_MODEL_ROUTINE || "gpt-4o-mini",
