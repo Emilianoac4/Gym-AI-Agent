@@ -957,6 +957,7 @@ export class AIController {
       }
 
       const options = await aiService.getRoutineExerciseAlternatives(
+        userId,
         userContext,
         latest.routine,
         sessionDay,

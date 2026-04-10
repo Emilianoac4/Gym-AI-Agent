@@ -109,6 +109,20 @@ const verifyPlatformPassword = async (platformUserId: string, password: string) 
   }
 };
 
+const isAiTokenUsageTableMissing = (error: unknown): boolean => {
+  const candidate = error as { code?: string; message?: string };
+
+  if (candidate?.code === "P2021") {
+    return true;
+  }
+
+  const message = candidate?.message || "";
+  return (
+    message.includes('table `public.ai_token_usage_logs` does not exist') ||
+    message.includes('relation "ai_token_usage_logs" does not exist')
+  );
+};
+
 export const loginPlatform = async (req: Request, res: Response): Promise<void> => {
   const body = req.body as PlatformLoginInput;
 
@@ -246,6 +260,9 @@ export const listPlatformAdminUsers = async (req: Request, res: Response): Promi
 
 export const getPlatformDashboard = async (req: Request, res: Response): Promise<void> => {
   const includeDeleted = req.query.includeDeleted === "true" || req.query.includeDeleted === "1";
+  const query = req.query as unknown as PlatformDashboardQueryInput;
+  const tokenDays = Number(query.tokenDays ?? 30);
+  const tokenFromDate = new Date(Date.now() - tokenDays * 24 * 60 * 60 * 1000);
 
   const [gyms, subscriptions] = await Promise.all([
     prisma.gym.findMany({
@@ -275,6 +292,85 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
   ]);
 
   const subscriptionsMap = new Map(subscriptions.map((item) => [item.gymId, item]));
+
+  type GymTokenUsageRow = {
+    gym_id: string;
+    total_tokens: number | string;
+    prompt_tokens: number | string;
+    completion_tokens: number | string;
+    estimated_cost_usd: number | string | null;
+  };
+
+  type UserTokenUsageRow = {
+    gym_id: string;
+    user_id: string;
+    user_name: string;
+    total_tokens: number | string;
+    estimated_cost_usd: number | string | null;
+  };
+
+  let gymTokenUsageRows: GymTokenUsageRow[] = [];
+  let userTokenUsageRows: UserTokenUsageRow[] = [];
+
+  try {
+    gymTokenUsageRows = await prisma.$queryRaw<GymTokenUsageRow[]>`
+      SELECT
+        l."gym_id",
+        SUM(l."total_tokens")::bigint AS "total_tokens",
+        SUM(l."prompt_tokens")::bigint AS "prompt_tokens",
+        SUM(l."completion_tokens")::bigint AS "completion_tokens",
+        COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
+      FROM "ai_token_usage_logs" l
+      WHERE l."created_at" >= ${tokenFromDate}
+      GROUP BY l."gym_id"
+    `;
+
+    userTokenUsageRows = await prisma.$queryRaw<UserTokenUsageRow[]>`
+      SELECT
+        l."gym_id",
+        l."user_id",
+        COALESCE(u."full_name", 'Usuario') AS "user_name",
+        SUM(l."total_tokens")::bigint AS "total_tokens",
+        COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
+      FROM "ai_token_usage_logs" l
+      LEFT JOIN "users" u ON u."id" = l."user_id"
+      WHERE l."created_at" >= ${tokenFromDate}
+      GROUP BY l."gym_id", l."user_id", u."full_name"
+    `;
+  } catch (error) {
+    if (!isAiTokenUsageTableMissing(error)) {
+      throw error;
+    }
+  }
+
+  const gymTokenUsageMap = new Map(
+    gymTokenUsageRows.map((row) => [
+      row.gym_id,
+      {
+        totalTokens: Number(row.total_tokens || 0),
+        promptTokens: Number(row.prompt_tokens || 0),
+        completionTokens: Number(row.completion_tokens || 0),
+        estimatedCostUsd: Number(row.estimated_cost_usd || 0),
+      },
+    ])
+  );
+
+  const topUsersByGym = new Map<string, Array<{ userId: string; fullName: string; totalTokens: number; estimatedCostUsd: number }>>();
+  userTokenUsageRows.forEach((row) => {
+    const bucket = topUsersByGym.get(row.gym_id) || [];
+    bucket.push({
+      userId: row.user_id,
+      fullName: row.user_name,
+      totalTokens: Number(row.total_tokens || 0),
+      estimatedCostUsd: Number(row.estimated_cost_usd || 0),
+    });
+    topUsersByGym.set(row.gym_id, bucket);
+  });
+
+  for (const [gymId, users] of topUsersByGym.entries()) {
+    users.sort((a, b) => b.totalTokens - a.totalTokens);
+    topUsersByGym.set(gymId, users.slice(0, 5));
+  }
 
   const companyCards = await Promise.all(
     gyms.map(async (gym) => {
@@ -318,6 +414,14 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
         daysRemaining,
         counts: roleCount,
         isOverflowing: roleCount.activeMembers > sub.userLimit,
+        aiTokenUsage: {
+          daysWindow: tokenDays,
+          totalTokens: gymTokenUsageMap.get(gym.id)?.totalTokens || 0,
+          promptTokens: gymTokenUsageMap.get(gym.id)?.promptTokens || 0,
+          completionTokens: gymTokenUsageMap.get(gym.id)?.completionTokens || 0,
+          estimatedCostUsd: gymTokenUsageMap.get(gym.id)?.estimatedCostUsd || 0,
+          topUsers: topUsersByGym.get(gym.id) || [],
+        },
       };
     }),
   );
@@ -329,6 +433,7 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
 
   res.json({
     generatedAt: new Date().toISOString(),
+    tokenDays,
     summary: {
       companies: active.length,
       deleted: deleted.length,

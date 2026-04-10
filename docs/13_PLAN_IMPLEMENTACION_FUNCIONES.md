@@ -164,7 +164,12 @@ Este documento pasa a ser la referencia principal de ejecucion.
 	- Frecuencia de actualizacion de visualizacion: cada **1 hora**.
 	- Retencion historica: **90 dias**, con vistas de consumo **total** y **diario**.
 	- Alertas al usuario final por consumo: **no** requeridas en esta etapa.
-	- Estado: pendiente definir valor numerico inicial de limite diario por membresia despues de medicion del piloto.
+	- Estado actual (Abril 2026):
+		- Implementado backend: persistencia por llamada IA de `prompt_tokens`, `completion_tokens`, `total_tokens`, `model_name`, `module`, `operation` y `estimated_cost_usd`.
+		- Migracion SQL creada: `backend/prisma/add_ai_token_usage_logs.sql`.
+		- Cobertura inicial instrumentada: rutina, chat, nutricion, tip diario y operaciones de edicion de rutina asistidas por IA.
+		- Pendiente inmediato: endpoint de agregacion para panel (por gimnasio, por usuario y por modulo) y dashboard de consumo/costo.
+	- Prioridad ejecutiva actual: **P0** hasta cerrar visibilidad operativa de consumo y costo IA.
 
 - **Personalizacion del tono de Tuco por persona**
 	- Visibilidad del perfil de tono/personalidad: **IA y admin**.
@@ -182,7 +187,12 @@ Este documento pasa a ser la referencia principal de ejecucion.
 	- Regla de seguridad: toda accion debe ser confirmada por el usuario final (sin autoaplicacion silenciosa).
 	- Regla de trazabilidad: guardar auditoria de propuesta, aprobacion/rechazo, usuario actor y cambios aplicados.
 	- Regla de UX: mostrar previsualizacion de cambios antes de confirmar aplicacion.
-	- Estado: pendiente de implementacion en bloque de IA/personalizacion como extension del chat transaccional.
+	- Estado actual (Abril 2026):
+		- Implementado: propuesta transaccional desde chat (`actionProposal`) para reemplazo de rutina y agregado de ejercicio.
+		- Implementado: confirmacion/rechazo via endpoints dedicados y UI de tarjeta en chat.
+		- Hallazgo de prueba: existe inconsistencia conversacional donde el usuario puede recibir mensaje de aplicado sin ver reflejo esperado inmediato en la seccion de rutinas en todos los casos.
+		- Decision de producto vigente: pausar hardening adicional de chat-rutina hasta cerrar fase de tracking de tokens y observar consumo real del flujo.
+	- Proximo paso de este bloque: retomar consistencia end-to-end chat-rutina despues de completar visibilidad de tokens/costo.
 
 - **Preferencia de ejercicios por usuario (like/dislike y favoritos)**
 	- Alcance de preferencia: por **objetivo** del usuario (no global unico).

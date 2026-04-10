@@ -120,6 +120,10 @@ async function apiFetch(path, options = {}) {
 
 function fmtDate(iso) { return new Date(iso).toLocaleString("es-CR"); }
 
+function fmtNumber(value) { return Number(value || 0).toLocaleString("es-CR"); }
+
+function fmtUsd(value) { return `$${Number(value || 0).toFixed(4)}`; }
+
 function roleRows(users) {
   return users.map((u) => `<li>${u.fullName} (${u.email}) ${u.isActive ? "" : "[INACTIVO]"}</li>`).join("");
 }
@@ -270,20 +274,58 @@ async function loadDashboard() {
   const listEl = $("companyList");
   const deletedSummaryEl = $("deletedSummary");
   const deletedListEl = $("deletedCompanyList");
+  const tokenSummaryEl = $("tokenUsageSummary");
+  const tokenListEl = $("tokenUsageList");
   summaryEl.textContent = "Cargando...";
   listEl.innerHTML = "";
   deletedSummaryEl.textContent = "";
   deletedListEl.innerHTML = "";
+  tokenSummaryEl.textContent = "Cargando consumo IA...";
+  tokenListEl.innerHTML = "";
 
   try {
-    const data = await apiFetch("/platform/dashboard?includeDeleted=true");
+    const data = await apiFetch("/platform/dashboard?includeDeleted=true&tokenDays=30");
     const activeCompanies  = data.companies.filter((c) => !c.isDeleted);
     const deletedCompanies = data.companies.filter((c) => c.isDeleted);
+
+    const totalTokens = data.companies.reduce(
+      (acc, company) => acc + Number(company.aiTokenUsage?.totalTokens || 0),
+      0,
+    );
+    const totalCostUsd = data.companies.reduce(
+      (acc, company) => acc + Number(company.aiTokenUsage?.estimatedCostUsd || 0),
+      0,
+    );
 
     summaryEl.textContent = `Empresas activas: ${data.summary.companies} | Por vencer: ${data.summary.expiringSoon} | Sobrecupo: ${data.summary.overflowing}`;
     deletedSummaryEl.textContent = deletedCompanies.length > 0
       ? `Eliminadas recuperables: ${deletedCompanies.length}`
       : "Sin empresas eliminadas.";
+
+    tokenSummaryEl.textContent = `Ventana: ${data.tokenDays || 30} dias | Tokens totales: ${fmtNumber(totalTokens)} | Costo estimado: ${fmtUsd(totalCostUsd)}`;
+
+    tokenListEl.innerHTML = activeCompanies
+      .slice()
+      .sort((a, b) => Number(b.aiTokenUsage?.totalTokens || 0) - Number(a.aiTokenUsage?.totalTokens || 0))
+      .map((company) => {
+        const usage = company.aiTokenUsage || {};
+        const topUsers = Array.isArray(usage.topUsers) ? usage.topUsers : [];
+        const topUsersHtml = topUsers.length
+          ? `<ul class="mini-list">${topUsers
+              .map((user) => `<li>${user.fullName}: ${fmtNumber(user.totalTokens)} tokens (${fmtUsd(user.estimatedCostUsd)})</li>`)
+              .join("")}</ul>`
+          : "<p class=\"company-meta\">Sin consumo IA registrado en el periodo.</p>";
+
+        return `
+          <article class="company-card">
+            <h3>${company.gymName}</h3>
+            <div class="company-meta">Tokens: ${fmtNumber(usage.totalTokens || 0)} (prompt: ${fmtNumber(usage.promptTokens || 0)} | completion: ${fmtNumber(usage.completionTokens || 0)})</div>
+            <div class="company-meta">Costo estimado: ${fmtUsd(usage.estimatedCostUsd || 0)}</div>
+            <p class="company-meta"><strong>Top usuarios por tokens</strong></p>
+            ${topUsersHtml}
+          </article>`;
+      })
+      .join("");
 
     listEl.innerHTML = activeCompanies.map((company) => `
       <article class="company-card">
@@ -456,8 +498,11 @@ async function loadDashboard() {
           },
         });
       });
-    });  } catch (error) {
+    });
+  } catch (error) {
     summaryEl.textContent = `Error: ${error.message}`;
+    tokenSummaryEl.textContent = `Error: ${error.message}`;
+    tokenListEl.innerHTML = "";
   }
 }
 

@@ -47,6 +47,7 @@ export const platformAlertsQuerySchema = z.object({
 
 export const platformDashboardQuerySchema = z.object({
   includeDeleted: z.coerce.boolean().optional(),
+  tokenDays: z.coerce.number().int().min(1).max(90).optional(),
 });
 
 export const deleteCompanyRequestSchema = z.object({

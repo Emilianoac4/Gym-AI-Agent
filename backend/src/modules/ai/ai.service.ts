@@ -45,6 +45,8 @@ type UserRoutineContext = {
   medicalConditions?: string;
 };
 
+type AiUsageModule = "routine" | "chat" | "tip" | "nutrition";
+
 function formatIsoDate(date: Date | null | undefined): string {
   if (!date) {
     return "";
@@ -636,6 +638,145 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
     }
   }
 
+  private isTokenUsageTableMissing(error: unknown): boolean {
+    const candidate = error as { code?: string; message?: string };
+
+    if (candidate?.code === "P2021") {
+      return true;
+    }
+
+    const message = candidate?.message || "";
+    return (
+      message.includes('table `public.ai_token_usage_logs` does not exist') ||
+      message.includes('relation "ai_token_usage_logs" does not exist')
+    );
+  }
+
+  private getModelPricingPerMillion(modelName: string): { inputUsd: number; outputUsd: number } | null {
+    const normalized = modelName.toLowerCase();
+
+    if (normalized.includes("gpt-4o-mini")) {
+      return { inputUsd: 0.15, outputUsd: 0.6 };
+    }
+
+    return null;
+  }
+
+  private estimateUsageCostUsd(
+    modelName: string,
+    promptTokens: number,
+    completionTokens: number,
+  ): number | null {
+    const pricing = this.getModelPricingPerMillion(modelName);
+    if (!pricing) {
+      return null;
+    }
+
+    const inputCost = (promptTokens / 1_000_000) * pricing.inputUsd;
+    const outputCost = (completionTokens / 1_000_000) * pricing.outputUsd;
+    return Number((inputCost + outputCost).toFixed(8));
+  }
+
+  private async saveTokenUsageSafely(data: {
+    userId: string;
+    module: AiUsageModule;
+    operation: string;
+    modelName: string;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostUsd: number | null;
+  }): Promise<void> {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: data.userId },
+        select: { gymId: true },
+      });
+
+      if (!user) {
+        return;
+      }
+
+      await prisma.$executeRaw`
+        INSERT INTO "ai_token_usage_logs" (
+          "gym_id",
+          "user_id",
+          "module",
+          "operation",
+          "model_name",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "estimated_cost_usd"
+        )
+        VALUES (
+          ${user.gymId},
+          ${data.userId},
+          ${data.module},
+          ${data.operation},
+          ${data.modelName},
+          ${data.promptTokens},
+          ${data.completionTokens},
+          ${data.totalTokens},
+          ${data.estimatedCostUsd}
+        )
+      `;
+    } catch (error) {
+      if (this.isTokenUsageTableMissing(error)) {
+        console.warn("AI token usage table missing. Skipping token usage persistence.");
+        return;
+      }
+
+      console.error("Failed to persist AI token usage log", error);
+    }
+  }
+
+  private async createCompletionWithUsage(
+    userId: string,
+    module: AiUsageModule,
+    operation: string,
+    params: {
+      model: string;
+      messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+      temperature: number;
+      max_tokens: number;
+    },
+  ) {
+    let response;
+    try {
+      response = await this.openai.chat.completions.create(params);
+    } catch (error) {
+      throw this.extractProviderError(error);
+    }
+
+    const usage = (response as {
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
+    }).usage;
+
+    const promptTokens = Number(usage?.prompt_tokens ?? 0);
+    const completionTokens = Number(usage?.completion_tokens ?? 0);
+    const totalTokens = Number(usage?.total_tokens ?? promptTokens + completionTokens);
+
+    if (totalTokens > 0) {
+      await this.saveTokenUsageSafely({
+        userId,
+        module,
+        operation,
+        modelName: params.model,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCostUsd: this.estimateUsageCostUsd(params.model, promptTokens, completionTokens),
+      });
+    }
+
+    return response;
+  }
+
   constructor() {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -785,17 +926,12 @@ Genera SOLO JSON valido (sin markdown, sin explicaciones):
 Personaliza la rutina completamente segun el perfil. Devuelve SOLO JSON valido.
     `;
 
-    let response;
-    try {
-      response = await this.openai.chat.completions.create({
-        model: this.models.routine,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 2000,
-      });
-    } catch (error) {
-      throw this.extractProviderError(error);
-    }
+    const response = await this.createCompletionWithUsage(userId, "routine", "generate_routine", {
+      model: this.models.routine,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2000,
+    });
 
     const rawContent = (response.choices[0]?.message?.content || "").trim();
 
@@ -880,17 +1016,12 @@ Reglas:
 - No cambies el dia.
     `;
 
-    let response;
-    try {
-      response = await this.openai.chat.completions.create({
-        model: this.models.routine,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 1200,
-      });
-    } catch (error) {
-      throw this.extractProviderError(error);
-    }
+    const response = await this.createCompletionWithUsage(userId, "routine", "regenerate_routine_day", {
+      model: this.models.routine,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 1200,
+    });
 
     const rawDayContent = (response.choices[0]?.message?.content || "").trim();
     const dayCodeBlockMatch = rawDayContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -977,17 +1108,12 @@ Reglas:
 - No incluyas markdown ni explicaciones, solo el JSON.
     `;
 
-    let response;
-    try {
-      response = await this.openai.chat.completions.create({
-        model: this.models.routine,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 1200,
-      });
-    } catch (error) {
-      throw this.extractProviderError(error);
-    }
+    const response = await this.createCompletionWithUsage(userId, "routine", "add_routine_day", {
+      model: this.models.routine,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 1200,
+    });
 
     const rawContent = (response.choices[0]?.message?.content || "").trim();
     const codeBlockMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -1075,17 +1201,12 @@ Responde SOLO JSON valido:
 }
 `;
 
-      let response;
-      try {
-        response = await this.openai.chat.completions.create({
-          model: this.models.routine,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
-          max_tokens: 300,
-        });
-      } catch (error) {
-        throw this.extractProviderError(error);
-      }
+      const response = await this.createCompletionWithUsage(userId, "routine", "add_exercise", {
+        model: this.models.routine,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 300,
+      });
 
       const rawContent = (response.choices[0]?.message?.content || "").trim();
       const codeBlock = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -1178,17 +1299,12 @@ Responde SOLO JSON valido:
 }
 `;
 
-      let response;
-      try {
-        response = await this.openai.chat.completions.create({
-          model: this.models.routine,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
-          max_tokens: 500,
-        });
-      } catch (error) {
-        throw this.extractProviderError(error);
-      }
+      const response = await this.createCompletionWithUsage(userId, "routine", "replace_exercise", {
+        model: this.models.routine,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 500,
+      });
 
       const rawReplContent = (response.choices[0]?.message?.content || "").trim();
       const replCodeBlock = rawReplContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -1237,6 +1353,7 @@ Responde SOLO JSON valido:
   }
 
   async getRoutineExerciseAlternatives(
+    userId: string,
     userContext: UserRoutineContext,
     currentRoutine: GeneratedRoutine,
     sessionDay: string,
@@ -1276,17 +1393,12 @@ Reglas:
 - Todo en espanol.
 `;
 
-    let response;
-    try {
-      response = await this.openai.chat.completions.create({
-        model: this.models.routine,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 900,
-      });
-    } catch (error) {
-      throw this.extractProviderError(error);
-    }
+    const response = await this.createCompletionWithUsage(userId, "routine", "exercise_alternatives", {
+      model: this.models.routine,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 900,
+    });
 
     const rawOptContent = (response.choices[0]?.message?.content || "").trim();
     const optCodeBlock = rawOptContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -1356,32 +1468,26 @@ Reglas:
       return finalDeterministicReply;
     }
 
-    let response;
-    try {
-      const recentContext = options.startNewConversation ? [] : await this.getRecentChatContext(userId);
-      const userContext = await this.getUserChatContext(userId);
-      response = await this.openai.chat.completions.create({
-        model: this.models.chat,
-        messages: [
-          { role: "system", content: AIService.CHAT_SYSTEM_PROMPT },
-          ...(userContext
-            ? [
-                {
-                  role: "system" as const,
-                  content:
-                    "Known user context (if relevant to the answer):\n" + userContext,
-                },
-              ]
-            : []),
-          ...recentContext,
-          { role: "user", content: userMessage },
-        ],
-        temperature: 0.7,
-        max_tokens: this.chatMaxTokens,
-      });
-    } catch (error) {
-      throw this.extractProviderError(error);
-    }
+    const recentContext = options.startNewConversation ? [] : await this.getRecentChatContext(userId);
+    const userContext = await this.getUserChatContext(userId);
+    const response = await this.createCompletionWithUsage(userId, "chat", "chat_message", {
+      model: this.models.chat,
+      messages: [
+        { role: "system", content: AIService.CHAT_SYSTEM_PROMPT },
+        ...(userContext
+          ? [
+              {
+                role: "system" as const,
+                content: "Known user context (if relevant to the answer):\n" + userContext,
+              },
+            ]
+          : []),
+        ...recentContext,
+        { role: "user", content: userMessage },
+      ],
+      temperature: 0.7,
+      max_tokens: this.chatMaxTokens,
+    });
 
     const content = response.choices[0]?.message?.content || "";
     const outputDecision = validateAiOutputPolicy(content);
@@ -1425,17 +1531,12 @@ Generate a short, motivational daily fitness tip for someone trying to build a h
 Make it actionable and encouraging. Keep it under 100 words.
 `;
 
-    let response;
-    try {
-      response = await this.openai.chat.completions.create({
-        model: this.models.tip,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.8,
-        max_tokens: 200,
-      });
-    } catch (error) {
-      throw this.extractProviderError(error);
-    }
+    const response = await this.createCompletionWithUsage(userId, "tip", "daily_tip", {
+      model: this.models.tip,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8,
+      max_tokens: 200,
+    });
 
     const content = response.choices[0]?.message?.content || "";
     const finalTip = appendMedicalDisclaimer(content);
@@ -1497,17 +1598,12 @@ Generate a JSON response with the following structure:
 Return ONLY valid JSON.
     `;
 
-    let response;
-    try {
-      response = await this.openai.chat.completions.create({
-        model: this.models.nutrition,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 2000,
-      });
-    } catch (error) {
-      throw this.extractProviderError(error);
-    }
+    const response = await this.createCompletionWithUsage(userId, "nutrition", "generate_nutrition", {
+      model: this.models.nutrition,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2000,
+    });
 
     const content = response.choices[0]?.message?.content || "";
 
