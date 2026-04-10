@@ -14,11 +14,13 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { palette } from "../../theme/palette";
+import { AIActionProposal } from "../../types/api";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   text: string;
+  actionProposal?: AIActionProposal;
 }
 
 const WELCOME_MESSAGE: Message = {
@@ -36,7 +38,77 @@ export function ChatScreen() {
   const [clearing, setClearing] = useState(false);
   const [startingNewConversation, setStartingNewConversation] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [pendingProposalId, setPendingProposalId] = useState<string | null>(null);
+  const [selectedDayByProposalId, setSelectedDayByProposalId] = useState<Record<string, string>>({});
   const listRef = useRef<FlatList<Message>>(null);
+
+  const extractAllowedDays = (proposal: AIActionProposal): string[] => {
+    const rawDays = proposal.payload.allowedDays;
+    if (!Array.isArray(rawDays)) {
+      return [];
+    }
+
+    return rawDays.filter((day): day is string => typeof day === "string");
+  };
+
+  const getDefaultDay = (proposal: AIActionProposal): string | undefined => {
+    const suggestedDay = proposal.payload.suggestedDay;
+    if (typeof suggestedDay === "string" && suggestedDay.trim().length > 0) {
+      return suggestedDay;
+    }
+
+    const allowedDays = extractAllowedDays(proposal);
+    return allowedDays[0];
+  };
+
+  const getSelectedDayForProposal = (proposal: AIActionProposal): string | undefined => {
+    const picked = selectedDayByProposalId[proposal.proposalId];
+    if (picked) {
+      return picked;
+    }
+
+    return getDefaultDay(proposal);
+  };
+
+  const onSelectProposalDay = (proposalId: string, day: string) => {
+    setSelectedDayByProposalId((prev) => ({
+      ...prev,
+      [proposalId]: day,
+    }));
+  };
+
+  const appendAssistantMessage = (text: string, actionProposal?: AIActionProposal) => {
+    const aiMsg: Message = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      role: "assistant",
+      text,
+      actionProposal,
+    };
+
+    setMessages((prev) => [...prev, aiMsg]);
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const markProposalAsResolved = (
+    proposalId: string,
+    status: "APPLIED" | "REJECTED" | "FAILED"
+  ) => {
+    setMessages((prev) =>
+      prev.map((message) => {
+        if (message.actionProposal?.proposalId !== proposalId) {
+          return message;
+        }
+
+        return {
+          ...message,
+          actionProposal: {
+            ...message.actionProposal,
+            status,
+          },
+        };
+      })
+    );
+  };
 
   const getHistoryStatus = () => {
     if (loadingHistory) {
@@ -142,24 +214,62 @@ export function ChatScreen() {
       const data = await api.askCoach(user.id, token, text, {
         startNewConversation: startingNewConversation,
       });
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        text: data.response,
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+      appendAssistantMessage(data.response, data.actionProposal);
       setStartingNewConversation(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error desconocido";
-      const errMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        text: `Error consultando al coach: ${message}`,
-      };
-      setMessages((prev) => [...prev, errMsg]);
+      appendAssistantMessage(`Error consultando al coach: ${message}`);
     } finally {
       setLoading(false);
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  };
+
+  const onConfirmProposal = async (proposal: AIActionProposal) => {
+    if (!user || !token || pendingProposalId) {
+      return;
+    }
+
+    setPendingProposalId(proposal.proposalId);
+    try {
+      const selectedDay = proposal.type === "exercise_add" ? getSelectedDayForProposal(proposal) : undefined;
+      const result = await api.confirmActionProposal(user.id, proposal.proposalId, token, {
+        selectedDay,
+      });
+
+      markProposalAsResolved(proposal.proposalId, "APPLIED");
+
+      const routineApplied = Boolean(result.routine);
+      appendAssistantMessage(
+        routineApplied
+          ? "Listo. Ya apliqué la accion en tu rutina y puedes verla en tu seccion de rutinas."
+          : "Listo. La accion fue confirmada correctamente."
+      );
+    } catch (error) {
+      markProposalAsResolved(proposal.proposalId, "FAILED");
+      const message = error instanceof Error ? error.message : "Error inesperado";
+      appendAssistantMessage(`No pude aplicar la accion: ${message}`);
+    } finally {
+      setPendingProposalId(null);
+    }
+  };
+
+  const onRejectProposal = async (proposal: AIActionProposal) => {
+    if (!user || !token || pendingProposalId) {
+      return;
+    }
+
+    setPendingProposalId(proposal.proposalId);
+    try {
+      await api.rejectActionProposal(user.id, proposal.proposalId, token, {
+        reason: "Usuario rechazo la propuesta desde chat",
+      });
+      markProposalAsResolved(proposal.proposalId, "REJECTED");
+      appendAssistantMessage("Entendido. No apliqué ese cambio. Si quieres, te propongo una alternativa.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error inesperado";
+      appendAssistantMessage(`No pude rechazar la propuesta: ${message}`);
+    } finally {
+      setPendingProposalId(null);
     }
   };
 
@@ -175,9 +285,67 @@ export function ChatScreen() {
 
   const renderItem = ({ item }: { item: Message }) => {
     const isUser = item.role === "user";
+    const proposal = item.actionProposal;
+    const proposalIsPending = proposal?.status === "PROPOSED";
+    const isWorkingProposal = proposal ? pendingProposalId === proposal.proposalId : false;
+    const allowedDays = proposal ? extractAllowedDays(proposal) : [];
+    const selectedDay = proposal ? getSelectedDayForProposal(proposal) : undefined;
+
     return (
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-        <Text style={isUser ? styles.bubbleTextUser : styles.bubbleTextAI}>{item.text}</Text>
+      <View style={styles.messageWrap}>
+        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
+          <Text style={isUser ? styles.bubbleTextUser : styles.bubbleTextAI}>{item.text}</Text>
+        </View>
+
+        {!isUser && proposal && (
+          <View style={styles.proposalCard}>
+            <Text style={styles.proposalTitle}>Accion sugerida</Text>
+            <Text style={styles.proposalSummary}>{proposal.summary}</Text>
+            <Text style={styles.proposalRationale}>{proposal.rationale}</Text>
+
+            {proposal.type === "exercise_add" && proposalIsPending && allowedDays.length > 0 && (
+              <View style={styles.daySelectorWrap}>
+                <Text style={styles.daySelectorLabel}>Dia para aplicarlo:</Text>
+                <View style={styles.dayChipsRow}>
+                  {allowedDays.map((day) => {
+                    const isSelected = selectedDay === day;
+                    return (
+                      <TouchableOpacity
+                        key={`${proposal.proposalId}-${day}`}
+                        style={[styles.dayChip, isSelected && styles.dayChipActive]}
+                        onPress={() => onSelectProposalDay(proposal.proposalId, day)}
+                        disabled={isWorkingProposal}
+                      >
+                        <Text style={[styles.dayChipText, isSelected && styles.dayChipTextActive]}>{day}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {proposalIsPending ? (
+              <View style={styles.proposalActions}>
+                <TouchableOpacity
+                  style={[styles.proposalButton, styles.rejectButton, isWorkingProposal && styles.proposalButtonDisabled]}
+                  onPress={() => onRejectProposal(proposal)}
+                  disabled={isWorkingProposal}
+                >
+                  <Text style={styles.rejectButtonText}>Rechazar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.proposalButton, styles.confirmButton, isWorkingProposal && styles.proposalButtonDisabled]}
+                  onPress={() => onConfirmProposal(proposal)}
+                  disabled={isWorkingProposal}
+                >
+                  <Text style={styles.confirmButtonText}>{isWorkingProposal ? "Aplicando..." : "Confirmar"}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={styles.proposalStatus}>Estado: {proposal.status}</Text>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -336,12 +504,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     flexGrow: 1,
   },
+  messageWrap: {
+    marginBottom: 10,
+  },
   bubble: {
     maxWidth: "80%",
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    marginBottom: 10,
   },
   bubbleUser: {
     backgroundColor: palette.cocoa,
@@ -364,6 +534,108 @@ const styles = StyleSheet.create({
     color: palette.ink,
     fontSize: 14,
     lineHeight: 20,
+  },
+  proposalCard: {
+    alignSelf: "flex-start",
+    maxWidth: "86%",
+    backgroundColor: palette.surfaceMuted,
+    borderColor: palette.line,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 2,
+  },
+  proposalTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: palette.textSoft,
+    textTransform: "uppercase",
+    marginBottom: 6,
+    letterSpacing: 0.4,
+  },
+  proposalSummary: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: palette.ink,
+    marginBottom: 6,
+  },
+  proposalRationale: {
+    fontSize: 13,
+    color: palette.textMuted,
+    lineHeight: 18,
+  },
+  proposalActions: {
+    marginTop: 10,
+    flexDirection: "row",
+    gap: 8,
+  },
+  daySelectorWrap: {
+    marginTop: 10,
+  },
+  daySelectorLabel: {
+    color: palette.textSoft,
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  dayChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  dayChip: {
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: palette.card,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  dayChipActive: {
+    backgroundColor: palette.ocean,
+    borderColor: palette.ocean,
+  },
+  dayChipText: {
+    color: palette.ink,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "capitalize",
+  },
+  dayChipTextActive: {
+    color: palette.cream,
+  },
+  proposalButton: {
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+  },
+  proposalButtonDisabled: {
+    opacity: 0.6,
+  },
+  confirmButton: {
+    backgroundColor: palette.ocean,
+    borderColor: palette.ocean,
+  },
+  confirmButtonText: {
+    color: palette.cream,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  rejectButton: {
+    backgroundColor: palette.card,
+    borderColor: palette.line,
+  },
+  rejectButtonText: {
+    color: palette.ink,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  proposalStatus: {
+    marginTop: 10,
+    color: palette.textSoft,
+    fontSize: 12,
+    fontWeight: "700",
   },
   typingRow: {
     flexDirection: "row",

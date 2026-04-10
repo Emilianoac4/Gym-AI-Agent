@@ -67,8 +67,8 @@ type ActionProposalRow = {
   summary: string;
   rationale: string;
   proposal_payload: unknown;
-  expires_at: Date;
-  created_at: Date;
+  expires_at: Date | string;
+  created_at: Date | string;
 };
 
 const LB_TO_KG = 0.45359237;
@@ -102,6 +102,19 @@ function getDateKeyIso(date: Date): string {
   const day = parts.find((part) => part.type === "day")?.value ?? "01";
 
   return `${year}-${month}-${day}`;
+}
+
+function parseSqlTimestamp(value: Date | string, fieldName: string): Date {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new HttpError(500, `Invalid timestamp in action proposal field: ${fieldName}`);
+  }
+
+  return parsed;
 }
 
 function getSessionDayFromDate(date: Date): string {
@@ -169,6 +182,9 @@ function normalizeText(value: string): string {
 }
 
 function toActionProposalSummary(row: ActionProposalRow): ActionProposalSummary {
+  const createdAt = parseSqlTimestamp(row.created_at, "created_at");
+  const expiresAt = parseSqlTimestamp(row.expires_at, "expires_at");
+
   return {
     proposalId: row.id,
     type: row.proposal_type,
@@ -177,8 +193,8 @@ function toActionProposalSummary(row: ActionProposalRow): ActionProposalSummary 
     summary: row.summary,
     rationale: row.rationale,
     payload: (row.proposal_payload as Record<string, unknown>) || {},
-    createdAt: row.created_at.toISOString(),
-    expiresAt: row.expires_at.toISOString(),
+    createdAt: createdAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
   };
 }
 
@@ -264,7 +280,8 @@ async function getOpenActionProposalOrThrow(params: {
     throw new HttpError(409, "Action proposal is no longer pending");
   }
 
-  if (proposal.expires_at.getTime() < Date.now()) {
+  const proposalExpiresAt = parseSqlTimestamp(proposal.expires_at, "expires_at");
+  if (proposalExpiresAt.getTime() < Date.now()) {
     throw new HttpError(409, "Action proposal expired");
   }
 
