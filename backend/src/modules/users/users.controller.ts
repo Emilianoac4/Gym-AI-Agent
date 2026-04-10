@@ -16,6 +16,7 @@ import {
   SetHealthConnectionStateInput,
   UpdateProfileInput,
   UpsertHealthConnectionInput,
+  UpsertUserPathologiesInput,
 } from "./users.validation";
 import { PermissionAction, hasPermission } from "../../config/permissions";
 import {
@@ -62,6 +63,61 @@ type ActiveUser = {
   isActive: boolean;
 };
 
+type UserPathologyRow = {
+  id: string;
+  user_id: string;
+  pathology_key: string;
+  custom_label: string;
+  notes: string | null;
+  diagnosed_at: Date | null;
+  is_active: boolean;
+  deactivated_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+const APPROVED_PATHOLOGY_KEYS = new Set<string>([
+  "hipertension_arterial",
+  "cardiopatia_isquemica_angina",
+  "arritmia_cardiaca",
+  "insuficiencia_cardiaca",
+  "marcapasos_implantado",
+  "asma",
+  "epoc",
+  "apnea_sueno",
+  "diabetes_tipo_1",
+  "diabetes_tipo_2",
+  "trastorno_tiroideo",
+  "obesidad_morbida",
+  "hernia_discal",
+  "escoliosis",
+  "osteoporosis_osteopenia",
+  "artritis_reumatoide",
+  "artrosis",
+  "tendinitis_cronica",
+  "lesion_ligamento_cruzado",
+  "sindrome_manguito_rotador",
+  "fractura_rehabilitacion",
+  "protesis_articular",
+  "fibromialgia",
+  "epilepsia",
+  "esclerosis_multiple",
+  "parkinson",
+  "migrana_cronica",
+  "cancer_activo",
+  "cancer_remision",
+  "ansiedad_generalizada",
+  "depresion_clinica",
+  "trastorno_alimentario",
+  "insuficiencia_renal_cronica",
+  "calculos_renales",
+  "incontinencia_urinaria",
+  "prostatitis_cronica",
+  "embarazo_activo",
+  "postparto_reciente",
+  "other",
+]);
+
 const getActiveUserById = async (id: string): Promise<ActiveUser | null> => {
   return prisma.user.findUnique({
     where: { id },
@@ -106,6 +162,28 @@ const assertCanAccessTargetUser = async (
     throw new HttpError(403, "Admin accounts cannot be deactivated from this endpoint");
   }
 };
+
+const normalizePathologyKey = (value: string): string => {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+};
+
+const toPathologyResponse = (row: UserPathologyRow) => ({
+  id: row.id,
+  key: row.pathology_key,
+  customLabel: row.custom_label || null,
+  notes: row.notes,
+  diagnosedAt: row.diagnosed_at ? row.diagnosed_at.toISOString() : null,
+  isActive: row.is_active,
+  deactivatedAt: row.deactivated_at ? row.deactivated_at.toISOString() : null,
+  createdAt: row.created_at.toISOString(),
+  updatedAt: row.updated_at.toISOString(),
+});
 
 export const getUserProfileById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   if (!req.auth) {
@@ -211,6 +289,203 @@ export const updateUserProfileById = async (
   );
 
   res.json({ message: "Profile updated", profile });
+};
+
+export const listUserPathologiesByUserId = async (
+  req: Request<{ id: string }>,
+  res: Response,
+): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  const { id } = req.params;
+  const targetUser = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, role: true, gymId: true, isActive: true },
+  });
+
+  if (!targetUser || !targetUser.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  await assertCanAccessTargetUser(req.auth, targetUser, "users.profile.read");
+
+  const rows = await prisma.$queryRaw<UserPathologyRow[]>`
+    SELECT
+      id,
+      user_id,
+      pathology_key,
+      custom_label,
+      notes,
+      diagnosed_at,
+      is_active,
+      deactivated_at,
+      created_at,
+      updated_at
+    FROM user_pathologies
+    WHERE user_id = ${id}
+    ORDER BY is_active DESC, updated_at DESC
+  `;
+
+  res.json({
+    count: rows.length,
+    pathologies: rows.map(toPathologyResponse),
+  });
+};
+
+export const upsertUserPathologiesByUserId = async (
+  req: Request<{ id: string }, unknown, UpsertUserPathologiesInput>,
+  res: Response,
+): Promise<void> => {
+  if (!req.auth) {
+    throw new HttpError(401, "Unauthorized");
+  }
+
+  const { id } = req.params;
+  const targetUser = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, role: true, gymId: true, isActive: true },
+  });
+
+  if (!targetUser || !targetUser.isActive) {
+    throw new HttpError(404, "User not found");
+  }
+
+  await assertCanAccessTargetUser(req.auth, targetUser, "users.profile.update");
+
+  const entries = req.body.entries ?? [];
+
+  const normalizedEntries = entries.map((entry) => {
+    const key = normalizePathologyKey(entry.key);
+    if (!APPROVED_PATHOLOGY_KEYS.has(key)) {
+      throw new HttpError(400, `Invalid pathology key: ${entry.key}`);
+    }
+
+    const customLabel = (entry.customLabel || "").trim();
+    if (key === "other" && customLabel.length < 2) {
+      throw new HttpError(400, "customLabel is required when key is 'other'");
+    }
+
+    return {
+      key,
+      customLabel,
+      notes: entry.notes?.trim() || null,
+      diagnosedAt: entry.diagnosedAt ? new Date(entry.diagnosedAt) : null,
+      isActive: entry.isActive ?? true,
+    };
+  });
+
+  const activeTupleKeys = new Set<string>();
+  for (const entry of normalizedEntries) {
+    if (!entry.isActive) {
+      continue;
+    }
+
+    const tupleKey = `${entry.key}::${entry.customLabel}`;
+    if (activeTupleKeys.has(tupleKey)) {
+      throw new HttpError(400, `Duplicate active pathology entry: ${entry.key}`);
+    }
+    activeTupleKeys.add(tupleKey);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.$queryRaw<UserPathologyRow[]>`
+      SELECT
+        id,
+        user_id,
+        pathology_key,
+        custom_label,
+        notes,
+        diagnosed_at,
+        is_active,
+        deactivated_at,
+        created_at,
+        updated_at
+      FROM user_pathologies
+      WHERE user_id = ${id}
+    `;
+
+    const existingByTuple = new Map<string, UserPathologyRow>();
+    for (const row of existing) {
+      existingByTuple.set(`${row.pathology_key}::${row.custom_label || ""}`, row);
+    }
+
+    for (const row of existing) {
+      const tuple = `${row.pathology_key}::${row.custom_label || ""}`;
+      if (!activeTupleKeys.has(tuple) && row.is_active) {
+        await tx.$executeRaw`
+          UPDATE user_pathologies
+          SET is_active = false,
+              deactivated_at = NOW(),
+              updated_at = NOW()
+          WHERE id = ${row.id}
+        `;
+      }
+    }
+
+    for (const entry of normalizedEntries) {
+      const tuple = `${entry.key}::${entry.customLabel}`;
+      const current = existingByTuple.get(tuple);
+
+      if (current) {
+        await tx.$executeRaw`
+          UPDATE user_pathologies
+          SET notes = ${entry.notes},
+              diagnosed_at = ${entry.diagnosedAt},
+              is_active = ${entry.isActive},
+              deactivated_at = ${entry.isActive ? null : new Date()},
+              updated_at = NOW()
+          WHERE id = ${current.id}
+        `;
+      } else {
+        await tx.$executeRaw`
+          INSERT INTO user_pathologies (
+            id,
+            user_id,
+            pathology_key,
+            custom_label,
+            notes,
+            diagnosed_at,
+            is_active,
+            deactivated_at
+          ) VALUES (
+            ${randomUUID()},
+            ${id},
+            ${entry.key},
+            ${entry.customLabel},
+            ${entry.notes},
+            ${entry.diagnosedAt},
+            ${entry.isActive},
+            ${entry.isActive ? null : new Date()}
+          )
+        `;
+      }
+    }
+  });
+
+  const updatedRows = await prisma.$queryRaw<UserPathologyRow[]>`
+    SELECT
+      id,
+      user_id,
+      pathology_key,
+      custom_label,
+      notes,
+      diagnosed_at,
+      is_active,
+      deactivated_at,
+      created_at,
+      updated_at
+    FROM user_pathologies
+    WHERE user_id = ${id}
+    ORDER BY is_active DESC, updated_at DESC
+  `;
+
+  res.json({
+    message: "Pathologies updated",
+    count: updatedRows.length,
+    pathologies: updatedRows.map(toPathologyResponse),
+  });
 };
 
 // PATCH /users/:id/avatar ΓÇö update profile picture (self or admin)

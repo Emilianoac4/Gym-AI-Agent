@@ -104,5 +104,18 @@ export const setHealthConnectionStateSchema = z.object({
   isActive: z.boolean(),
 });
 
+const pathologyEntrySchema = z.object({
+  key: z.string().min(2).max(80),
+  customLabel: z.string().min(2).max(120).optional(),
+  notes: z.string().max(240).optional(),
+  diagnosedAt: z.string().datetime().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const upsertUserPathologiesSchema = z.object({
+  entries: z.array(pathologyEntrySchema).max(60),
+});
+
 export type UpsertHealthConnectionInput = z.infer<typeof upsertHealthConnectionSchema>;
 export type SetHealthConnectionStateInput = z.infer<typeof setHealthConnectionStateSchema>;
+export type UpsertUserPathologiesInput = z.infer<typeof upsertUserPathologiesSchema>;

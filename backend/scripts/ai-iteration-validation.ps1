@@ -122,6 +122,21 @@ $profileBody = @{
 Invoke-RestMethod -Uri "$BaseUrl/users/$userId/profile" -Method Put -Headers $authHeaders -ContentType "application/json" -Body $profileBody | Out-Null
 Write-Host "Profile updated" -ForegroundColor Green
 
+Write-Step "Upserting structured pathologies"
+$pathologiesBody = @{
+  entries = @(
+    @{ key = "diabetes_tipo_2"; notes = "Controlada"; isActive = $true },
+    @{ key = "other"; customLabel = "molestia lumbar leve"; isActive = $true }
+  )
+} | ConvertTo-Json -Depth 6
+
+$pathologiesResp = Invoke-RestMethod -Uri "$BaseUrl/users/$userId/pathologies" -Method Put -Headers $authHeaders -ContentType "application/json" -Body $pathologiesBody
+Assert-Condition ($pathologiesResp.count -ge 2) "pathologies update did not persist expected entries"
+
+$pathologiesList = Invoke-RestMethod -Uri "$BaseUrl/users/$userId/pathologies" -Method Get -Headers $authHeaders -ContentType "application/json"
+Assert-Condition ($pathologiesList.count -ge 2) "pathologies list returned too few entries"
+Write-Host "Pathologies OK" -ForegroundColor Green
+
 Write-Step "Generating full routine"
 $routineResp = Invoke-RestMethod -Uri "$BaseUrl/ai/$userId/routine" -Method Post -Headers $authHeaders -ContentType "application/json"
 $routine = $routineResp.routine

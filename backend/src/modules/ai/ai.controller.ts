@@ -43,6 +43,11 @@ type GeneratedRoutine = {
   nutrition_notes?: string;
 };
 
+type UserPathologyContextRow = {
+  pathology_key: string;
+  custom_label: string;
+};
+
 type ActionProposalType = "routine_replace" | "exercise_add";
 type ActionProposalStatus = "PROPOSED" | "CONFIRMED" | "REJECTED" | "APPLIED" | "FAILED";
 
@@ -414,6 +419,29 @@ function estimatedOneRM(loadKg: number, reps: number | null): number | null {
 }
 
 export class AIController {
+  private static async getMedicalConditionsContext(userId: string, fallback: string | null): Promise<string | undefined> {
+    const pathologies = await prisma.$queryRaw<UserPathologyContextRow[]>`
+      SELECT pathology_key, custom_label
+      FROM user_pathologies
+      WHERE user_id = ${userId}
+        AND is_active = true
+      ORDER BY updated_at DESC
+      LIMIT 50
+    `.catch(() => []);
+
+    if (pathologies.length === 0) {
+      return fallback || undefined;
+    }
+
+    const labels = pathologies.map((item) =>
+      item.pathology_key === "other" && item.custom_label
+        ? `other: ${item.custom_label}`
+        : item.pathology_key,
+    );
+
+    return labels.join(", ");
+  }
+
   private static async getUserProfileContext(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -432,6 +460,11 @@ export class AIController {
       );
     }
 
+    const medicalConditions = await AIController.getMedicalConditionsContext(
+      userId,
+      userWithProfile.profile.medicalConds,
+    );
+
     return {
       goal: userWithProfile.profile.goal || "General fitness",
       experienceLevel: userWithProfile.profile.experienceLvl || "Beginner",
@@ -440,7 +473,7 @@ export class AIController {
         ? (userWithProfile.profile.preferredDays as string[])
         : [],
       injuries: userWithProfile.profile.injuries,
-      medicalConditions: userWithProfile.profile.medicalConds,
+      medicalConditions,
     };
   }
 
@@ -1426,6 +1459,11 @@ export class AIController {
         }
       }
 
+      const medicalConditions = await AIController.getMedicalConditionsContext(
+        userId,
+        userWithProfile.profile.medicalConds,
+      );
+
       // Generate routine via OpenAI
       const routine = await aiService.generateRoutine(userId, {
         goal: userWithProfile.profile.goal || "General fitness",
@@ -1435,7 +1473,7 @@ export class AIController {
           ? (userWithProfile.profile.preferredDays as string[])
           : [],
         injuries: userWithProfile.profile.injuries,
-        medicalConditions: userWithProfile.profile.medicalConds,
+        medicalConditions,
       });
 
       // Parse JSON response
@@ -1562,10 +1600,15 @@ export class AIController {
       }
 
       // Generate nutrition plan
+      const medicalConditions = await AIController.getMedicalConditionsContext(
+        userId,
+        userWithProfile.profile.medicalConds,
+      );
+
       const plan = await aiService.generateNutritionPlan(userId, {
         goal: userWithProfile.profile.goal || "General fitness",
         dietPreferences: userWithProfile.profile.dietPrefs,
-        medicalConditions: userWithProfile.profile.medicalConds,
+        medicalConditions,
       });
 
       // Parse JSON response

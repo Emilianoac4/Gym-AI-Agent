@@ -315,7 +315,7 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
 
   private async getUserChatContext(userId: string): Promise<string> {
     try {
-      const [user, latestMeasurement, strengthLogs, latestRoutineLog] = await Promise.all([
+      const [user, latestMeasurement, strengthLogs, latestRoutineLog, activePathologies] = await Promise.all([
         prisma.user.findUnique({
           where: { id: userId },
           select: {
@@ -369,6 +369,14 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
           orderBy: { createdAt: "desc" },
           select: { createdAt: true, aiResponse: true },
         }),
+        prisma.$queryRaw<Array<{ pathology_key: string; custom_label: string }>>`
+          SELECT pathology_key, custom_label
+          FROM user_pathologies
+          WHERE user_id = ${userId}
+            AND is_active = true
+          ORDER BY updated_at DESC
+          LIMIT 50
+        `.catch(() => []),
       ]);
 
       if (!user) {
@@ -394,7 +402,16 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       if (user.profile?.injuries?.trim()) {
         lines.push(`Injuries/limitations: ${user.profile.injuries.trim()}`);
       }
-      if (user.profile?.medicalConds?.trim()) {
+      if (activePathologies.length > 0) {
+        const pathologySummary = activePathologies
+          .map((row) =>
+            row.pathology_key === "other" && row.custom_label
+              ? `other: ${row.custom_label}`
+              : row.pathology_key,
+          )
+          .join(", ");
+        lines.push(`Medical considerations already declared in profile: ${pathologySummary}`);
+      } else if (user.profile?.medicalConds?.trim()) {
         lines.push(`Medical considerations already declared in profile: ${user.profile.medicalConds.trim()}`);
       }
       if (user.membershipStatus) {

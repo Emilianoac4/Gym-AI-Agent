@@ -11,6 +11,8 @@ import {
 	createUser,
 	setHealthConnectionStateByUserId,
 	upsertHealthConnectionByUserId,
+	upsertUserPathologiesByUserId,
+	listUserPathologiesByUserId,
 	updateUserProfileById,
 	updateAvatarById,
 	triggerDailySummary,
@@ -26,6 +28,7 @@ import {
 	renewMembershipSchema,
 	updateProfileSchema,
 	upsertHealthConnectionSchema,
+	upsertUserPathologiesSchema,
 } from "./users.validation";
 
 const usersRouter = Router();
@@ -66,6 +69,18 @@ usersRouter.post(
 	authorizeAction("users.profile.update"),
 	validate(upsertHealthConnectionSchema),
 	upsertHealthConnectionByUserId,
+);
+usersRouter.get(
+	"/:id/pathologies",
+	authenticate,
+	listUserPathologiesByUserId,
+);
+usersRouter.put(
+	"/:id/pathologies",
+	authenticate,
+	authorizeAction("users.profile.update"),
+	validate(upsertUserPathologiesSchema),
+	upsertUserPathologiesByUserId,
 );
 usersRouter.patch(
 	"/:id/health-connections/:provider",
