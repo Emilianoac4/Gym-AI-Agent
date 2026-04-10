@@ -786,6 +786,44 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
     return this.fallbackModel;
   }
 
+  private isUnsupportedParameterError(error: unknown, parameterName: string): boolean {
+    const candidate = error as {
+      message?: string;
+      error?: { message?: string };
+    };
+
+    const providerMessage = (candidate?.error?.message || candidate?.message || "").toLowerCase();
+    return providerMessage.includes("unsupported parameter") && providerMessage.includes(parameterName.toLowerCase());
+  }
+
+  private async createProviderCompletionWithCompatibility(params: {
+    model: string;
+    messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+    temperature: number;
+    max_tokens: number;
+  }) {
+    const { max_tokens, ...baseParams } = params;
+    const completionTokenParams = {
+      ...baseParams,
+      max_completion_tokens: max_tokens,
+    };
+
+    try {
+      return await this.openai.chat.completions.create(completionTokenParams);
+    } catch (error) {
+      if (!this.isUnsupportedParameterError(error, "max_completion_tokens")) {
+        throw error;
+      }
+
+      const legacyParams = {
+        ...baseParams,
+        max_tokens,
+      };
+
+      return this.openai.chat.completions.create(legacyParams);
+    }
+  }
+
   private async createCompletionWithUsage(
     userId: string,
     module: AiUsageModule,
@@ -804,15 +842,10 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       ...params,
       model: selectedModel,
     };
-    const { max_tokens, ...baseParams } = completionParams;
-    const providerParams = {
-      ...baseParams,
-      max_completion_tokens: max_tokens,
-    };
 
     let response;
     try {
-      response = await this.openai.chat.completions.create(providerParams);
+      response = await this.createProviderCompletionWithCompatibility(completionParams);
     } catch (error) {
       throw this.extractProviderError(error);
     }
