@@ -1651,7 +1651,7 @@ export class AIController {
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     const asksNewRoutine =
-      /(nueva rutina|cambiar rutina|actualizar rutina|otra rutina|recomiendame.*rutina|recomiend[a-z]*.*rutina|aplica[rzla]*.*rutina|carga[rzla]*.*rutina|agrega[rzla]*.*rutina|anad[irzela]*.*rutina|ponla.*rutina)/.test(
+      /((nueva|otra)\s+rutina|cambiar\s+(mi\s+)?rutina|actualizar\s+(mi\s+)?rutina|reemplazar\s+(mi\s+)?rutina|crea(?:r|me)?\s+(una\s+)?rutina|genera(?:r|me)?\s+(una\s+)?rutina|hazme\s+(una\s+)?rutina|dame\s+(una\s+)?rutina|arma(?:r|me)?\s+(una\s+)?rutina|disena(?:r|me)?\s+(una\s+)?rutina|quiero\s+(una\s+)?rutina|necesito\s+(una\s+)?rutina|recomiend(?:a|ame)\s+(una\s+)?rutina|plan\s+de\s+entrenamiento|entrenamiento\s+semanal|aplica(?:r)?\s+esta\s+rutina|carga(?:r)?\s+esta\s+rutina|agrega(?:r)?\s+esta\s+rutina|pon(?:er)?\s+esta\s+rutina)/.test(
         normalizedMessage,
       );
 
