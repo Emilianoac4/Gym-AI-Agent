@@ -321,10 +321,17 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
     estimated_cost_usd: number | string | null;
   };
 
+  type LastTokenEventRow = {
+    last_created_at: Date | string | null;
+  };
+
   let gymTokenUsageRows: GymTokenUsageRow[] = [];
   let userTokenUsageRows: UserTokenUsageRow[] = [];
   let moduleTokenUsageRows: ModuleTokenUsageRow[] = [];
   let operationTokenUsageRows: OperationTokenUsageRow[] = [];
+  let lastTokenEventAt: string | null = null;
+  let tokenTableMissingDetected = false;
+  const tokenAggregationFailures: string[] = [];
 
   try {
     gymTokenUsageRows = await prisma.$queryRaw<GymTokenUsageRow[]>`
@@ -338,54 +345,117 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
       WHERE l."created_at" >= ${tokenFromDate}
       GROUP BY l."gym_id"
     `;
-
-    userTokenUsageRows = await prisma.$queryRaw<UserTokenUsageRow[]>`
-      SELECT
-        l."gym_id",
-        l."user_id",
-        COALESCE(u."full_name", 'Usuario') AS "user_name",
-        SUM(l."total_tokens")::bigint AS "total_tokens",
-        COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
-      FROM "ai_token_usage_logs" l
-      LEFT JOIN "users" u ON u."id" = l."user_id"::text
-      WHERE l."created_at" >= ${tokenFromDate}
-      GROUP BY l."gym_id", l."user_id", u."full_name"
-    `;
-
-    moduleTokenUsageRows = await prisma.$queryRaw<ModuleTokenUsageRow[]>`
-      SELECT
-        l."module",
-        SUM(l."total_tokens")::bigint AS "total_tokens",
-        COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
-      FROM "ai_token_usage_logs" l
-      WHERE l."created_at" >= ${tokenFromDate}
-      GROUP BY l."module"
-      ORDER BY SUM(l."total_tokens") DESC
-    `;
-
-    operationTokenUsageRows = await prisma.$queryRaw<OperationTokenUsageRow[]>`
-      SELECT
-        l."operation",
-        SUM(l."total_tokens")::bigint AS "total_tokens",
-        COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
-      FROM "ai_token_usage_logs" l
-      WHERE l."created_at" >= ${tokenFromDate}
-      GROUP BY l."operation"
-      ORDER BY SUM(l."total_tokens") DESC
-      LIMIT 10
-    `;
   } catch (error) {
-    const shouldIgnore = isAiTokenUsageTableMissing(error);
-    if (shouldIgnore) {
+    if (isAiTokenUsageTableMissing(error)) {
+      tokenTableMissingDetected = true;
       console.warn("AI token usage table is not available yet. Continuing without token metrics.");
     } else {
-      console.error("Failed to load AI token usage aggregates for platform dashboard", error);
+      tokenAggregationFailures.push("gym_aggregation");
+      console.error("Failed to aggregate AI token usage by gym", error);
     }
+  }
 
+  if (!tokenTableMissingDetected) {
+    try {
+      userTokenUsageRows = await prisma.$queryRaw<UserTokenUsageRow[]>`
+        SELECT
+          l."gym_id",
+          l."user_id",
+          COALESCE(u."full_name", 'Usuario') AS "user_name",
+          SUM(l."total_tokens")::bigint AS "total_tokens",
+          COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
+        FROM "ai_token_usage_logs" l
+        LEFT JOIN "users" u ON u."id" = l."user_id"::text
+        WHERE l."created_at" >= ${tokenFromDate}
+        GROUP BY l."gym_id", l."user_id", u."full_name"
+      `;
+    } catch (error) {
+      if (isAiTokenUsageTableMissing(error)) {
+        tokenTableMissingDetected = true;
+        console.warn("AI token usage table is not available yet. Continuing without token metrics.");
+      } else {
+        tokenAggregationFailures.push("user_aggregation");
+        console.error("Failed to aggregate AI token usage by user", error);
+      }
+    }
+  }
+
+  if (!tokenTableMissingDetected) {
+    try {
+      moduleTokenUsageRows = await prisma.$queryRaw<ModuleTokenUsageRow[]>`
+        SELECT
+          l."module",
+          SUM(l."total_tokens")::bigint AS "total_tokens",
+          COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
+        FROM "ai_token_usage_logs" l
+        WHERE l."created_at" >= ${tokenFromDate}
+        GROUP BY l."module"
+        ORDER BY SUM(l."total_tokens") DESC
+      `;
+    } catch (error) {
+      if (isAiTokenUsageTableMissing(error)) {
+        tokenTableMissingDetected = true;
+        console.warn("AI token usage table is not available yet. Continuing without token metrics.");
+      } else {
+        tokenAggregationFailures.push("module_aggregation");
+        console.error("Failed to aggregate AI token usage by module", error);
+      }
+    }
+  }
+
+  if (!tokenTableMissingDetected) {
+    try {
+      operationTokenUsageRows = await prisma.$queryRaw<OperationTokenUsageRow[]>`
+        SELECT
+          l."operation",
+          SUM(l."total_tokens")::bigint AS "total_tokens",
+          COALESCE(SUM(l."estimated_cost_usd"), 0)::numeric AS "estimated_cost_usd"
+        FROM "ai_token_usage_logs" l
+        WHERE l."created_at" >= ${tokenFromDate}
+        GROUP BY l."operation"
+        ORDER BY SUM(l."total_tokens") DESC
+        LIMIT 10
+      `;
+    } catch (error) {
+      if (isAiTokenUsageTableMissing(error)) {
+        tokenTableMissingDetected = true;
+        console.warn("AI token usage table is not available yet. Continuing without token metrics.");
+      } else {
+        tokenAggregationFailures.push("operation_aggregation");
+        console.error("Failed to aggregate AI token usage by operation", error);
+      }
+    }
+  }
+
+  if (!tokenTableMissingDetected) {
+    try {
+      const lastTokenEventRows = await prisma.$queryRaw<LastTokenEventRow[]>`
+        SELECT MAX(l."created_at") AS "last_created_at"
+        FROM "ai_token_usage_logs" l
+        WHERE l."created_at" >= ${tokenFromDate}
+      `;
+
+      const lastCreatedAt = lastTokenEventRows?.[0]?.last_created_at;
+      if (lastCreatedAt) {
+        lastTokenEventAt = new Date(lastCreatedAt).toISOString();
+      }
+    } catch (error) {
+      if (isAiTokenUsageTableMissing(error)) {
+        tokenTableMissingDetected = true;
+        console.warn("AI token usage table is not available yet. Continuing without token metrics.");
+      } else {
+        tokenAggregationFailures.push("last_event_lookup");
+        console.error("Failed to fetch AI token last event timestamp", error);
+      }
+    }
+  }
+
+  if (tokenTableMissingDetected) {
     gymTokenUsageRows = [];
     userTokenUsageRows = [];
     moduleTokenUsageRows = [];
     operationTokenUsageRows = [];
+    lastTokenEventAt = null;
   }
 
   const moduleBreakdown = moduleTokenUsageRows.map((row) => ({
@@ -500,6 +570,11 @@ export const getPlatformDashboard = async (req: Request, res: Response): Promise
     aiUsageSummary: {
       moduleBreakdown,
       topOperations,
+      lastEventAt: lastTokenEventAt,
+      diagnostics: {
+        tokenTableMissing: tokenTableMissingDetected,
+        failedSegments: tokenAggregationFailures,
+      },
     },
     companies: companyCards,
   });

@@ -306,7 +306,18 @@ async function loadDashboard() {
       ? `Eliminadas recuperables: ${deletedCompanies.length}`
       : "Sin empresas eliminadas.";
 
-    tokenSummaryEl.textContent = `Ventana: ${data.tokenDays || 30} dias | Tokens totales: ${fmtNumber(totalTokens)} | Costo estimado: ${fmtUsd(totalCostUsd)}`;
+    const lastEventAt = data.aiUsageSummary?.lastEventAt
+      ? fmtDate(data.aiUsageSummary.lastEventAt)
+      : "sin eventos";
+    const failedSegments = Array.isArray(data.aiUsageSummary?.diagnostics?.failedSegments)
+      ? data.aiUsageSummary.diagnostics.failedSegments
+      : [];
+    const hasDiagnosticsWarning = Boolean(data.aiUsageSummary?.diagnostics?.tokenTableMissing) || failedSegments.length > 0;
+    const diagnosticsLabel = hasDiagnosticsWarning
+      ? ` | Diagnostico: ${data.aiUsageSummary?.diagnostics?.tokenTableMissing ? "tabla no disponible" : `fallos parciales (${failedSegments.join(", ")})`}`
+      : "";
+
+    tokenSummaryEl.textContent = `Ventana: ${data.tokenDays || 30} dias | Tokens totales: ${fmtNumber(totalTokens)} | Costo estimado: ${fmtUsd(totalCostUsd)} | Ultimo evento: ${lastEventAt}${diagnosticsLabel}`;
 
     const moduleBreakdown = Array.isArray(data.aiUsageSummary?.moduleBreakdown)
       ? data.aiUsageSummary.moduleBreakdown
