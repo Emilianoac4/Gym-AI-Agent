@@ -804,10 +804,15 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       ...params,
       model: selectedModel,
     };
+    const { max_tokens, ...baseParams } = completionParams;
+    const providerParams = {
+      ...baseParams,
+      max_completion_tokens: max_tokens,
+    };
 
     let response;
     try {
-      response = await this.openai.chat.completions.create(completionParams);
+      response = await this.openai.chat.completions.create(providerParams);
     } catch (error) {
       throw this.extractProviderError(error);
     }
