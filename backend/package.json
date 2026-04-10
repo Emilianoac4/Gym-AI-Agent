@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
+    "test:ai:local": "powershell -ExecutionPolicy Bypass -File ./scripts/ai-iteration-validation.ps1",
     "test:security": "jest --runInBand tests/security",
     "test:e2e:payments": "node scripts/e2e-payments-flow.js",
     "prisma:generate": "prisma generate",
