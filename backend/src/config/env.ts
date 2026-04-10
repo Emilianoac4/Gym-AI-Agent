@@ -51,6 +51,9 @@ const envSchema = z.object({
   RETENTION_MEASUREMENTS_DAYS: z.coerce.number().min(1).default(365),
   RETENTION_HEALTH_METADATA_DAYS: z.coerce.number().min(1).default(180),
   RETENTION_INACTIVE_AVATAR_DAYS: z.coerce.number().min(1).default(90),
+  RETENTION_AI_TOKEN_LOGS_DAYS: z.coerce.number().min(1).default(90),
+  // AI token daily limit per user (0 = disabled)
+  AI_DAILY_TOKEN_LIMIT_PER_USER: z.coerce.number().min(0).default(0),
     // Supabase Storage (BE-SEC-05)
     SUPABASE_URL: z.string().url().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),

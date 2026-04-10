@@ -7,6 +7,7 @@ export type DataRetentionSummary = {
   dryRun: boolean;
   auditLogsDeleted: number;
   aiChatLogsDeleted: number;
+  aiTokenLogsDeleted: number;
   measurementsDeleted: number;
   healthMetadataCleared: number;
   inactiveAvatarsCleared: number;
@@ -154,12 +155,14 @@ export async function runDataRetentionJob(options?: { dryRun?: boolean; now?: Da
 
   const auditCutoff = daysAgo(now, env.RETENTION_AUDIT_LOG_DAYS);
   const aiCutoff = daysAgo(now, env.RETENTION_AI_CHAT_LOG_DAYS);
+  const aiTokenCutoff = daysAgo(now, env.RETENTION_AI_TOKEN_LOGS_DAYS);
   const measurementsCutoff = daysAgo(now, env.RETENTION_MEASUREMENTS_DAYS);
   const healthMetadataCutoff = daysAgo(now, env.RETENTION_HEALTH_METADATA_DAYS);
   const inactiveAvatarCutoff = daysAgo(now, env.RETENTION_INACTIVE_AVATAR_DAYS);
 
   let auditLogsDeleted = 0;
   let aiChatLogsDeleted = 0;
+  let aiTokenLogsDeleted = 0;
   let measurementsDeleted = 0;
   let healthMetadataCleared = 0;
 
@@ -175,6 +178,11 @@ export async function runDataRetentionJob(options?: { dryRun?: boolean; now?: Da
     aiChatLogsDeleted = await prisma.aIChatLog.count({
       where: { createdAt: { lt: aiCutoff } },
     });
+
+    const tokenCountRows = await prisma.$queryRaw<Array<{ n: bigint }>>`
+      SELECT COUNT(*) AS n FROM "ai_token_usage_logs" WHERE "created_at" < ${aiTokenCutoff}
+    `.catch(() => [{ n: BigInt(0) }]);
+    aiTokenLogsDeleted = Number(tokenCountRows[0]?.n ?? 0);
 
     measurementsDeleted = await prisma.measurement.count({
       where: { createdAt: { lt: measurementsCutoff } },
@@ -196,6 +204,11 @@ export async function runDataRetentionJob(options?: { dryRun?: boolean; now?: Da
       where: { createdAt: { lt: aiCutoff } },
     });
     aiChatLogsDeleted = aiDelete.count;
+
+    const tokenDeleteRows = await prisma.$executeRaw`
+      DELETE FROM "ai_token_usage_logs" WHERE "created_at" < ${aiTokenCutoff}
+    `.catch(() => 0);
+    aiTokenLogsDeleted = tokenDeleteRows;
 
     const healthUpdate = await prisma.userHealthConnection.updateMany({
       where: {
@@ -219,6 +232,7 @@ export async function runDataRetentionJob(options?: { dryRun?: boolean; now?: Da
     dryRun,
     auditLogsDeleted,
     aiChatLogsDeleted,
+    aiTokenLogsDeleted,
     measurementsDeleted,
     healthMetadataCleared,
     inactiveAvatarsCleared: avatarResult.inactiveAvatarsCleared,

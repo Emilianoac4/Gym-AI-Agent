@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import { AuditAction, PrismaClient } from "@prisma/client";
 import { createAuditLog } from "../../utils/audit";
+import { env } from "../../config/env";
+import { HttpError } from "../../utils/http-error";
 import {
   AI_OUT_OF_SCOPE_REPLY,
   appendMedicalDisclaimer,
@@ -731,6 +733,34 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
     }
   }
 
+  private async checkDailyTokenLimit(userId: string): Promise<void> {
+    const limit = env.AI_DAILY_TOKEN_LIMIT_PER_USER;
+    if (limit <= 0) return;
+
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    try {
+      const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COALESCE(SUM(total_tokens), 0) AS total
+        FROM "ai_token_usage_logs"
+        WHERE "user_id" = ${userId}::uuid
+          AND "created_at" >= ${todayStart}
+      `;
+      const usedToday = Number(rows[0]?.total ?? 0);
+      if (usedToday >= limit) {
+        throw new HttpError(
+          429,
+          "Has alcanzado el límite diario de consultas a Tuco. Vuelve mañana para continuar.",
+        );
+      }
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      // Table missing or transient error: skip guard, allow the call.
+      console.warn("[token-limit] Pre-flight check failed, skipping limit guard", error);
+    }
+  }
+
   private async createCompletionWithUsage(
     userId: string,
     module: AiUsageModule,
@@ -742,6 +772,8 @@ Mantén las respuestas practicas, concisas y de menos de 220 palabras.
       max_tokens: number;
     },
   ) {
+    await this.checkDailyTokenLimit(userId);
+
     let response;
     try {
       response = await this.openai.chat.completions.create(params);
