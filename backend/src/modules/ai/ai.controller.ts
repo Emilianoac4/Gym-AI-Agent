@@ -1610,11 +1610,18 @@ export class AIController {
         throw new HttpError(404, "User not found");
       }
 
-      const actionProposal = await AIController.buildActionProposalFromChat(
-        targetUser.gymId,
-        userId,
-        message,
-      );
+      // Attempt to resolve the message as an actionable proposal first.
+      // If proposal building fails for any reason, degrade gracefully to plain chat.
+      let actionProposal: Awaited<ReturnType<typeof AIController.buildActionProposalFromChat>> = null;
+      try {
+        actionProposal = await AIController.buildActionProposalFromChat(
+          targetUser.gymId,
+          userId,
+          message,
+        );
+      } catch (_proposalError) {
+        // Intentionally ignored — fall through to regular LLM chat
+      }
 
       if (actionProposal) {
         res.json({
@@ -1732,7 +1739,28 @@ export class AIController {
       };
     }
 
-    const latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
+    let latestRoutine: Awaited<ReturnType<typeof AIController.getLatestRoutineSnapshot>>;
+    try {
+      latestRoutine = await AIController.getLatestRoutineSnapshot(userId);
+    } catch {
+      // User has no saved routine yet — guide them to generate one first
+      return {
+        assistantMessage:
+          "Para agregar un ejercicio necesitas tener una rutina activa. Primero pídeme que te genere una rutina y después la puedo modificar.",
+        proposal: toActionProposalSummary(
+          await insertActionProposal({
+            gymId,
+            targetUserId: userId,
+            proposalType: "exercise_add",
+            summary: "Se requiere una rutina activa para agregar ejercicios.",
+            rationale: "El usuario aún no tiene rutina guardada.",
+            payload: { requiresRoutine: true },
+            expiresAt,
+          })
+        ),
+      };
+    }
+
     const sessions = latestRoutine.routine.sessions;
     if (!Array.isArray(sessions) || sessions.length === 0) {
       return null;
